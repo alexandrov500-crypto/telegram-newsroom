@@ -52,7 +52,11 @@ This release **does not** change production-lite runtime execution. It finalizes
 
 ## Tag and commit references
 
-Recorded in [v3_2_freeze_validation.md](v3_2_freeze_validation.md) after publication.
+| Artifact | Reference |
+|----------|-----------|
+| Closure commit | `ab7c92aff352ee83619c27f870401bd456ce34c0` |
+| Freeze tag | `v3.2-operational-tooling-freeze` |
+| Post-tag record | [v3_2_freeze_validation.md](v3_2_freeze_validation.md) |
 
 Prior tooling commits:
 
@@ -60,7 +64,7 @@ Prior tooling commits:
 |-------|--------|
 | P1 | `876e1b9` |
 | P2 | `963bdf0` |
-| P3–FINAL closure | *(see freeze validation doc)* |
+| P3–FINAL closure | `ab7c92a` |
 
 ## Recovery certification
 

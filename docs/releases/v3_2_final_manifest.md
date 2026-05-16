@@ -97,7 +97,8 @@ Formal inventory for the **completed v3.2 operational tooling program**.
 |-------|----------------|---------|
 | P1 | `876e1b9` | feat(v3.2): P1 read-only operational tooling (ADR-030) |
 | P2 | `963bdf0` | feat(v3.2): P2 offline operational analytics layer (ADR-031) |
-| P3–P4 + FINAL | *(pending merge commit)* | P3 governance, P4 packaging, FINAL stewardship docs |
+| P3–P4 + FINAL | `ab7c92a` | feat(v3.2): finalize operational tooling stewardship baseline |
+| **Freeze tag** | `v3.2-operational-tooling-freeze` | → `ab7c92a` |
 
 > After merge, record the single consolidation commit SHA here and on the annotated tag.
 

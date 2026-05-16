@@ -29,7 +29,7 @@ The v3.2 cycle delivered a **bounded, offline, deterministic** operational tooli
 
 ## Freeze tag
 
-After all changes are committed and `make stewardship-validate` is green:
+Tag applied at closure commit `ab7c92a` (2026-05-16). To recreate:
 
 ```bash
 git tag -a v3.2-operational-tooling-freeze -m "$(cat <<'EOF'

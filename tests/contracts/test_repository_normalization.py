@@ -85,7 +85,8 @@ def test_start_here_v3_2_final_links() -> None:
     text = (REPO / "docs/START_HERE.md").read_text(encoding="utf-8")
     assert "stewardship-validate" in text
     assert "ADR-034" in text
-    assert "v3_2_final_manifest" in text
+    assert "v3_2_release_publication" in text
+    assert "MAINTAINERS_GUIDE" in text
 
 
 def test_architecture_index_adr_034() -> None:
