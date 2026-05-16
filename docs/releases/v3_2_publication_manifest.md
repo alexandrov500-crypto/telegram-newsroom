@@ -7,7 +7,7 @@ Canonical inventory for **immutable archival publication** of the v3.2 stewardsh
 | Tag | Points to | Purpose |
 |-----|-----------|---------|
 | `v3.2-operational-tooling-freeze` | `ab7c92aff352ee83619c27f870401bd456ce34c0` | Tooling immutability anchor |
-| `v3.2-archival-baseline` | Closure commit (record after tag) | Archival publication seal |
+| `v3.2-archival-baseline` | `0e134a2` | Archival publication seal |
 
 ## Commit lineage (tooling program)
 
@@ -18,7 +18,7 @@ Canonical inventory for **immutable archival publication** of the v3.2 stewardsh
 | `ab7c92a` | P3–FINAL stewardship baseline |
 | `556aedb` | Freeze validation record (docs) |
 | `0e23344` | Freeze validation note (docs) |
-| *(closure)* | Stewardship + immutable + archival closure |
+| `0e134a2` | Archival closure and terminal repository state |
 
 ## Canonical entry points
 
