@@ -9,4 +9,6 @@ __pycache__/
 var/ops_history/
 var/ops_reports/
 var/ops_archive/
+var/ops_bundle/
+var/ops_release_kit/
 .pycache/

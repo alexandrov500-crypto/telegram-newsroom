@@ -12,6 +12,7 @@ from typing import Any
 
 from utils.ops_tooling import (
     OPS_SNAPSHOT_SCHEMA_VERSION,
+    frozen_utc_now,
     list_snapshots,
     load_snapshot,
 )
@@ -211,7 +212,7 @@ def build_analytics_summary(
         "analytics_kind": "ops_summary",
         "read_only": True,
         "offline": True,
-        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "generated_at": frozen_utc_now(),
         "snapshot_count": len(series),
         "skipped_corrupt": skipped,
         "trends": trends,

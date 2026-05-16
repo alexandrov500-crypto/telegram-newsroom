@@ -3,12 +3,20 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any
 
 OPS_SNAPSHOT_SCHEMA_VERSION = 1
 DEFAULT_MAX_SNAPSHOT_FILES = 200
+
+
+def frozen_utc_now() -> str:
+    raw = os.environ.get("OPS_FROZEN_UTC", "").strip()
+    if raw:
+        return raw
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 DEFAULT_MAX_TOTAL_BYTES = 20 * 1024 * 1024
 
 

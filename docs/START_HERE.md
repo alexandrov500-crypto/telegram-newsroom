@@ -49,6 +49,12 @@ A **production-lite** Telegram newsroom: collect posts (Telethon), cluster/summa
 **v3.2 P1 ops tooling:** [architecture/ADR-030-v3-2-operational-tooling-scope.md](architecture/ADR-030-v3-2-operational-tooling-scope.md) · `make ops-tooling-validate`  
 **v3.2 P2 analytics:** [architecture/ADR-031-operational-analytics-layer.md](architecture/ADR-031-operational-analytics-layer.md) · [operations/metrics_retention_policy.md](operations/metrics_retention_policy.md) · `make ops-analytics-validate`
 
+**v3.2 P3 governance:** [architecture/ADR-032-operational-schema-governance.md](architecture/ADR-032-operational-schema-governance.md) · [operations/operational_integrity_audit.md](operations/operational_integrity_audit.md) · `make ops-bundle-validate`
+
+**v3.2 P4 packaging (freeze):** [architecture/ADR-033-operational-packaging-and-maintenance.md](architecture/ADR-033-operational-packaging-and-maintenance.md) · [governance/operational_tooling_maintenance_policy.md](governance/operational_tooling_maintenance_policy.md) · [releases/v3_2_tooling_freeze.md](releases/v3_2_tooling_freeze.md) · `make ops-release-validate`
+
+**v3.2 FINAL (stewardship):** [architecture/ADR-034-v3-2-finalization-and-stewardship.md](architecture/ADR-034-v3-2-finalization-and-stewardship.md) · [MAINTAINERS_GUIDE.md](MAINTAINERS_GUIDE.md) · [releases/v3_2_release_publication.md](releases/v3_2_release_publication.md) · `make stewardship-validate`
+
 ## For operators
 
 | Goal | Doc / command |

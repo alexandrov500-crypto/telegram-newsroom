@@ -26,6 +26,7 @@ LINT_SCOPE := observability newsroom tests/contracts
 	legacy-test legacy-validate legacy-guardrails \
 	live-validation-test live-validation-validate live-telegram-diagnostics \
 	staging-verify staging-validate production-validate stabilization-validate ops-tooling-validate ops-analytics-validate \
+	ops-bundle-validate ops-release-validate stewardship-validate \
 	lint format-check contracts smoke quality release-check release-qualify \
 	runtime-preflight runtime-nightly runtime-dashboard \
 	runtime-health runtime-report runtime-report-json runtime-manifest \
@@ -47,6 +48,8 @@ help:
 	@echo "  runtime-nightly / release-qualify — see make runtime-help"
 	@echo "  Maintenance: docs/MAINTENANCE_MODE.md | Triage: docs/ISSUE_TRIAGE.md"
 	@echo "  Onboarding: docs/START_HERE.md | Pre-tag: make release-check"
+	@echo "  v3.2 ops tooling: make ops-tooling-validate | ops-analytics-validate | ops-bundle-validate"
+	@echo "  v3.2 release: make ops-release-validate | stewardship-validate (FINAL gate)"
 
 demo-runtime:
 	@echo "Suggested operational demo (production-lite)"
@@ -323,6 +326,34 @@ ops-analytics-validate:
 	$(PYTHON) tools/ops_analytics_aggregate.py --history-dir tests/tools/fixtures/ops_history --reports-dir /tmp/newsroom_ops_reports_validate --limit 10
 	$(PYTHON) tools/ops_visualize.py --history-dir tests/tools/fixtures/ops_history --reports-dir /tmp/newsroom_ops_reports_validate --limit 10
 	@echo "=== ops-analytics-validate: OK ==="
+
+ops-bundle-validate:
+	$(PYTHON) -m pytest tests/contracts/test_schema_governance_contracts.py tests/contracts/test_v3_2_p3_docs.py tests/tools/test_toolchain_reproducibility.py -q --tb=short
+	OPS_FROZEN_UTC=2026-05-16T12:00:00Z $(PYTHON) tools/validate_ops_schema.py --history-dir tests/tools/fixtures/ops_history --reports-dir /tmp/newsroom_ops_schema_validate --json-output /tmp/newsroom_ops_schema_validate/validation_report.json --md-output /tmp/newsroom_ops_schema_validate/validation_report.md
+	OPS_FROZEN_UTC=2026-05-16T12:00:00Z $(PYTHON) tools/export_ops_bundle.py --history-dir tests/tools/fixtures/ops_history --reports-dir /tmp/newsroom_ops_bundle_validate --archive-dir /tmp/newsroom_ops_archive_validate --bundle-root /tmp/newsroom_ops_bundle_validate
+	OPS_FROZEN_UTC=2026-05-16T12:00:00Z $(PYTHON) tools/generate_ops_html_report.py --bundle-dir /tmp/newsroom_ops_bundle_validate/2026-05-16T120000Z --reports-dir /tmp/newsroom_ops_bundle_validate --output /tmp/newsroom_ops_bundle_validate/operations_report.html
+	@test -f docs/operations/operational_integrity_audit.md
+	@echo "=== ops-bundle-validate: OK ==="
+
+ops-release-validate:
+	$(MAKE) ops-tooling-validate
+	$(MAKE) ops-analytics-validate
+	$(MAKE) ops-bundle-validate
+	$(PYTHON) -m pytest tests/integration/test_offline_ops_toolchain.py tests/contracts/test_v3_2_p4_docs.py -q --tb=short
+	OPS_FROZEN_UTC=2026-05-16T12:00:00Z $(PYTHON) tools/validate_ops_schema.py --history-dir tests/tools/fixtures/ops_history --reports-dir /tmp/newsroom_ops_release_reports --json-output /tmp/newsroom_ops_release_reports/validation_report.json --md-output /tmp/newsroom_ops_release_reports/validation_report.md
+	OPS_FROZEN_UTC=2026-05-16T12:00:00Z $(PYTHON) tools/build_ops_release_kit.py --history-dir tests/tools/fixtures/ops_history --reports-dir /tmp/newsroom_ops_release_reports --archive-dir /tmp/newsroom_ops_release_archive --kit-root /tmp/newsroom_ops_release_kit
+	OPS_FROZEN_UTC=2026-05-16T12:00:00Z $(PYTHON) tools/generate_ops_index.py --reports-dir /tmp/newsroom_ops_release_reports --release-kit-root /tmp/newsroom_ops_release_kit --bundle-root /tmp/newsroom_ops_bundle_validate --output /tmp/newsroom_ops_release_reports/index.html
+	@test -f docs/runbooks/offline_ops_recovery_drill.md
+	@test -f docs/governance/operational_tooling_maintenance_policy.md
+	@echo "=== ops-release-validate: OK ==="
+
+stewardship-validate:
+	$(MAKE) ops-release-validate
+	$(PYTHON) -m pytest tests/contracts/test_v3_2_final_docs.py tests/contracts/test_repository_normalization.py -q --tb=short
+	@test -f docs/releases/offline_recovery_certification.md
+	@test -f docs/governance/long_term_stewardship.md
+	@test -f docs/architecture/ADR-034-v3-2-finalization-and-stewardship.md
+	@echo "=== stewardship-validate: OK (v3.2 tooling program closed) ==="
 
 ci-test:
 	@echo "=== CI: runtime tests ==="

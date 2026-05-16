@@ -14,6 +14,40 @@ All notable changes are documented here. Runtime governance is **frozen** as of 
 
 ## [Unreleased]
 
+### v3.2 git closure — immutable baseline publication
+
+- `v3_2_release_publication.md`, `v3_2_immutable_baseline.md`, `v3_2_freeze_validation.md`
+- `MAINTAINERS_GUIDE.md`, `v3_2_transition_notice.md`, `v3_2_final_validation_summary.md`
+- Tag: `v3.2-operational-tooling-freeze`
+
+### v3.2 FINAL — stewardship closure and repository normalization
+
+- ADR-034: program closure, runtime/tooling separation, forbidden expansion paths
+- `long_term_stewardship.md`, `offline_recovery_certification.md`, `operational_maturity_assessment.md`
+- `v3_2_final_manifest.md`, `v3_2_stewardship_handoff.md`, `repository_normalization_report.md`
+- `make stewardship-validate`; README/START_HERE/Makefile help normalization
+- Tag (after commit): `v3.2-operational-tooling-freeze`
+- No runtime or new tooling features
+
+### v3.2 P4 operational packaging and tooling freeze
+
+- ADR-033: release kit philosophy, portability, maintenance ownership
+- `tools/build_ops_release_kit.py` → `var/ops_release_kit/<stamp>/` (VERSION, README, manifest, checksums)
+- `tools/generate_ops_index.py` → static `var/ops_reports/index.html`
+- `operational_tooling_maintenance_policy.md`, `offline_ops_recovery_drill.md`, `v3_2_tooling_freeze.md`
+- `tests/integration/test_offline_ops_toolchain.py`; `make ops-release-validate`
+- No runtime, service, or contract changes
+
+### v3.2 P3 operational schema governance and export hardening
+
+- ADR-032: schema lifecycle, deprecation, deterministic serialization
+- `tools/validate_ops_schema.py` — snapshot/analytics/archive validation → `validation_report.json` / `.md`
+- `tools/export_ops_bundle.py` — reproducible bundle with manifest + `checksums.sha256` under `var/ops_bundle/`
+- `tools/generate_ops_html_report.py` — single-file static HTML with embedded SVG
+- `utils/ops_schema_governance.py`, `utils/ops_bundle.py`; `OPS_FROZEN_UTC` for deterministic CI
+- `operational_integrity_audit.md`, `v3_2_p3_exit_criteria.md`; `make ops-bundle-validate`
+- No runtime pipeline, contract, or Telegram interaction changes
+
 ### v3.2 P2 operational analytics (offline)
 
 - ADR-031: analytics layer on snapshot history

@@ -39,6 +39,9 @@ Concise **engineering intent** and **ADRs** for this repository. New readers: [.
 | [ADR-029](ADR-029-live-telegram-operational-validation.md) | Live Telegram validation (v3.x) | Accepted (bounded) | `live_validation/`, `v3_live_telegram_validation_report.md` |
 | [ADR-030](ADR-030-v3-2-operational-tooling-scope.md) | v3.2 operational tooling (read-only) | Accepted | `tools/ops_metrics_snapshot.py`, `v3_2_p1_exit_criteria.md` |
 | [ADR-031](ADR-031-operational-analytics-layer.md) | v3.2 operational analytics (offline) | Accepted | `tools/ops_analytics_aggregate.py`, `v3_2_p2_exit_criteria.md` |
+| [ADR-032](ADR-032-operational-schema-governance.md) | v3.2 schema governance and export hardening | Accepted | `tools/validate_ops_schema.py`, `v3_2_p3_exit_criteria.md` |
+| [ADR-033](ADR-033-operational-packaging-and-maintenance.md) | v3.2 release kits and tooling freeze | Accepted | `tools/build_ops_release_kit.py`, `v3_2_tooling_freeze.md` |
+| [ADR-034](ADR-034-v3-2-finalization-and-stewardship.md) | v3.2 FINAL — stewardship and program closure | Accepted | `make stewardship-validate`, `v3_2_final_manifest.md` |
 
 **Planning backlog (not accepted ADRs):** [POST_V1_ADR_BACKLOG.md](POST_V1_ADR_BACKLOG.md) · RFCs: [../rfc/README.md](../rfc/README.md)
 

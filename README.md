@@ -134,6 +134,20 @@ make ci-test        # runtime → smoke → contracts (CI sections)
 
 GitHub Actions `Tests` workflow runs `make ci-test` (Python 3.12, pinned pytest). No matrix, no deploy stages. Optional local: `make lint` on `observability/`, `newsroom/`, `tests/contracts/`.
 
+### v3.2 offline operational tooling (frozen)
+
+Read-only metrics snapshots, offline analytics, and portable release kits — **separate from** production-lite runtime execution ([ADR-034](docs/architecture/ADR-034-v3-2-finalization-and-stewardship.md)).
+
+| Gate | Purpose |
+|------|---------|
+| `make ops-tooling-validate` | P1 snapshots / queue introspection |
+| `make ops-analytics-validate` | P2 analytics + SVG |
+| `make ops-bundle-validate` | P3 schema + reproducible bundles |
+| `make ops-release-validate` | P4 release kit + integration |
+| `make stewardship-validate` | FINAL — full ops program + repo normalization |
+
+Artifacts live under `var/ops_history/`, `var/ops_reports/`, `var/ops_archive/`, `var/ops_bundle/`, `var/ops_release_kit/` (gitignored). Stewardship: [docs/governance/long_term_stewardship.md](docs/governance/long_term_stewardship.md).
+
 ### Maintenance principles
 
 - **Compatibility-first** — additive changes within 1.0.x; see [docs/MAINTENANCE_POLICY.md](docs/MAINTENANCE_POLICY.md).
