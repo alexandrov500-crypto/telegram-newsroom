@@ -21,7 +21,9 @@ Read-only reviews at shift start/end. No automated actions from tooling output.
 | Incident summary | Log MEDIUM+ in ops log; postmortem if needed | |
 | Unresolved retries | Note DLQ depth + failed drafts | |
 | Diagnostics export | `tools/ops_metrics_snapshot.py` + optional timeline report | |
-| Handoff | `tools/publish_timeline_report.py --markdown-output handoff.md` | |
+| Handoff | `python3 tools/generate_shift_handoff.py` | |
+| Analytics rollup | `python3 tools/ops_analytics_aggregate.py` | |
+| Charts | `python3 tools/ops_visualize.py` | |
 
 ## Emergency
 

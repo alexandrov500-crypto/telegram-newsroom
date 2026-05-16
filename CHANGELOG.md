@@ -14,6 +14,13 @@ All notable changes are documented here. Runtime governance is **frozen** as of 
 
 ## [Unreleased]
 
+### v3.2 P2 operational analytics (offline)
+
+- ADR-031: analytics layer on snapshot history
+- `tools/ops_analytics_aggregate.py`, `ops_visualize.py`, `ops_archive.py`, `generate_shift_handoff.py`
+- `utils/ops_analytics.py` — trends, anomalies, static SVG, archive gzip
+- `metrics_retention_policy.md`; `make ops-analytics-validate`
+
 ### v3.2 P1 operational tooling (read-only)
 
 - ADR-030: bounded ops tooling scope

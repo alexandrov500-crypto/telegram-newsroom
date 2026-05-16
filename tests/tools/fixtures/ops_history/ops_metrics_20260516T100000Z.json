@@ -1,0 +1,21 @@
+{
+  "captured_at": "2026-05-16T10:00:00Z",
+  "diagnostics": {
+    "metrics": {
+      "publish_retries": 0,
+      "telethon_reconnects": 0,
+      "telethon_flood_waits": 0,
+      "publish_failures": 0,
+      "publishes": 1,
+      "drafts_published": 0,
+      "publish_lock_contention": 0
+    },
+    "retry_burst_window": 0,
+    "status": "OK"
+  },
+  "no_redis_mutations": true,
+  "no_telegram_api_calls": true,
+  "read_only": true,
+  "schema_version": 1,
+  "snapshot_kind": "ops_metrics"
+}

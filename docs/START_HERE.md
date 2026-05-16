@@ -46,7 +46,8 @@ A **production-lite** Telegram newsroom: collect posts (Telethon), cluster/summa
 **Staging / rollout (v3.1):** [staging/staging_environment_checklist.md](staging/staging_environment_checklist.md) · [operations/production_lite_rollout.md](operations/production_lite_rollout.md) · `make staging-validate`  
 **Production activation:** [runbooks/controlled_activation.md](runbooks/controlled_activation.md) · [operations/72h_stability_window.md](operations/72h_stability_window.md) · `make production-validate`  
 **72h stabilization / v3.2 planning:** [operations/72h_operational_findings.md](operations/72h_operational_findings.md) · [architecture/v3_2_discovery.md](architecture/v3_2_discovery.md) · [governance/stabilization_freeze_policy.md](governance/stabilization_freeze_policy.md) · `make stabilization-validate`  
-**v3.2 P1 ops tooling:** [architecture/ADR-030-v3-2-operational-tooling-scope.md](architecture/ADR-030-v3-2-operational-tooling-scope.md) · `make ops-tooling-validate`
+**v3.2 P1 ops tooling:** [architecture/ADR-030-v3-2-operational-tooling-scope.md](architecture/ADR-030-v3-2-operational-tooling-scope.md) · `make ops-tooling-validate`  
+**v3.2 P2 analytics:** [architecture/ADR-031-operational-analytics-layer.md](architecture/ADR-031-operational-analytics-layer.md) · [operations/metrics_retention_policy.md](operations/metrics_retention_policy.md) · `make ops-analytics-validate`
 
 ## For operators
 

@@ -7,4 +7,6 @@ __pycache__/
 *.session
 .pytest_cache/
 var/ops_history/
+var/ops_reports/
+var/ops_archive/
 .pycache/
