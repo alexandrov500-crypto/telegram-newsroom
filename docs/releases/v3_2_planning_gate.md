@@ -15,7 +15,7 @@ v3.2 **planning** (docs, ADRs, read-only tooling designs) may proceed only when 
 | 7 | Governance functioning | [production_governance_audit.md](../governance/production_governance_audit.md) COMPLIANT | ☐ |
 | 8 | No unresolved production-lite instability | No open HIGH findings | ☐ |
 
-**Gate status:** ☐ OPEN (v3.2 planning allowed) ☐ CLOSED
+**Gate status:** ☑ OPEN (v3.2 P1 implementation in progress per ADR-030) ☐ CLOSED
 
 ## Authorized v3.2 outputs (when OPEN)
 

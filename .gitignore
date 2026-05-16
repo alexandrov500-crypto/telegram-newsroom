@@ -6,4 +6,5 @@ __pycache__/
 *.db
 *.session
 .pytest_cache/
+var/ops_history/
 .pycache/

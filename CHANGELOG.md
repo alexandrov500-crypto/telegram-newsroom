@@ -14,6 +14,14 @@ All notable changes are documented here. Runtime governance is **frozen** as of 
 
 ## [Unreleased]
 
+### v3.2 P1 operational tooling (read-only)
+
+- ADR-030: bounded ops tooling scope
+- `tools/ops_metrics_snapshot.py`, `queue_introspection.py`, `publish_timeline_report.py`
+- `utils/ops_tooling.py`, `utils/queue_introspection.py`
+- Operator shift checklist; `make ops-tooling-validate`
+- No publish/retry/scheduler/lock changes
+
 ### v3.2 stabilization and planning (docs-only)
 
 - 72h operational findings template, production baselines, blameless postmortem template

@@ -37,6 +37,7 @@ Concise **engineering intent** and **ADRs** for this repository. New readers: [.
 | [ADR-027](ADR-027-preservation-readiness-and-long-horizon-survivability.md) | Preservation readiness (v2.x) | Accepted (preservation) | `preservation/ecosystem_aging.md`, `v2x_preservation_readiness_report.md` |
 | [ADR-028](ADR-028-legacy-stewardship-and-controlled-sunset.md) | Legacy stewardship (v2.x) | Accepted (legacy) | `legacy/legacy_state_definition.md`, `v2x_legacy_stewardship_report.md` |
 | [ADR-029](ADR-029-live-telegram-operational-validation.md) | Live Telegram validation (v3.x) | Accepted (bounded) | `live_validation/`, `v3_live_telegram_validation_report.md` |
+| [ADR-030](ADR-030-v3-2-operational-tooling-scope.md) | v3.2 operational tooling (read-only) | Accepted | `tools/ops_metrics_snapshot.py`, `v3_2_p1_exit_criteria.md` |
 
 **Planning backlog (not accepted ADRs):** [POST_V1_ADR_BACKLOG.md](POST_V1_ADR_BACKLOG.md) · RFCs: [../rfc/README.md](../rfc/README.md)
 

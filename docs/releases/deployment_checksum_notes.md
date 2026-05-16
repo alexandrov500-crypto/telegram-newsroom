@@ -17,7 +17,7 @@ git rev-parse v3.1-production-lite
 # RELEASE_COMMIT_SHA:
 ```
 
-**Recorded:** `b5137f63af64c3ba464b5bc0a4fbb1b31d4bcd72` (tag `v3.1-production-lite`)
+**Recorded:** `1d46b4f94b44ea823b3cc4320631222ab3f0ca34` (`git rev-parse v3.1-production-lite^{commit}`)
 
 ## Source tree checksum (optional)
 
