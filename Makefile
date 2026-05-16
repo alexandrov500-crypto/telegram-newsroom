@@ -25,7 +25,7 @@ LINT_SCOPE := observability newsroom tests/contracts
 	preservation-test preservation-validate preservation-guardrails \
 	legacy-test legacy-validate legacy-guardrails \
 	live-validation-test live-validation-validate live-telegram-diagnostics \
-	staging-verify staging-validate production-validate \
+	staging-verify staging-validate production-validate stabilization-validate \
 	lint format-check contracts smoke quality release-check release-qualify \
 	runtime-preflight runtime-nightly runtime-dashboard \
 	runtime-health runtime-report runtime-report-json runtime-manifest \
@@ -308,6 +308,10 @@ staging-validate:
 production-validate:
 	$(PYTHON) -m pytest tests/contracts/test_production_activation_docs.py -q --tb=short
 	@echo "=== production-validate: OK ==="
+
+stabilization-validate:
+	$(PYTHON) -m pytest tests/contracts/test_v3_2_stabilization_docs.py -q --tb=short
+	@echo "=== stabilization-validate: OK ==="
 
 ci-test:
 	@echo "=== CI: runtime tests ==="

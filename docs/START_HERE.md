@@ -44,7 +44,8 @@ A **production-lite** Telegram newsroom: collect posts (Telethon), cluster/summa
 **Live Telegram validation:** [live_validation/live_telegram_validation_plan.md](live_validation/live_telegram_validation_plan.md) · `make live-validation-validate`  
 **Production ops (v3):** [operations/retry_error_matrix.md](operations/retry_error_matrix.md) · [operations/publish_idempotency.md](operations/publish_idempotency.md)  
 **Staging / rollout (v3.1):** [staging/staging_environment_checklist.md](staging/staging_environment_checklist.md) · [operations/production_lite_rollout.md](operations/production_lite_rollout.md) · `make staging-validate`  
-**Production activation:** [runbooks/controlled_activation.md](runbooks/controlled_activation.md) · [operations/72h_stability_window.md](operations/72h_stability_window.md) · `make production-validate`
+**Production activation:** [runbooks/controlled_activation.md](runbooks/controlled_activation.md) · [operations/72h_stability_window.md](operations/72h_stability_window.md) · `make production-validate`  
+**72h stabilization / v3.2 planning:** [operations/72h_operational_findings.md](operations/72h_operational_findings.md) · [architecture/v3_2_discovery.md](architecture/v3_2_discovery.md) · [governance/stabilization_freeze_policy.md](governance/stabilization_freeze_policy.md) · `make stabilization-validate`
 
 ## For operators
 

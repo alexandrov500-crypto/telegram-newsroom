@@ -43,6 +43,10 @@ Mandatory observation period after production-lite activation (P2). **No config 
 | `telethon_flood_waits` | <10 total |
 | Unplanned `DRY_RUN` | 0 |
 
+## Operational log
+
+Record all snapshots and daily summaries in [72h_operational_findings.md](72h_operational_findings.md).
+
 ## Exit criteria (enter steady-state)
 
 - [ ] 72h without critical incident
@@ -51,6 +55,8 @@ Mandatory observation period after production-lite activation (P2). **No config 
 - [ ] Diagnostics reliable on schedule
 - [ ] Governance caps respected
 - [ ] Sign-off in [production_activation_signoff.md](../releases/production_activation_signoff.md)
+- [ ] Baselines transferred to [production_baselines.md](production_baselines.md)
+- [ ] v3.2 gate reviewed — [v3_2_planning_gate.md](../releases/v3_2_planning_gate.md)
 
 ## If violated
 

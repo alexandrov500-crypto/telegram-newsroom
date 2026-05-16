@@ -14,6 +14,13 @@ All notable changes are documented here. Runtime governance is **frozen** as of 
 
 ## [Unreleased]
 
+### v3.2 stabilization and planning (docs-only)
+
+- 72h operational findings template, production baselines, blameless postmortem template
+- `v3_2_discovery.md`, `technical_debt_registry.md`
+- Governance: production audit, stabilization freeze policy, v3.2 planning gate
+- `make stabilization-validate` — no runtime changes
+
 ### v3.1 production-lite activation (controlled)
 
 - `docs/operations/production_bootstrap.md` — P0–P3 startup phases
