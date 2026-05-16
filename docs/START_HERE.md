@@ -10,6 +10,12 @@ Onboarding map for engineers, operators, and reviewers.
 >
 > Guarantees: [STABILITY_GUARANTEES.md](STABILITY_GUARANTEES.md) · Release gate: `make release-check`
 
+## Repository status: DORMANT (preservation-only)
+
+> **Current governance mode (ADR-038):** development inactive · no roadmap · preservation-only maintenance.  
+> **Start here for stewardship:** [releases/repository_preservation_notice.md](releases/repository_preservation_notice.md) · [releases/terminal_governance_closure.md](releases/terminal_governance_closure.md)  
+> **Reactivation:** exceptional only ([architecture/ADR-037-governance-restart-framework.md](architecture/ADR-037-governance-restart-framework.md)) — not approved
+
 ## What this project is
 
 A **production-lite** Telegram newsroom: collect posts (Telethon), cluster/summarize (OpenAI), moderate via admin bot (aiogram), publish to a target channel. Operational maturity comes from **deterministic JSON artifacts**, shell-first CLIs, and frozen inspection contracts — not from a platform control plane.
@@ -29,7 +35,7 @@ A **production-lite** Telegram newsroom: collect posts (Telethon), cluster/summa
 3. [ARCHITECTURE_MAP.md](ARCHITECTURE_MAP.md) — flows and doc topology  
 
 **Maintenance:** [MAINTENANCE_MODE.md](MAINTENANCE_MODE.md) · [ISSUE_TRIAGE.md](ISSUE_TRIAGE.md) · `make release-check`  
-**Future planning (not v1.0.x scope):** [post_v1_hardening.md](post_v1_hardening.md) · [POST_V1_TODO_BACKLOG.md](POST_V1_TODO_BACKLOG.md)  
+**Historical v1.x planning only (not v3.2; not active):** [post_v1_hardening.md](post_v1_hardening.md) · [POST_V1_TODO_BACKLOG.md](POST_V1_TODO_BACKLOG.md)  
 **v1.1 validation:** [v1_1_operational_validation_report.md](v1_1_operational_validation_report.md) · `make chaos-test` · [runbooks/](runbooks/)  
 **v1.3 resilience:** [v1_3_operational_envelope.md](v1_3_operational_envelope.md) · `make soak-test` · `make resilience-validate`  
 **v1.4 governance:** [compatibility_policy.md](compatibility_policy.md) · [release_governance.md](release_governance.md) · `make governance-validate`  
@@ -45,7 +51,7 @@ A **production-lite** Telegram newsroom: collect posts (Telethon), cluster/summa
 **Production ops (v3):** [operations/retry_error_matrix.md](operations/retry_error_matrix.md) · [operations/publish_idempotency.md](operations/publish_idempotency.md)  
 **Staging / rollout (v3.1):** [staging/staging_environment_checklist.md](staging/staging_environment_checklist.md) · [operations/production_lite_rollout.md](operations/production_lite_rollout.md) · `make staging-validate`  
 **Production activation:** [runbooks/controlled_activation.md](runbooks/controlled_activation.md) · [operations/72h_stability_window.md](operations/72h_stability_window.md) · `make production-validate`  
-**72h stabilization / v3.2 planning:** [operations/72h_operational_findings.md](operations/72h_operational_findings.md) · [architecture/v3_2_discovery.md](architecture/v3_2_discovery.md) · [governance/stabilization_freeze_policy.md](governance/stabilization_freeze_policy.md) · `make stabilization-validate`  
+**72h stabilization / v3.2 planning (closed, historical):** [operations/72h_operational_findings.md](operations/72h_operational_findings.md) · [architecture/v3_2_discovery.md](architecture/v3_2_discovery.md) · `make stabilization-validate`  
 **v3.2 P1 ops tooling:** [architecture/ADR-030-v3-2-operational-tooling-scope.md](architecture/ADR-030-v3-2-operational-tooling-scope.md) · `make ops-tooling-validate`  
 **v3.2 P2 analytics:** [architecture/ADR-031-operational-analytics-layer.md](architecture/ADR-031-operational-analytics-layer.md) · [operations/metrics_retention_policy.md](operations/metrics_retention_policy.md) · `make ops-analytics-validate`
 
@@ -55,7 +61,7 @@ A **production-lite** Telegram newsroom: collect posts (Telethon), cluster/summa
 
 **v3.2 FINAL (stewardship):** [architecture/ADR-034-v3-2-finalization-and-stewardship.md](architecture/ADR-034-v3-2-finalization-and-stewardship.md) · [MAINTAINERS_GUIDE.md](MAINTAINERS_GUIDE.md) · [releases/stewardship_state_declaration.md](releases/stewardship_state_declaration.md) · `make stewardship-validate`
 
-**Post-freeze stewardship:** [governance/stewardship_operations_calendar.md](governance/stewardship_operations_calendar.md) · [runbooks/maintenance_hotfix_procedure.md](runbooks/maintenance_hotfix_procedure.md) · `make stewardship-audit-validate`
+**Post-freeze stewardship (cadence superseded by dormancy):** [governance/dormancy_operations_policy.md](governance/dormancy_operations_policy.md) · [runbooks/maintenance_hotfix_procedure.md](runbooks/maintenance_hotfix_procedure.md) · `make archival-freeze-validate`
 
 **Immutable archival baseline:** [architecture/ADR-036-immutable-stewardship-certification.md](architecture/ADR-036-immutable-stewardship-certification.md) · [releases/v3_2_publication_manifest.md](releases/v3_2_publication_manifest.md) · [releases/repository_terminal_state.md](releases/repository_terminal_state.md) · `make immutable-baseline-validate`
 

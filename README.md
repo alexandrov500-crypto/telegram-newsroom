@@ -146,7 +146,9 @@ Read-only metrics snapshots, offline analytics, and portable release kits — **
 | `make ops-release-validate` | P4 release kit + integration |
 | `make stewardship-validate` | FINAL — full ops program + repo normalization |
 
-Artifacts live under `var/ops_history/`, `var/ops_reports/`, `var/ops_archive/`, `var/ops_bundle/`, `var/ops_release_kit/` (gitignored). Stewardship: [docs/governance/long_term_stewardship.md](docs/governance/long_term_stewardship.md).
+Artifacts live under `var/ops_history/`, `var/ops_reports/`, `var/ops_archive/`, `var/ops_bundle/`, `var/ops_release_kit/` (gitignored).
+
+**Governance:** repository is **DORMANT** (preservation-only) — [repository_preservation_notice.md](docs/releases/repository_preservation_notice.md) · `make archival-freeze-validate`
 
 ### Maintenance principles
 
