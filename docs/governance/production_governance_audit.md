@@ -1,6 +1,8 @@
 # Production-lite governance audit
 
-Periodic review that v3.1 operational constraints remain enforced. **Audit date:** 2026-05-16 (initial, post-activation). **Next review:** +30 days or after any HIGH incident.
+> **Historical schedule:** Written for post-activation v3.1. Repository governance is **DORMANT** for v3.2 archival scope — do not infer a standing +30d repo review obligation. Runtime ops follow production runbooks on the host; preservation cadence: [dormancy_operations_policy.md](dormancy_operations_policy.md).
+
+Periodic review that v3.1 operational constraints remain enforced. **Audit date:** 2026-05-16 (initial, post-activation). **Next review (historical):** +30 days or after any HIGH incident.
 
 ## Audit scope
 

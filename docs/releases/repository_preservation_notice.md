@@ -14,6 +14,7 @@ This repository is **preserved intentionally**. **Development is intentionally i
 |-----|-------------------|------|
 | `v3.2-operational-tooling-freeze` | `ab7c92a` | Tooling immutability |
 | `v3.2-archival-baseline` | `0e134a2` | Archival publication |
+| `v3.2-governance-dormant` *(optional)* | after terminal sealing commit | Governance + dormancy terminal seal |
 
 Do not move or reuse these tags for new work.
 
@@ -24,6 +25,7 @@ Do not move or reuse these tags for new work.
 | [v3_2_publication_manifest.md](v3_2_publication_manifest.md) | Release inventory |
 | [v3_2_final_manifest.md](v3_2_final_manifest.md) | Program inventory |
 | [meta_governance_closure.md](meta_governance_closure.md) | Meta-governance closed |
+| [terminal_preservation_sealing_report.md](terminal_preservation_sealing_report.md) | Final dormancy sealing record |
 
 ## Canonical validation entry points
 
@@ -57,7 +59,16 @@ python3 tools/check_freeze_integrity.py
 | Is silence a problem? | **Often no** — see dormancy policy |
 | Who owns preservation? | Operator + engineering (shared, minimal cadence) |
 
+## Preservation cadence (canonical)
+
+| Interval | Action |
+|----------|--------|
+| **90d** | Archival integrity + reproducibility spot-check (`archival-freeze-validate` or documented subset) |
+| **180d** | [offline_ops_recovery_drill.md](../runbooks/offline_ops_recovery_drill.md) |
+| **Incident only** | Full `archival-freeze-validate` + emergency preservation audit |
+
 ## References
 
 - [final_dormancy_declaration.md](final_dormancy_declaration.md)
+- [terminal_preservation_sealing_report.md](terminal_preservation_sealing_report.md)
 - [dormancy_operations_policy.md](../governance/dormancy_operations_policy.md)

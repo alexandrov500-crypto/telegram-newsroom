@@ -8,6 +8,7 @@ Canonical inventory for **immutable archival publication** of the v3.2 stewardsh
 |-----|-----------|---------|
 | `v3.2-operational-tooling-freeze` | `ab7c92aff352ee83619c27f870401bd456ce34c0` | Tooling immutability anchor |
 | `v3.2-archival-baseline` | `0e134a2` | Archival publication seal |
+| `v3.2-governance-dormant` *(optional)* | post-sealing HEAD | Terminal governance + dormancy seal (recommended after sealing pass) |
 
 ## Commit lineage (tooling program)
 
@@ -27,6 +28,8 @@ Canonical inventory for **immutable archival publication** of the v3.2 stewardsh
 | [docs/START_HERE.md](../START_HERE.md) | Onboarding hub |
 | [docs/MAINTAINERS_GUIDE.md](../MAINTAINERS_GUIDE.md) | Steward maintenance |
 | [docs/releases/repository_terminal_state.md](repository_terminal_state.md) | Terminal state |
+| [docs/releases/repository_preservation_notice.md](repository_preservation_notice.md) | DORMANT reader entry |
+| [docs/releases/terminal_governance_closure.md](terminal_governance_closure.md) | Governance lifecycle closed |
 | [docs/releases/immutable_repository_certification.md](immutable_repository_certification.md) | Certification |
 
 ## Validation targets
@@ -50,6 +53,9 @@ Canonical inventory for **immutable archival publication** of the v3.2 stewardsh
 | [v3_2_immutable_baseline.md](v3_2_immutable_baseline.md) |
 | [governance_preservation_audit.md](../governance/governance_preservation_audit.md) |
 | [final_repository_preservation_audit.md](../governance/final_repository_preservation_audit.md) |
+| [terminal_preservation_sealing_report.md](terminal_preservation_sealing_report.md) |
+| [final_dormancy_declaration.md](final_dormancy_declaration.md) |
+| [dormancy_transition_verification_report.md](dormancy_transition_verification_report.md) |
 
 ## Generated artifacts (gitignored)
 
@@ -66,7 +72,8 @@ SHA-256: see `repository_fingerprint.json` → `content_sha256` and archive `che
 1. Offline read-only tooling — no runtime mutation path
 2. Deterministic exports — `OPS_FROZEN_UTC` in CI
 3. Bounded storage — retention policy + bundle caps
-4. Governance-only evolution — ADR-037+ restart required
+4. Governance-only evolution — ADR-037+ restart required (denied by default in dormancy)
+5. **No future support implied** — preservation-only; see [repository_preservation_notice.md](repository_preservation_notice.md)
 
 ## Recovery references
 

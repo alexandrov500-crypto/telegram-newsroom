@@ -9,7 +9,7 @@ Formal end of **all v3.x governance lifecycles** and entry into **dormancy** as 
 | Lifecycle | Closure document / ADR |
 |-----------|-------------------------|
 | Implementation governance | [v3_2_archival_closure_report.md](v3_2_archival_closure_report.md), ADR-030–033 |
-| Stewardship governance (active) | [stewardship_state_declaration.md](stewardship_state_declaration.md), ADR-034 |
+| Stewardship governance (program closed) | [stewardship_state_declaration.md](stewardship_state_declaration.md), ADR-034 |
 | Archival governance | `v3.2-archival-baseline`, ADR-036 |
 | Meta-governance preparation | [meta_governance_closure.md](meta_governance_closure.md), ADR-037 |
 | Dormancy transition | [final_dormancy_declaration.md](final_dormancy_declaration.md), ADR-038 |
@@ -35,6 +35,7 @@ Formal end of **all v3.x governance lifecycles** and entry into **dormancy** as 
 | Type | Location |
 |------|----------|
 | Preservation notice | [repository_preservation_notice.md](repository_preservation_notice.md) |
+| Terminal preservation sealing | [terminal_preservation_sealing_report.md](terminal_preservation_sealing_report.md) |
 | Terminal state | [repository_terminal_state.md](repository_terminal_state.md) |
 | Restart (denied by default) | [restart_readiness_declaration.md](restart_readiness_declaration.md) |
 | Dormancy ADR | [ADR-038](../architecture/ADR-038-governance-dormancy-protocol.md) |

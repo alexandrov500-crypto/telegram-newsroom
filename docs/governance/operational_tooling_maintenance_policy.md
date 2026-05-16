@@ -1,5 +1,7 @@
 # Operational tooling maintenance policy (v3.2)
 
+> **Cadence superseded:** In dormancy, frequency is defined by [dormancy_operations_policy.md](dormancy_operations_policy.md) (90d / 180d; incident-only full validation). Hotfix boundaries in this policy still apply when exceptional work occurs.
+
 Governs the **offline ops tooling stack** (ADR-030–033). Does not govern production-lite runtime or frozen `runtime/*.json` contracts.
 
 ## Ownership expectations

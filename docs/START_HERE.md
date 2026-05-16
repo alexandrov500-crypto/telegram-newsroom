@@ -69,7 +69,7 @@ A **production-lite** Telegram newsroom: collect posts (Telethon), cluster/summa
 
 **Governance restart (meta-only, no v4):** [architecture/ADR-037-governance-restart-framework.md](architecture/ADR-037-governance-restart-framework.md) · [governance/restart_evaluation_template.md](governance/restart_evaluation_template.md) · [releases/restart_readiness_declaration.md](releases/restart_readiness_declaration.md) — **no active restart approved**
 
-**Governance dormancy (current mode):** [architecture/ADR-038-governance-dormancy-protocol.md](architecture/ADR-038-governance-dormancy-protocol.md) · [releases/repository_preservation_notice.md](releases/repository_preservation_notice.md) · [releases/final_dormancy_declaration.md](releases/final_dormancy_declaration.md) · [releases/terminal_governance_closure.md](releases/terminal_governance_closure.md)
+**Governance dormancy (current mode):** [architecture/ADR-038-governance-dormancy-protocol.md](architecture/ADR-038-governance-dormancy-protocol.md) · [releases/repository_preservation_notice.md](releases/repository_preservation_notice.md) · [releases/final_dormancy_declaration.md](releases/final_dormancy_declaration.md) · [releases/terminal_governance_closure.md](releases/terminal_governance_closure.md) · [releases/terminal_preservation_sealing_report.md](releases/terminal_preservation_sealing_report.md)
 
 ## For operators
 

@@ -1,5 +1,7 @@
 # Long-term stewardship (v3.2+)
 
+> **Superseded (cadence):** Repository is **DORMANT** (ADR-038). Preservation cadence: [dormancy_operations_policy.md](dormancy_operations_policy.md) (90d / 180d). This guide is historical context for the post-FINAL stewardship window.
+
 Guide for maintaining the **offline operational tooling** program after v3.2 FINAL. Does not replace [MAINTENANCE_MODE.md](../MAINTENANCE_MODE.md) for the core application.
 
 ## Stewardship responsibilities

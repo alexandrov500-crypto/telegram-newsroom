@@ -1,5 +1,7 @@
 # Stewardship operations calendar
 
+> **Superseded (cadence):** Repository is **DORMANT** (ADR-038). Use [dormancy_operations_policy.md](dormancy_operations_policy.md) for **90d / 180d** preservation and **incident-only** full validation. This calendar remains as historical context for the post-freeze stewardship window.
+
 Cadence for **v3.2 offline operational tooling** after tag `v3.2-operational-tooling-freeze`. Runtime production-lite ops follow separate runbooks.
 
 ## Every 24 hours (operator)

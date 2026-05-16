@@ -1,8 +1,10 @@
 # Support
 
+> **Repository governance (v3.2):** **DORMANT** preservation-only — not an actively evolved product. See [docs/releases/repository_preservation_notice.md](docs/releases/repository_preservation_notice.md). No implied commitment to future features or ongoing stewardship expansion.
+
 ## What to expect
 
-This is a **stable v1.0.0** production-lite system. Support means:
+This is a **stable v1.0.0** production-lite system (runtime freeze). For the **archival repository**, support means:
 
 - Bug fixes compatible with frozen runtime contracts
 - Documentation and reproducibility improvements

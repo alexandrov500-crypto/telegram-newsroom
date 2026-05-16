@@ -36,7 +36,7 @@ python3 tools/validate_ops_schema.py
 
 ## Recovery drill
 
-Follow [runbooks/offline_ops_recovery_drill.md](runbooks/offline_ops_recovery_drill.md). Sign [offline_recovery_certification.md](releases/offline_recovery_certification.md) quarterly.
+Follow [runbooks/offline_ops_recovery_drill.md](runbooks/offline_ops_recovery_drill.md). Sign [offline_recovery_certification.md](releases/offline_recovery_certification.md) on **180d** dormancy cadence (or after incident recovery).
 
 ## Post-freeze audits
 
@@ -46,7 +46,7 @@ python3 tools/build_stewardship_audit_bundle.py
 make stewardship-audit-validate
 ```
 
-Calendar: [governance/stewardship_operations_calendar.md](governance/stewardship_operations_calendar.md). Hotfixes: [runbooks/maintenance_hotfix_procedure.md](runbooks/maintenance_hotfix_procedure.md).
+Cadence (dormancy): [governance/dormancy_operations_policy.md](governance/dormancy_operations_policy.md) — historical calendar: [stewardship_operations_calendar.md](governance/stewardship_operations_calendar.md). Hotfixes: [runbooks/maintenance_hotfix_procedure.md](runbooks/maintenance_hotfix_procedure.md).
 
 Deterministic CI check:
 
@@ -69,10 +69,11 @@ See [governance/long_term_stewardship.md](governance/long_term_stewardship.md) �
 
 ## Governance dormancy (current mode)
 
-Repository is **dormant** — preservation-only. See [repository_preservation_notice.md](releases/repository_preservation_notice.md) and [dormancy_operations_policy.md](governance/dormancy_operations_policy.md).
+Repository is **dormant** — preservation-only archival asset, not an actively maintained product. See [repository_preservation_notice.md](releases/repository_preservation_notice.md), [terminal_preservation_sealing_report.md](releases/terminal_preservation_sealing_report.md), and [dormancy_operations_policy.md](governance/dormancy_operations_policy.md).
 
-- **90d:** archival integrity + reproducibility spot-check
+- **90d:** `make archival-freeze-validate` (or documented subset) on canonical tag checkout
 - **180d:** offline recovery drill
+- **Incident only:** full chain + emergency preservation audit
 - **No activity is healthy** between checks
 
 ## Governance restart (not implementation)

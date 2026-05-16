@@ -2,6 +2,8 @@
 
 Terminal audit before **archival baseline** tag. Confirms repository is suitable for long-term preservation.
 
+> **Ongoing cadence (dormancy):** **90d** spot-check per [dormancy_operations_policy.md](dormancy_operations_policy.md). Re-run this full checklist as **emergency preservation audit** only on incident (freeze breach, corruption, lost kits) — not on a standing quarterly product schedule.
+
 **Audit date:** 2026-05-16  
 **Verdict:** ☑ PRESERVATION READY (engineering, automated gates)
 
@@ -22,7 +24,7 @@ Terminal audit before **archival baseline** tag. Confirms repository is suitable
 - Docs corrections and link fixes
 - Deterministic tooling bugfixes (hotfix procedure)
 - Security pins without new network deps
-- Quarterly preservation audit sign-off
+- 90d preservation spot-check sign-off (dormancy); full checklist on incident only
 - Regenerated `var/` artifacts (not committed)
 
 ## Formal freeze continuity statement

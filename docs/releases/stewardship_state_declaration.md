@@ -1,9 +1,13 @@
 # Stewardship state declaration
 
+> **Historical (superseded by dormancy):** Snapshot at stewardship handoff.  
+> **Current governance mode:** **DORMANT** — [final_dormancy_declaration.md](final_dormancy_declaration.md) · [dormancy_operations_policy.md](../governance/dormancy_operations_policy.md) · ADR-038.  
+> Cadence: **90d / 180d** preservation only; not active stewardship calendar.
+
 **Effective:** 2026-05-16  
 **Baseline tag:** `v3.2-operational-tooling-freeze` → commit `ab7c92a`
 
-## Current mode
+## Mode at declaration (historical)
 
 | Dimension | State |
 |-----------|-------|

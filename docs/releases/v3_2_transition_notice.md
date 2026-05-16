@@ -1,13 +1,16 @@
 # v3.2 transition notice
 
-**Effective:** upon tag `v3.2-operational-tooling-freeze`
+> **Historical (superseded):** Issued at stewardship transition (`v3.2-operational-tooling-freeze`).  
+> **Current mode:** **DORMANT** preservation-only — [repository_preservation_notice.md](repository_preservation_notice.md) · [terminal_governance_closure.md](terminal_governance_closure.md) · ADR-038.
+
+**Effective:** upon tag `v3.2-operational-tooling-freeze` (historical record)
 
 ## Status change
 
 | Phase | State |
 |-------|-------|
 | v3.2 implementation (P1–P4 + FINAL) | **Complete** |
-| Stewardship | **Active** |
+| Stewardship (at freeze) | **Active** *(superseded: closed → dormant)* |
 | Runtime (production-lite) | **Stable** (separate freeze) |
 
 ## What this means

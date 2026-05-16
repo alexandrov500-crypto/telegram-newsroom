@@ -1,6 +1,8 @@
 # Governance preservation audit
 
-Quarterly review ensuring **v3.2 stewardship governance** remains intact and enforceable.
+> **Cadence superseded:** In dormancy, use [dormancy_operations_policy.md](dormancy_operations_policy.md) — **90d** spot-check (`archival-freeze-validate` subset acceptable); run this full checklist **only on incident** or as part of emergency preservation audit. Do not treat quarterly sign-off as an active product obligation.
+
+Quarterly review ensuring **v3.2 stewardship governance** remains intact and enforceable (historical stewardship window).
 
 ## Audit scope
 

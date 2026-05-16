@@ -14,6 +14,13 @@ All notable changes are documented here. Runtime governance is **frozen** as of 
 
 ## [Unreleased]
 
+### Terminal preservation sealing (dormancy final pass)
+
+- `terminal_preservation_sealing_report.md`; superseded banners on pre-dormancy stewardship cadence docs
+- Publication manifest + preservation notice: governance commits, optional `v3.2-governance-dormant` tag
+- Cadence/audit language aligned to 90d/180d; emergency preservation audit incident-only
+- No code, CI, or new ADR
+
 ### ADR-038 governance dormancy protocol (preservation-only)
 
 - ADR-038: dormant repository philosophy; preservation-over-activity

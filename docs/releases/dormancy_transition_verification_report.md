@@ -1,7 +1,8 @@
 # Dormancy transition verification report
 
 Post-commit verification after `0b3fb8c` (ADR-038 dormancy protocol).  
-**Date:** 2026-05-16 · **Verifier:** engineering (automated + doc audit)
+**Date:** 2026-05-16 · **Verifier:** engineering (automated + doc audit)  
+**Follow-up:** [terminal_preservation_sealing_report.md](terminal_preservation_sealing_report.md) (final sealing pass)
 
 ## Verdict
 
@@ -28,7 +29,7 @@ Post-commit verification after `0b3fb8c` (ADR-038 dormancy protocol).
 | Stewardship closed vs dormancy | OK (ADR-038 table; calendar superseded by dormancy policy) |
 | Reactivation default deny | OK (`restart_readiness_declaration`, ADR-037/038) |
 | ADR-038 last governance ADR | OK (README index) |
-| ADR-037 references | Files exist locally; **not yet in git** — see required fixes |
+| ADR-037 references | Committed in `7b905ba` | OK |
 
 No conflicting lifecycle definitions found between terminal, dormancy, and meta-governance closure.
 
@@ -50,23 +51,15 @@ No conflicting lifecycle definitions found between terminal, dormancy, and meta-
 | Markdown structure | OK |
 | Filename conventions | OK (`ADR-038-*`, `dormancy_*`, `*_declaration.md`) |
 
-## Required fixes (before remote freeze sign-off)
+## Required fixes (resolved)
 
-1. **Commit untracked ADR-037 meta-governance bundle** (linked from `START_HERE`, `repository_preservation_notice`):
-   - `docs/architecture/ADR-037-governance-restart-framework.md`
-   - `docs/governance/restart_evaluation_template.md`
-   - `docs/governance/preservation_priority_policy.md`
-   - `docs/governance/governance_restart_risk_matrix.md`
-   - `docs/runbooks/governance_restart_review.md`
-   - `docs/releases/restart_readiness_declaration.md`
-   - `docs/releases/terminal_state_preservation_addendum.md`
-
-2. **Apply START_HERE / README dormancy clarifications** (included in verification pass).
+1. **ADR-037 meta-governance bundle** — committed in `7b905ba`.
+2. **START_HERE / README dormancy clarifications** — applied in verification pass.
 
 ## Optional (not required)
 
-- Add `dormancy_transition_verification_report.md` to publication manifest on next doc-only commit
-- Quarterly run: `make archival-freeze-validate` on `v3.2-archival-baseline` checkout
+- Tag `v3.2-governance-dormant` after [terminal_preservation_sealing_report.md](terminal_preservation_sealing_report.md) commit
+- **90d** run: `make archival-freeze-validate` on `v3.2-archival-baseline` checkout
 
 ## Explicit statement
 
