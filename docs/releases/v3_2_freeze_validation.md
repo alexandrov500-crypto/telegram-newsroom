@@ -22,7 +22,8 @@ ab7c92aff352ee83619c27f870401bd456ce34c0
 | Gate | Result | Timestamp |
 |------|--------|-----------|
 | `make stewardship-validate` | ☑ PASS | 2026-05-16 |
-| `git status` | ☑ clean (after freeze doc commit) | — |
+| `git status` | ☑ clean | 2026-05-16 |
+| Post-tag doc commit | `556aedb` | freeze validation record (docs only) |
 
 ## Working tree
 

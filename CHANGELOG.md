@@ -16,9 +16,10 @@ All notable changes are documented here. Runtime governance is **frozen** as of 
 
 ### v3.2 git closure — immutable baseline publication
 
+- Closure commit `ab7c92a`; tag `v3.2-operational-tooling-freeze` (points to closure commit)
 - `v3_2_release_publication.md`, `v3_2_immutable_baseline.md`, `v3_2_freeze_validation.md`
 - `MAINTAINERS_GUIDE.md`, `v3_2_transition_notice.md`, `v3_2_final_validation_summary.md`
-- Tag: `v3.2-operational-tooling-freeze`
+- Post-tag record `556aedb` (freeze validation docs only)
 
 ### v3.2 FINAL — stewardship closure and repository normalization
 
