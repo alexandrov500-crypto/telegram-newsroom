@@ -14,6 +14,16 @@ All notable changes are documented here. Runtime governance is **frozen** as of 
 
 ## [Unreleased]
 
+### v3.1 production-lite rollout (staging sign-off package)
+
+- `docs/staging/*` — environment checklist, live sign-off, operator sign-off, failure injection results
+- `docs/operations/production_lite_rollout.md` — T0/T1/T2 phases with rollback triggers
+- `docs/operations/observability_validation.md` — diagnostics v2 thresholds
+- `docs/releases/v3.1-production-lite.md` — release notes
+- `tools/staging_environment_verify.py` — read-only staging pre-flight (no Telegram API)
+- `tests/staging/test_bounded_failure_injection.py` — CI-safe failure injection proxy
+- Readiness grade **A−** until operator completes live staging (≤5 publishes)
+
 ### v3.x live Telegram validation (bounded tests + opt-in live)
 
 - `docs/live_validation/*`, `docs/v3_live_telegram_validation_report.md`, ADR-029

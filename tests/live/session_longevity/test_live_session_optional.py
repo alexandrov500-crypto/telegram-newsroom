@@ -19,6 +19,8 @@ def test_live_connect_and_disconnect(live_telegram_guard) -> None:
     from app.config import load_settings
 
     s = load_settings()
+    if not (s.telethon_session_path or (s.telethon_session_string and len(s.telethon_session_string) > 40)):
+        pytest.skip("Valid TELETHON_SESSION_STRING or TELETHON_SESSION_PATH required")
 
     async def body() -> None:
         client = build_telethon_client(

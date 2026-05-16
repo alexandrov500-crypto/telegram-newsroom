@@ -4,15 +4,17 @@ Controlled real-world validation framework — bounded CI by default; opt-in liv
 
 ## Live Telegram Readiness Grade
 
-| Area | CI bounded | Live opt-in |
-|------|------------|-------------|
-| Telethon retry/FloodWait | Verified (mocked) | Operator session test |
-| Publish pacing | Verified (deterministic clock) | Operator checklist |
+| Area | CI bounded | Staging sign-off |
+|------|------------|------------------|
+| Telethon retry/FloodWait | Verified (mocked) | Pending live connect |
+| Publish pacing | Verified (deterministic clock) | Pending ≤5 publishes |
 | Chunk / partial fail | Verified | Manual channel inspect |
-| Worker recovery | Verified | Staging drill |
-| Diagnostics | `live_telegram_diagnostics.py` | Same |
+| Worker recovery | Verified | Injection proxy PASS |
+| Diagnostics v2 | `live_telegram_diagnostics.py` | **PASS** |
+| Failure injection | `tests/staging/` | **PASS** (mocked) |
+| Rollout package | `docs/operations/production_lite_rollout.md` | **READY** |
 
-**Overall grade (framework):** **B+** ready for staging live; **A** after operator checklist + staging session.
+**Overall grade:** **A−** (automated staging) → **A** when [live_staging_signoff.md](staging/live_staging_signoff.md) operator items complete.
 
 ## Session Stability Assessment
 
