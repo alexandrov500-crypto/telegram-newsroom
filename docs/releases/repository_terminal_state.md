@@ -10,6 +10,7 @@
 | v3.2 implementation | **Complete** — closed |
 | v3.2 stewardship | **Complete** — closed |
 | Archival preservation | **Active** — maintenance-only |
+| Governance mode | **Dormant** ([final_dormancy_declaration.md](final_dormancy_declaration.md)) |
 | Repository roadmap | **None implicit** |
 
 ## Formal statements
@@ -19,7 +20,7 @@
 3. **Archival lifecycle is active** — regeneration, audits, hotfixes within bounds only.
 4. The repository is **intentionally terminal/frozen** for scope expansion at v3.2.
 5. **No implicit roadmap continuation** exists in Makefile targets or ADRs.
-6. **Future changes require explicit reactivation** — ADR-037+, governance sign-off, new validation chain.
+6. **Future changes require explicit reactivation** — [ADR-037](../architecture/ADR-037-governance-restart-framework.md) evaluation only (no implementation by default); see [restart_readiness_declaration.md](restart_readiness_declaration.md).
 
 ## Bounded ecosystem (permanent)
 

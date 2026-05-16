@@ -67,12 +67,30 @@ Do not add tools or features if the proposal involves:
 
 See [governance/long_term_stewardship.md](governance/long_term_stewardship.md) — “When NOT to build more tooling”.
 
-## ADR escalation path
+## Governance dormancy (current mode)
 
-1. Draft ADR-035+ with explicit non-goals review.
-2. Run `make stewardship-validate` on branch.
+Repository is **dormant** — preservation-only. See [repository_preservation_notice.md](releases/repository_preservation_notice.md) and [dormancy_operations_policy.md](governance/dormancy_operations_policy.md).
+
+- **90d:** archival integrity + reproducibility spot-check
+- **180d:** offline recovery drill
+- **No activity is healthy** between checks
+
+## Governance restart (not implementation)
+
+Repository is **frozen by default**. To propose a new lifecycle (not a hotfix):
+
+1. Read [ADR-037](architecture/ADR-037-governance-restart-framework.md)
+2. Complete [governance/restart_evaluation_template.md](governance/restart_evaluation_template.md)
+3. Follow [runbooks/governance_restart_review.md](runbooks/governance_restart_review.md)
+
+**ADR-037 does not authorize code.** No active restart is approved ([restart_readiness_declaration.md](releases/restart_readiness_declaration.md)).
+
+## ADR escalation path (bounded hotfixes)
+
+1. Draft ADR-038+ **only after** restart evaluation approves a new **program** (rare).
+2. Run `make archival-freeze-validate` on tooling/governance doc PRs.
 3. Operator sign-off per [operational_tooling_maintenance_policy.md](governance/operational_tooling_maintenance_policy.md).
-4. Update [v3_2_tooling_freeze.md](releases/v3_2_tooling_freeze.md) exception log in PR.
+4. Update freeze exception log in PR if applicable.
 
 ## Freeze policy summary
 

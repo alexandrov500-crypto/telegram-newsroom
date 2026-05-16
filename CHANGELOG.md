@@ -14,6 +14,20 @@ All notable changes are documented here. Runtime governance is **frozen** as of 
 
 ## [Unreleased]
 
+### ADR-038 governance dormancy protocol (preservation-only)
+
+- ADR-038: dormant repository philosophy; preservation-over-activity
+- Dormancy operations policy (90d/180d cadence), risk policy, suspension matrix
+- repository_preservation_notice, final_dormancy_declaration, terminal_governance_closure
+- dormancy_reactivation_trigger_guide; no code or validation pipelines
+
+### ADR-037 governance restart framework (meta-only, no implementation)
+
+- ADR-037: restart evaluation doctrine; preservation-first; anti-continuation safeguards
+- Templates: restart evaluation, risk matrix, preservation priority policy
+- Runbook: governance restart review; meta_governance_closure, restart_readiness_declaration
+- **No active restart approved**; no code, branches, or validation chains added
+
 ### Archival closure and terminal repository state (v3.2)
 
 - `v3_2_archival_closure_report.md`, `v3_2_publication_manifest.md`, `repository_terminal_state.md`
