@@ -42,6 +42,7 @@ Concise **engineering intent** and **ADRs** for this repository. New readers: [.
 | [ADR-032](ADR-032-operational-schema-governance.md) | v3.2 schema governance and export hardening | Accepted | `tools/validate_ops_schema.py`, `v3_2_p3_exit_criteria.md` |
 | [ADR-033](ADR-033-operational-packaging-and-maintenance.md) | v3.2 release kits and tooling freeze | Accepted | `tools/build_ops_release_kit.py`, `v3_2_tooling_freeze.md` |
 | [ADR-034](ADR-034-v3-2-finalization-and-stewardship.md) | v3.2 FINAL — stewardship and program closure | Accepted | `make stewardship-validate`, `v3_2_final_manifest.md` |
+| [ADR-036](ADR-036-immutable-stewardship-certification.md) | Immutable stewardship certification | Accepted | `make immutable-baseline-validate` |
 
 **Planning backlog (not accepted ADRs):** [POST_V1_ADR_BACKLOG.md](POST_V1_ADR_BACKLOG.md) · RFCs: [../rfc/README.md](../rfc/README.md)
 

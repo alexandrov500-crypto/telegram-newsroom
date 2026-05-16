@@ -11,4 +11,7 @@ var/ops_reports/
 var/ops_archive/
 var/ops_bundle/
 var/ops_release_kit/
+var/stewardship_audit/
+var/stewardship_integrity/
+var/immutable_archive/
 .pycache/

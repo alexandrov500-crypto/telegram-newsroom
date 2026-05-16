@@ -5,9 +5,12 @@ For stewards of the **offline ops tooling** layer. Application/runtime maintenan
 ## Quick validation
 
 ```bash
-make stewardship-validate   # full ops program + normalization
-make ci-test                # runtime + smoke + contracts
-make governance-validate    # governance contracts
+make stewardship-validate       # full ops program + normalization
+make stewardship-audit-validate   # freeze integrity + audit bundle (post-freeze)
+make immutable-baseline-validate   # archival fingerprint + immutable bundle
+make archival-freeze-validate    # terminal archival seal (full chain)
+make ci-test                    # runtime + smoke + contracts
+make governance-validate        # governance contracts
 ```
 
 ## Regenerate reports (offline)
@@ -34,6 +37,16 @@ python3 tools/validate_ops_schema.py
 ## Recovery drill
 
 Follow [runbooks/offline_ops_recovery_drill.md](runbooks/offline_ops_recovery_drill.md). Sign [offline_recovery_certification.md](releases/offline_recovery_certification.md) quarterly.
+
+## Post-freeze audits
+
+```bash
+python3 tools/check_freeze_integrity.py
+python3 tools/build_stewardship_audit_bundle.py
+make stewardship-audit-validate
+```
+
+Calendar: [governance/stewardship_operations_calendar.md](governance/stewardship_operations_calendar.md). Hotfixes: [runbooks/maintenance_hotfix_procedure.md](runbooks/maintenance_hotfix_procedure.md).
 
 Deterministic CI check:
 

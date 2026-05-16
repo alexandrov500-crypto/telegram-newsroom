@@ -53,6 +53,9 @@ GITIGNORE_VAR_OPS = (
     "var/ops_archive/",
     "var/ops_bundle/",
     "var/ops_release_kit/",
+    "var/stewardship_audit/",
+    "var/stewardship_integrity/",
+    "var/immutable_archive/",
 )
 
 MAKEFILE_TARGETS = (
@@ -61,6 +64,9 @@ MAKEFILE_TARGETS = (
     "ops-bundle-validate",
     "ops-release-validate",
     "stewardship-validate",
+    "stewardship-audit-validate",
+    "immutable-baseline-validate",
+    "archival-freeze-validate",
 )
 
 
@@ -84,8 +90,11 @@ def test_makefile_ops_targets() -> None:
 def test_start_here_v3_2_final_links() -> None:
     text = (REPO / "docs/START_HERE.md").read_text(encoding="utf-8")
     assert "stewardship-validate" in text
+    assert "stewardship-audit-validate" in text
     assert "ADR-034" in text
-    assert "v3_2_release_publication" in text
+    assert "stewardship_state_declaration" in text
+    assert "archival-freeze-validate" in text
+    assert "repository_terminal_state" in text
     assert "MAINTAINERS_GUIDE" in text
 
 

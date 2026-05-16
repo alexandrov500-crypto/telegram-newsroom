@@ -26,7 +26,8 @@ LINT_SCOPE := observability newsroom tests/contracts
 	legacy-test legacy-validate legacy-guardrails \
 	live-validation-test live-validation-validate live-telegram-diagnostics \
 	staging-verify staging-validate production-validate stabilization-validate ops-tooling-validate ops-analytics-validate \
-	ops-bundle-validate ops-release-validate stewardship-validate \
+	ops-bundle-validate ops-release-validate stewardship-validate stewardship-audit-validate \
+	immutable-baseline-validate archival-freeze-validate \
 	lint format-check contracts smoke quality release-check release-qualify \
 	runtime-preflight runtime-nightly runtime-dashboard \
 	runtime-health runtime-report runtime-report-json runtime-manifest \
@@ -50,6 +51,7 @@ help:
 	@echo "  Onboarding: docs/START_HERE.md | Pre-tag: make release-check"
 	@echo "  v3.2 ops tooling: make ops-tooling-validate | ops-analytics-validate | ops-bundle-validate"
 	@echo "  v3.2 release: make ops-release-validate | stewardship-validate (FINAL gate)"
+	@echo "  v3.2 stewardship: make stewardship-audit-validate | immutable-baseline-validate | archival-freeze-validate"
 
 demo-runtime:
 	@echo "Suggested operational demo (production-lite)"
@@ -354,6 +356,35 @@ stewardship-validate:
 	@test -f docs/governance/long_term_stewardship.md
 	@test -f docs/architecture/ADR-034-v3-2-finalization-and-stewardship.md
 	@echo "=== stewardship-validate: OK (v3.2 tooling program closed) ==="
+
+stewardship-audit-validate:
+	$(PYTHON) -m pytest tests/contracts/test_freeze_integrity_contracts.py -q --tb=short
+	$(PYTHON) tools/check_freeze_integrity.py --json-output /tmp/newsroom_freeze_integrity.json --md-output /tmp/newsroom_freeze_integrity.md
+	OPS_FROZEN_UTC=2026-05-16T12:00:00Z $(PYTHON) tools/build_stewardship_audit_bundle.py --history-dir tests/tools/fixtures/ops_history --reports-dir /tmp/newsroom_stewardship_reports --archive-dir /tmp/newsroom_stewardship_archive --audit-root /tmp/newsroom_stewardship_audit
+	@test -f docs/governance/drift_detection_policy.md
+	@test -f docs/releases/stewardship_state_declaration.md
+	@test -f docs/governance/stewardship_operations_calendar.md
+	@echo "=== stewardship-audit-validate: OK ==="
+
+immutable-baseline-validate:
+	$(MAKE) stewardship-audit-validate
+	$(PYTHON) -m pytest tests/integration/test_immutable_baseline.py tests/contracts/test_immutable_baseline_docs.py -q --tb=short
+	OPS_FROZEN_UTC=2026-05-16T12:00:00Z $(PYTHON) tools/build_repository_fingerprint.py
+	OPS_FROZEN_UTC=2026-05-16T12:00:00Z $(PYTHON) tools/build_immutable_archive_bundle.py --history-dir tests/tools/fixtures/ops_history --reports-dir /tmp/newsroom_immutable_reports --archive-dir /tmp/newsroom_immutable_archive --archive-root /tmp/newsroom_immutable_bundle
+	@test -f docs/governance/governance_preservation_audit.md
+	@test -f docs/releases/immutable_repository_certification.md
+	@echo "=== immutable-baseline-validate: OK ==="
+
+archival-freeze-validate:
+	$(MAKE) immutable-baseline-validate
+	$(PYTHON) -m pytest tests/integration/test_archival_preservation_flow.py tests/contracts/test_archival_closure_docs.py -q --tb=short
+	OPS_FROZEN_UTC=2026-05-16T12:00:00Z $(PYTHON) tools/build_repository_fingerprint.py
+	OPS_FROZEN_UTC=2026-05-16T12:00:00Z $(PYTHON) tools/build_immutable_archive_bundle.py --history-dir tests/tools/fixtures/ops_history --reports-dir /tmp/newsroom_archival_reports --archive-dir /tmp/newsroom_archival_archive --archive-root /tmp/newsroom_archival_bundle
+	OPS_FROZEN_UTC=2026-05-16T12:00:00Z $(PYTHON) tools/build_archival_integrity_seal.py
+	@test -f docs/releases/v3_2_publication_manifest.md
+	@test -f docs/governance/final_repository_preservation_audit.md
+	@test -f docs/releases/repository_terminal_state.md
+	@echo "=== archival-freeze-validate: OK (terminal archival state) ==="
 
 ci-test:
 	@echo "=== CI: runtime tests ==="

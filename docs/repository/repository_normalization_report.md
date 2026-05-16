@@ -71,6 +71,7 @@ tests/
 | `var/ops_archive/` | Gzip archives | Yes | 50MB/run default |
 | `var/ops_bundle/` | Export bundles | Yes | 30MB cap |
 | `var/ops_release_kit/` | Release kits | Yes | 30MB cap |
+| `var/stewardship_audit/` | Post-freeze audit bundles | Yes | 5MB cap |
 
 Runtime artifacts remain under `var/runtime/` (separate governance, ADR-015).
 

@@ -53,7 +53,13 @@ A **production-lite** Telegram newsroom: collect posts (Telethon), cluster/summa
 
 **v3.2 P4 packaging (freeze):** [architecture/ADR-033-operational-packaging-and-maintenance.md](architecture/ADR-033-operational-packaging-and-maintenance.md) · [governance/operational_tooling_maintenance_policy.md](governance/operational_tooling_maintenance_policy.md) · [releases/v3_2_tooling_freeze.md](releases/v3_2_tooling_freeze.md) · `make ops-release-validate`
 
-**v3.2 FINAL (stewardship):** [architecture/ADR-034-v3-2-finalization-and-stewardship.md](architecture/ADR-034-v3-2-finalization-and-stewardship.md) · [MAINTAINERS_GUIDE.md](MAINTAINERS_GUIDE.md) · [releases/v3_2_release_publication.md](releases/v3_2_release_publication.md) · `make stewardship-validate`
+**v3.2 FINAL (stewardship):** [architecture/ADR-034-v3-2-finalization-and-stewardship.md](architecture/ADR-034-v3-2-finalization-and-stewardship.md) · [MAINTAINERS_GUIDE.md](MAINTAINERS_GUIDE.md) · [releases/stewardship_state_declaration.md](releases/stewardship_state_declaration.md) · `make stewardship-validate`
+
+**Post-freeze stewardship:** [governance/stewardship_operations_calendar.md](governance/stewardship_operations_calendar.md) · [runbooks/maintenance_hotfix_procedure.md](runbooks/maintenance_hotfix_procedure.md) · `make stewardship-audit-validate`
+
+**Immutable archival baseline:** [architecture/ADR-036-immutable-stewardship-certification.md](architecture/ADR-036-immutable-stewardship-certification.md) · [releases/v3_2_publication_manifest.md](releases/v3_2_publication_manifest.md) · [releases/repository_terminal_state.md](releases/repository_terminal_state.md) · `make immutable-baseline-validate`
+
+**Archival terminal closure:** [releases/v3_2_archival_closure_report.md](releases/v3_2_archival_closure_report.md) · [releases/v3_2_archival_freeze_tag.md](releases/v3_2_archival_freeze_tag.md) · `make archival-freeze-validate`
 
 ## For operators
 

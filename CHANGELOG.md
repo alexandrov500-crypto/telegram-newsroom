@@ -14,6 +14,29 @@ All notable changes are documented here. Runtime governance is **frozen** as of 
 
 ## [Unreleased]
 
+### Archival closure and terminal repository state (v3.2)
+
+- `v3_2_archival_closure_report.md`, `v3_2_publication_manifest.md`, `repository_terminal_state.md`
+- `build_archival_integrity_seal.py`, `final_repository_preservation_audit.md`
+- `v3_2_archival_freeze_tag.md`; `make archival-freeze-validate`
+- Tag (after commit): `v3.2-archival-baseline`
+- No new tooling layers or runtime changes
+
+### Immutable stewardship certification (archival baseline)
+
+- ADR-036: immutable certification philosophy and boundaries
+- `build_repository_fingerprint.py`, `build_immutable_archive_bundle.py`
+- `immutable_repository_certification.md`, `stewardship_preservation_declaration.md`
+- `governance_preservation_audit.md`; `make immutable-baseline-validate`
+- No runtime or tooling scope expansion
+
+### Post-freeze stewardship operations (v3.2 baseline)
+
+- Stewardship calendar, hotfix procedure, drift policy, branch policy
+- `check_freeze_integrity.py`, `build_stewardship_audit_bundle.py`
+- `stewardship_state_declaration.md`; `make stewardship-audit-validate`
+- No runtime or scope expansion
+
 ### v3.2 git closure — immutable baseline publication
 
 - Closure commit `ab7c92a`; tag `v3.2-operational-tooling-freeze` (points to closure commit)
