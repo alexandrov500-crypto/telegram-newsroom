@@ -1,0 +1,17 @@
+{
+  "artifact_versions": {
+    "health_snapshot.json": 1,
+    "recovery_report.json": 1,
+    "runtime_manifest.json": 1,
+    "runtime_report.json": 1
+  },
+  "compatibility_failures": [],
+  "compatibility_status": "OK",
+  "compatibility_warnings": [],
+  "generated_at": "2026-05-15T08:55:41Z",
+  "runtime_schema_version": 1,
+  "schema_version": 1,
+  "supported_versions": [
+    1
+  ]
+}

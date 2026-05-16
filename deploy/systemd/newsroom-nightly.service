@@ -1,0 +1,35 @@
+# Production-lite nightly runtime ops (single host, shell-first).
+# Install:
+#   sudo cp deploy/systemd/newsroom-nightly.service /etc/systemd/system/
+#   sudo cp deploy/systemd/newsroom-nightly.timer /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now newsroom-nightly.timer
+#
+# Adjust User=, WorkingDirectory=, paths, and EnvironmentFile= for your layout.
+
+[Unit]
+Description=Telegram Newsroom nightly runtime check (production-lite)
+Documentation=file:/opt/newsroom/docs/DEPLOYMENT_QUICKSTART.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=newsroom
+Group=newsroom
+WorkingDirectory=/opt/newsroom
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/opt/newsroom/.env
+Environment=RUNTIME_DIR=/opt/newsroom/var/runtime
+Environment=OUTPUT_DIR=/opt/newsroom/runtime_ops_output
+ExecStart=/bin/bash -lc 'cd /opt/newsroom && make runtime-nightly RUNTIME_DIR="${RUNTIME_DIR}" OUTPUT_DIR="${OUTPUT_DIR}"'
+# oneshot: no Restart= on success; transient failures may be retried manually
+Restart=no
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=newsroom-nightly
+
+# Journald: journalctl -u newsroom-nightly.service -n 200 --no-pager
+
+[Install]
+WantedBy=multi-user.target

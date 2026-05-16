@@ -1,0 +1,10 @@
+# Ephemeral Redis for integration tests (optional).
+# Run: docker compose -f docker-compose.test.yml up -d
+# Then: export NEWSROOM_TEST_REDIS_URL=redis://127.0.0.1:63799/15
+
+services:
+  redis-test:
+    image: redis:7-alpine
+    ports:
+      - "63799:6379"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]

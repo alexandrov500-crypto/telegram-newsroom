@@ -1,0 +1,24 @@
+{
+  "generated_at": "2026-05-15T08:55:41Z",
+  "policy_constraints": {
+    "max_history_entries": 20,
+    "max_supported_schema_version": 1,
+    "runtime_duration_warning_threshold_sec": 15.0
+  },
+  "policy_status": "OK",
+  "runtime_guardrails": [
+    "no_background_daemons",
+    "no_distributed_coordination",
+    "no_runtime_mutation_during_validation",
+    "no_unbounded_retention"
+  ],
+  "runtime_policies": {
+    "bounded_history_limit": 20,
+    "deterministic_artifact_generation": true,
+    "latest_only_artifacts": true,
+    "offline_inspection_only": true,
+    "single_node_runtime": true,
+    "single_writer_runtime": true
+  },
+  "schema_version": 1
+}

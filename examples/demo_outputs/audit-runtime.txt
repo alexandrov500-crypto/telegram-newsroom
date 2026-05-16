@@ -1,0 +1,19 @@
+# Sanitized transcript: make audit-runtime
+# Bounded qualification history + audit snapshot
+
+$ make audit-runtime OUTPUT_DIR=./runtime_ops_output
+audit_status: OK
+qualification_status: OK
+history_limit: 20
+history_entries: 3
+
+latest qualification entries:
+  2026-05-14T03:15:01Z  qualification_status=OK  bundle=runtime_bundle.zip
+  2026-05-13T03:14:58Z  qualification_status=OK  bundle=runtime_bundle.zip
+  2026-05-12T03:15:02Z  qualification_status=WARNING  note=duration_threshold
+
+audit_snapshot:
+  generated_at: 2026-05-15T03:15:05Z
+  schema_version: 1
+
+exit code: 0

@@ -1,0 +1,23 @@
+services:
+  newsroom:
+    build: .
+    container_name: telegram-ai-newsroom
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: sqlite+aiosqlite:////data/newsroom.db
+    volumes:
+      - newsroom_data:/data
+    healthcheck:
+      test: ["CMD", "python", "/app/docker/healthcheck.py"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 45s
+    security_opt:
+      - no-new-privileges:true
+    read_only: false
+
+volumes:
+  newsroom_data:

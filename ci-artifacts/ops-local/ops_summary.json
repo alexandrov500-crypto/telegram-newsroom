@@ -1,0 +1,101 @@
+{
+  "command": "nightly-check",
+  "completed_at": "2026-05-14T21:16:05Z",
+  "executed_steps": [
+    "preflight",
+    "benchmark",
+    "soak",
+    "bundle",
+    "regression",
+    "qualification",
+    "dashboard",
+    "retention"
+  ],
+  "generated_artifacts": [
+    "/Users/markusgronholm/telegram newsroom/ci-artifacts/nightly-local/operational_dashboard.html",
+    "/Users/markusgronholm/telegram newsroom/ci-artifacts/nightly-local/ops_benchmark.json",
+    "/Users/markusgronholm/telegram newsroom/ci-artifacts/nightly-local/qualification.json",
+    "/Users/markusgronholm/telegram newsroom/ci-artifacts/nightly-local/regression.json",
+    "/Users/markusgronholm/telegram newsroom/ci-artifacts/nightly-local/retention.json",
+    "/Users/markusgronholm/telegram newsroom/ci-artifacts/nightly-local/runtime_bundle.zip",
+    "/Users/markusgronholm/telegram newsroom/ci-artifacts/runtime-live/soak_report.json"
+  ],
+  "ok": true,
+  "preflight_ok": true,
+  "skipped_steps": [],
+  "started_at": "2026-05-14T21:16:05Z",
+  "status": "OK",
+  "steps": [
+    {
+      "artifacts": [],
+      "exit_code": 0,
+      "name": "preflight",
+      "status": "OK",
+      "warnings": []
+    },
+    {
+      "artifacts": [
+        "/Users/markusgronholm/telegram newsroom/ci-artifacts/nightly-local/ops_benchmark.json"
+      ],
+      "exit_code": 0,
+      "name": "benchmark",
+      "status": "OK",
+      "warnings": []
+    },
+    {
+      "artifacts": [
+        "/Users/markusgronholm/telegram newsroom/ci-artifacts/runtime-live/soak_report.json"
+      ],
+      "exit_code": 0,
+      "name": "soak",
+      "status": "OK",
+      "warnings": []
+    },
+    {
+      "artifacts": [
+        "/Users/markusgronholm/telegram newsroom/ci-artifacts/nightly-local/runtime_bundle.zip"
+      ],
+      "exit_code": 0,
+      "name": "bundle",
+      "status": "OK",
+      "warnings": []
+    },
+    {
+      "artifacts": [
+        "/Users/markusgronholm/telegram newsroom/ci-artifacts/nightly-local/regression.json"
+      ],
+      "exit_code": 0,
+      "name": "regression",
+      "status": "OK",
+      "warnings": []
+    },
+    {
+      "artifacts": [
+        "/Users/markusgronholm/telegram newsroom/ci-artifacts/nightly-local/qualification.json"
+      ],
+      "exit_code": 0,
+      "name": "qualification",
+      "status": "OK",
+      "warnings": []
+    },
+    {
+      "artifacts": [
+        "/Users/markusgronholm/telegram newsroom/ci-artifacts/nightly-local/operational_dashboard.html"
+      ],
+      "exit_code": 0,
+      "name": "dashboard",
+      "status": "OK",
+      "warnings": []
+    },
+    {
+      "artifacts": [
+        "/Users/markusgronholm/telegram newsroom/ci-artifacts/nightly-local/retention.json"
+      ],
+      "exit_code": 0,
+      "name": "retention",
+      "status": "OK",
+      "warnings": []
+    }
+  ],
+  "warnings": []
+}

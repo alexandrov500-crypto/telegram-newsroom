@@ -1,0 +1,18 @@
+{
+  "channels": {
+    "@a": {
+      "publishes": 32,
+      "rejects": 60
+    },
+    "@c": {
+      "rejects": 21
+    },
+    "@src": {
+      "publishes": 16
+    },
+    "@x": {
+      "publishes": 20
+    }
+  },
+  "version": 1
+}

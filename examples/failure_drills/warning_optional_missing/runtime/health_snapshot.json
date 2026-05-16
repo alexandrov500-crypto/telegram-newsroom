@@ -1,0 +1,14 @@
+{
+  "clustered_articles": 0,
+  "collected_articles": 0,
+  "failed_steps": [],
+  "generated_at": "2026-05-15T08:55:41Z",
+  "generated_drafts": 0,
+  "pipeline_status": "OK",
+  "processed_sources": 0,
+  "published_posts": 0,
+  "qualification_status": null,
+  "retention_bundle_size_mb": 0.0043,
+  "runtime_duration_sec": 0.438,
+  "schema_version": 1
+}

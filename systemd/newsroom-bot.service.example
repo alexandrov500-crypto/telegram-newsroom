@@ -1,0 +1,34 @@
+# Example systemd unit (production-lite single host).
+# Copy to /etc/systemd/system/newsroom-bot.service, adjust paths and User=,
+# then: sudo systemctl daemon-reload && sudo systemctl enable --now newsroom-bot
+#
+# Align TimeoutStopSec with WORKER_GRACE_SHUTDOWN_SEC + scheduler shutdown margin.
+
+[Unit]
+Description=Telegram AI Newsroom (scheduler + bot)
+Documentation=file:/opt/newsroom/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=newsroom
+Group=newsroom
+WorkingDirectory=/opt/newsroom
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/opt/newsroom/.env
+ExecStart=/opt/newsroom/.venv/bin/python -m app.main
+Restart=on-failure
+RestartSec=10
+# Graceful shutdown: SIGTERM -> lifecycle graceful_shutdown (scheduler, bot, HTTP)
+KillSignal=SIGTERM
+TimeoutStopSec=120
+KillMode=mixed
+
+# Hardening (optional; tune ReadWritePaths to your RUNTIME_STATE_DIR + SQLite file)
+NoNewPrivileges=true
+PrivateTmp=true
+ReadWritePaths=/opt/newsroom /data
+
+[Install]
+WantedBy=multi-user.target

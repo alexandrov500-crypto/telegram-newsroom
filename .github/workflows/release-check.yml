@@ -1,0 +1,115 @@
+name: Release check
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: release-check-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e . --no-deps
+
+      - name: Run unit tests (bounded)
+        run: python -m pytest tests/runtime tests/smoke -q --tb=short --maxfail=1
+
+      - name: Prepare CI dirs + minimal runtime JSON (baseline vs live)
+        run: |
+          set -euo pipefail
+          mkdir -p ci-artifacts/runtime-baseline ci-artifacts/runtime-live ci-artifacts/baseline-stage "ci-artifacts/ops-release-${{ github.run_id }}"
+          for d in ci-artifacts/runtime-baseline ci-artifacts/runtime-live; do
+            echo '{}' > "$d/queue_pressure.json"
+            echo '{"profile":"low","ci":true}' > "$d/soak_report.json"
+          done
+
+      - name: Runtime preflight (strict)
+        run: |
+          set -euo pipefail
+          set -a
+          source .github/ci-minimal.env
+          set +a
+          python tools/runtime_preflight.py --runtime-dir ci-artifacts/runtime-live --strict
+
+      - name: Build baseline bundle
+        run: |
+          set -euo pipefail
+          set -a
+          source .github/ci-minimal.env
+          set +a
+          python tools/runtime_ops.py bundle \
+            --runtime-dir ci-artifacts/runtime-baseline \
+            --output-dir ci-artifacts/baseline-stage
+          cp -f ci-artifacts/baseline-stage/runtime_bundle.zip ci-artifacts/baseline-stage/runtime_bundle_ci_baseline.zip
+
+      - name: Nightly runtime ops (strict)
+        run: |
+          set -euo pipefail
+          set -a
+          source .github/ci-minimal.env
+          set +a
+          OUT="ci-artifacts/nightly-release-${{ github.run_id }}"
+          mkdir -p "$OUT"
+          python tools/runtime_ops.py nightly-check \
+            --runtime-dir ci-artifacts/runtime-live \
+            --output-dir "$OUT" \
+            --baseline ci-artifacts/baseline-stage/runtime_bundle_ci_baseline.zip \
+            --short-soak \
+            --strict
+
+      - name: Release qualification gate (strict, regression must be OK)
+        run: |
+          set -euo pipefail
+          set -a
+          source .github/ci-minimal.env
+          set +a
+          BUNDLE="ci-artifacts/nightly-release-${{ github.run_id }}/runtime_bundle.zip"
+          BASE="ci-artifacts/baseline-stage/runtime_bundle_ci_baseline.zip"
+          OUTDIR="ci-artifacts/ops-release-${{ github.run_id }}"
+          mkdir -p "$OUTDIR"
+          python tools/release_qualification.py \
+            --runtime-bundle "$BUNDLE" \
+            --baseline "$BASE" \
+            --strict \
+            --require-regression-ok \
+            --json-output "$OUTDIR/qualification_gate.json" \
+            --output-report "$OUTDIR/qualification_gate.txt"
+
+      - name: Stage artifacts
+        run: |
+          set -euo pipefail
+          SRC="ci-artifacts/nightly-release-${{ github.run_id }}"
+          DST="ci-artifacts/ops-release-${{ github.run_id }}"
+          for f in runtime_bundle.zip operational_dashboard.html qualification.json regression.json retention.json ops_benchmark.json; do
+            if [ -f "$SRC/$f" ]; then cp -f "$SRC/$f" "$DST/$f"; fi
+          done
+          ls -la "$DST"
+
+      - name: Upload release-check artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ops-release-ci-${{ github.run_id }}-${{ github.run_number }}
+          path: ci-artifacts/ops-release-${{ github.run_id }}/
+          if-no-files-found: error

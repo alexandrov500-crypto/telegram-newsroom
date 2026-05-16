@@ -1,0 +1,33 @@
+{
+  "capability_status": "OK",
+  "deployment_profile": "production-lite",
+  "generated_at": "2026-05-15T08:55:41Z",
+  "operational_constraints": [
+    "latest_only_artifacts",
+    "no_distributed_coordination",
+    "single_writer_runtime"
+  ],
+  "runtime_characteristics": {
+    "bounded_state": true,
+    "deterministic_artifacts": true,
+    "offline_inspection": true,
+    "restart_safe_runtime": true,
+    "shell_first_operations": true
+  },
+  "runtime_model": "single-node",
+  "schema_version": 1,
+  "supported_execution_modes": [
+    "docker-compose-single-node",
+    "manual",
+    "nightly-cron",
+    "offline-inspection",
+    "systemd"
+  ],
+  "unsupported_execution_modes": [
+    "central-telemetry-platform",
+    "distributed-workers",
+    "kubernetes-cluster",
+    "multi-node-runtime",
+    "shared-distributed-state"
+  ]
+}

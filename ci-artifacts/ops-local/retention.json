@@ -1,0 +1,19 @@
+{
+  "deleted_files": [],
+  "dry_run": false,
+  "reclaimed_bytes": 0,
+  "retained_files": [
+    "/Users/markusgronholm/telegram newsroom/ci-artifacts/nightly-local/qualification.json",
+    "/Users/markusgronholm/telegram newsroom/ci-artifacts/nightly-local/regression.json",
+    "/Users/markusgronholm/telegram newsroom/ci-artifacts/nightly-local/runtime_bundle.zip"
+  ],
+  "scanned_files": [
+    "/Users/markusgronholm/telegram newsroom/ci-artifacts/nightly-local/qualification.json",
+    "/Users/markusgronholm/telegram newsroom/ci-artifacts/nightly-local/regression.json",
+    "/Users/markusgronholm/telegram newsroom/ci-artifacts/nightly-local/runtime_bundle.zip"
+  ],
+  "skipped_files": [],
+  "total_bytes_after": 9417,
+  "total_bytes_before": 9417,
+  "warnings": []
+}

@@ -1,0 +1,710 @@
+Metadata-Version: 2.4
+Name: telegram-newsroom
+Version: 1.0.0
+Summary: Production-lite Telegram newsroom: collect, cluster with OpenAI, moderate, publish.
+Author: Newsroom maintainers
+License: MIT
+Project-URL: Documentation, https://github.com/example/telegram-newsroom/blob/main/docs/START_HERE.md
+Project-URL: Repository, https://github.com/example/telegram-newsroom
+Project-URL: Changelog, https://github.com/example/telegram-newsroom/blob/main/CHANGELOG.md
+Keywords: telegram,newsroom,openai,aiogram,telethon,production-lite,runtime-inspection
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Communications :: Chat
+Classifier: Topic :: Software Development :: Libraries :: Application Frameworks
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: python-dotenv==1.0.1
+Requires-Dist: telethon==1.38.1
+Requires-Dist: aiogram==3.17.0
+Requires-Dist: openai==1.59.6
+Requires-Dist: sqlalchemy==2.0.36
+Requires-Dist: greenlet>=3.0.0
+Requires-Dist: aiosqlite==0.20.0
+Requires-Dist: asyncpg>=0.29.0
+Requires-Dist: redis>=5.0.0
+Requires-Dist: psycopg[binary]>=3.2.0
+Requires-Dist: alembic==1.14.1
+Requires-Dist: APScheduler==3.10.4
+Requires-Dist: pydantic==2.10.3
+Provides-Extra: dev
+Requires-Dist: pytest==8.3.4; extra == "dev"
+Requires-Dist: ruff==0.9.6; extra == "dev"
+Dynamic: license-file
+
+# Telegram AI Newsroom
+
+**Stable v1.0.0** — production-lite Telegram newsroom: collect posts (Telethon), cluster/summarize (OpenAI), moderate via admin bot (aiogram), publish to a target channel. Scheduler runs the pipeline on a configurable interval (default 30 minutes).
+
+> **Operational freeze:** Runtime governance and inspection model are **operationally frozen as of v1.0.0**. Stabilization over expansion; compatibility-first maintenance ([docs/STABILITY_GUARANTEES.md](docs/STABILITY_GUARANTEES.md)).
+>
+> This project optimizes for **operational simplicity over platform-scale extensibility** — a maintainable long-lived system, not an evolving architecture experiment.
+
+| | |
+|---|---|
+| Version | `1.0.0` (`newsroom.__version__`) |
+| Status | `stable` |
+| Release gate | `make release-check` |
+| Support | [SUPPORT.md](SUPPORT.md) · [SECURITY.md](SECURITY.md) |
+
+**New here?** Start at [docs/START_HERE.md](docs/START_HERE.md) · `make docs-map`
+
+## Run in 5 minutes
+
+```bash
+python3.12 -m venv .venv && source .venv/bin/activate
+make install-dev
+cp .env.example .env   # fill Telegram + OpenAI placeholders
+bash deploy/bootstrap.sh
+python -m app.main
+```
+
+## Inspect runtime in 30 seconds
+
+```bash
+make runtime-index OUTPUT_DIR=./runtime_ops_output
+make verify-runtime OUTPUT_DIR=./runtime_ops_output
+# or: make demo-runtime   # prints full suggested sequence
+```
+
+Requires a prior `make runtime-nightly` or use sanitized [examples/runtime_samples/](examples/runtime_samples/).
+
+## Example operational workflow
+
+```bash
+make runtime-nightly RUNTIME_DIR=./var/runtime OUTPUT_DIR=./runtime_ops_output
+make runtime-index OUTPUT_DIR=./runtime_ops_output
+make verify-runtime OUTPUT_DIR=./runtime_ops_output
+make validate-recovery OUTPUT_DIR=./runtime_ops_output
+```
+
+Demo scripts (dry-run default): [examples/demo_walkthrough/](examples/demo_walkthrough/) · Narrative: [docs/DEMO_WALKTHROUGH.md](docs/DEMO_WALKTHROUGH.md)
+
+## Quickstart
+
+```bash
+python3.12 -m venv .venv && source .venv/bin/activate
+make install-dev
+cp .env.example .env   # fill Telegram + OpenAI placeholders
+bash deploy/bootstrap.sh
+python -m app.main
+```
+
+Runtime ops (after install): [docs/OPERATOR_QUICKSTART.md](docs/OPERATOR_QUICKSTART.md) · Deploy: [docs/DEPLOYMENT_QUICKSTART.md](docs/DEPLOYMENT_QUICKSTART.md)
+
+## Overview (architecture & docs)
+
+**Scope:** a **production-lite** newsroom — bounded asyncio services, SQLite-first persistence, optional PostgreSQL/Redis for scaling. This is **not** a hosted CI platform or Kubernetes-style control plane; operational tooling is scripts plus thin CLIs (`tools/*`, `utils/*`).
+
+### Documentation index
+
+| Doc | Purpose |
+|-----|---------|
+| [docs/START_HERE.md](docs/START_HERE.md) | onboarding hub — read this first |
+| [docs/ARCHITECTURE_MAP.md](docs/ARCHITECTURE_MAP.md) | ASCII flows: runtime, inspection, release, deploy |
+| [docs/ENGINEERING_PHILOSOPHY.md](docs/ENGINEERING_PHILOSOPHY.md) | design rationale (not marketing) |
+| [docs/FAQ.md](docs/FAQ.md) | why single-node, frozen contracts, no K8s |
+| [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) | contributor setup + contract freeze rules |
+| [docs/REPRODUCIBILITY.md](docs/REPRODUCIBILITY.md) | guaranteed vs not guaranteed reproducibility |
+| [docs/REPOSITORY_STANDARDS.md](docs/REPOSITORY_STANDARDS.md) | naming, JSON, Makefile conventions |
+| [docs/REPOSITORY_MAP.md](docs/REPOSITORY_MAP.md) | directory orientation index |
+| [docs/architecture/SYSTEM_OVERVIEW.md](docs/architecture/SYSTEM_OVERVIEW.md) | architecture, reliability model, non-goals |
+| [docs/architecture/OPERATIONAL_LIFECYCLE.md](docs/architecture/OPERATIONAL_LIFECYCLE.md) | live vs offline lifecycle, CI mapping |
+| [docs/architecture/README.md](docs/architecture/README.md) | ADR index |
+| [docs/QUICKSTART.md](docs/QUICKSTART.md) | venv, install, minimal `.env`, first run |
+| [docs/DEPLOYMENT_QUICKSTART.md](docs/DEPLOYMENT_QUICKSTART.md) | 15-minute production-lite deploy walkthrough |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | layout, backups, SQLite vs Postgres, Redis, upgrades |
+| [docs/DEMO_WALKTHROUGH.md](docs/DEMO_WALKTHROUGH.md) | demo-ready operational narrative |
+| [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md) | tagging, verification, rollback philosophy |
+| [CHANGELOG.md](CHANGELOG.md) | v1.0.0-rc1 milestones |
+| [docs/OPERATIONS.md](docs/OPERATIONS.md) | nightly ops, qualification, dashboard, retention |
+| [docs/RUNTIME_OPS.md](docs/RUNTIME_OPS.md) | unified `python tools/runtime_ops.py …` |
+| [docs/OPERATOR_QUICKSTART.md](docs/OPERATOR_QUICKSTART.md) | 5-minute runtime inspection walkthrough |
+| [docs/RUNTIME_LAYOUT_REFERENCE.md](docs/RUNTIME_LAYOUT_REFERENCE.md) | frozen artifact catalog |
+| [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) | release readiness gates |
+| [docs/architecture/RUNTIME_CONTRACTS.md](docs/architecture/RUNTIME_CONTRACTS.md) | frozen operational contracts |
+| [docs/architecture/RUNTIME_MATURITY.md](docs/architecture/RUNTIME_MATURITY.md) | governance complete; non-goals |
+| [docs/RELEASE_QUALIFICATION.md](docs/RELEASE_QUALIFICATION.md) | release gates from bundles |
+| [docs/CI_CD.md](docs/CI_CD.md) | GitHub Actions: tests, nightly, release-check |
+
+### Design philosophy
+
+See [docs/ENGINEERING_PHILOSOPHY.md](docs/ENGINEERING_PHILOSOPHY.md). Core idea: **bounded state**, **deterministic artifacts**, **inspection over orchestration**, **stabilization over expansion**. Complexity growth requires exceptional justification.
+
+### Repository philosophy
+
+[docs/REPOSITORY_STANDARDS.md](docs/REPOSITORY_STANDARDS.md): **repository consistency is preferred over tooling diversity.** Frozen runtime contracts, pinned dev tools (`requirements-dev.txt`), bounded lint scope.
+
+### Reproducibility guarantees
+
+| Guaranteed | Not guaranteed |
+|------------|----------------|
+| Artifact lifecycle order, filenames | `generated_at` timestamps |
+| JSON `KEY_ORDER`, schema v1 | OpenAI / model outputs |
+| Deterministic ZIP member order | Network / Telegram behavior |
+| Contract tests in CI | Identical benchmark counters every nightly |
+
+Details: [docs/REPRODUCIBILITY.md](docs/REPRODUCIBILITY.md) · [docs/examples/reproducible_runtime_workflow.md](docs/examples/reproducible_runtime_workflow.md)
+
+### Quality workflow
+
+```bash
+make install-dev    # requirements.txt + requirements-dev.txt
+make quality        # contracts → smoke → lint → format-check
+make ci-test        # runtime → smoke → contracts (CI sections)
+```
+
+### CI expectations
+
+GitHub Actions `Tests` workflow runs `make ci-test` (Python 3.12, pinned pytest). No matrix, no deploy stages. Optional local: `make lint` on `observability/`, `newsroom/`, `tests/contracts/`.
+
+### Maintenance principles
+
+- **Compatibility-first** — additive changes within 1.0.x; see [docs/MAINTENANCE_POLICY.md](docs/MAINTENANCE_POLICY.md).
+- **New architectural layers require exceptional justification.**
+- Do not add runtime artifacts or governance layers without ADR + contract updates.
+- Before tagging: `make release-check` · [docs/RELEASE_FINALIZATION.md](docs/RELEASE_FINALIZATION.md).
+
+### Supported operational model
+
+- Single-node, SQLite-first, shell-first inspection (`make runtime-help`).
+- Offline validation only — no enforcement daemons.
+- Optional Redis/Postgres; documented degraded modes.
+
+### Design principles
+
+- **Deterministic tooling** — offline steps prefer stable JSON and explicit CLI contracts (`docs/RUNTIME_OPS.md`, `docs/CI_CD.md`).
+- **Bounded state** — runtime JSON and artifacts are capped and pruned by design ([ADR-001](docs/architecture/ADR-001-bounded-runtime-state.md)).
+- **Operational simplicity** — scripts and sequential wrappers instead of a control plane ([ADR-003](docs/architecture/ADR-003-no-orchestration-policy.md)).
+- **Production-lite** — single-node realism: SQLite-first, optional Postgres/Redis, no mandatory SaaS stack ([`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)).
+- **Composable operational layers** — each tool stands alone; `runtime_ops` only sequences calls.
+
+### Deployment (production-lite)
+
+| Path | Purpose |
+|------|---------|
+| `.env.example` | Local dev template (safe placeholders) |
+| `deploy/example.env.production-lite` | Single-node host / Compose template |
+| `deploy/docker-compose.production-lite.yml` | Minimal Compose (one service, explicit runtime volume) |
+| `deploy/systemd/newsroom-nightly.*` | Scheduled `make runtime-nightly` |
+| `examples/runtime_samples/` | Sanitized demo JSON (no secrets) |
+
+No Kubernetes, Helm, Terraform, Ansible, or in-repo deployment orchestrator.
+
+### Runtime inspection flow
+
+```bash
+make runtime-help
+make runtime-nightly RUNTIME_DIR=./var/runtime OUTPUT_DIR=./runtime_ops_output
+make runtime-index OUTPUT_DIR=./runtime_ops_output
+make verify-runtime OUTPUT_DIR=./runtime_ops_output
+```
+
+Gate releases: [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) · [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md)
+
+### Architecture maturity
+
+- **Governance complete** — runtime contracts frozen; see [docs/architecture/RUNTIME_MATURITY.md](docs/architecture/RUNTIME_MATURITY.md).
+- **Stabilization** — ADR-015; no new `runtime/*.json` artifact types planned.
+- **Inspection-only** — policies describe assumptions, not enforcement daemons.
+
+### Non-goals (documentation-level)
+
+- No distributed orchestration for the editorial pipeline.
+- No realtime telemetry platform as a hard dependency.
+- No mandated microservice migration path.
+- No infrastructure abstraction layer inside the app that hides deployment paths.
+- No Kubernetes/Helm/Terraform/Ansible, autoscaling, service mesh, or web admin panel in-repo.
+- No CI-driven production deployment automation (release discipline over deploy automation).
+
+### Operational maturity (positioning)
+
+- **Deterministic** offline checks: preflight, benchmark payload, soak simulation, artifact bundle, regression vs baseline, release qualification, static HTML dashboard, filesystem retention (`docs/RUNTIME_*.md`).
+- **No orchestration engine** — sequential wrappers only (`tools/runtime_ops.py`).
+- **Optional** Redis/Postgres; degraded modes are documented, not hidden.
+
+### Runtime lifecycle (operational checks)
+
+Text flow for bundles / CI / manual review (same logical order as `nightly-check`):
+
+```
+preflight
+    ↓
+runtime (live process: scheduler + bot + workers as configured)
+    ↓
+benchmark + soak
+    ↓
+artifact bundle (runtime_bundle.zip)
+    ↓
+regression (vs baseline bundle)
+    ↓
+qualification
+    ↓
+dashboard (static HTML)
+    ↓
+retention (artifact cleanup)
+```
+
+### Testing
+
+```bash
+make test
+# or: python3 -m pytest tests/runtime -q
+```
+
+### Runtime ops workflow (shortcut)
+
+```bash
+make runtime-help   # grouped inspection commands
+make runtime-nightly RUNTIME_DIR=./var/runtime OUTPUT_DIR=./runtime_ops_output
+# underlying: docs/RUNTIME_OPS.md · operators: docs/OPERATOR_QUICKSTART.md
+```
+
+**Governance model is complete** — no new runtime inspection layers planned; see [docs/architecture/RUNTIME_MATURITY.md](docs/architecture/RUNTIME_MATURITY.md).
+
+### Release qualification (shortcut)
+
+```bash
+make release-qualify RUNTIME_BUNDLE=./artifacts/runtime_bundle.zip BASELINE=./baselines/runtime_bundle.zip
+```
+
+## Стек
+
+- Python 3.12, Telethon, aiogram 3, OpenAI API, SQLite **или** PostgreSQL (async SQLAlchemy + `asyncpg`), опционально **Redis** (очередь + publish locks), APScheduler, Docker / Compose, python-dotenv
+
+## Структура
+
+- `app/` — точка входа и конфигурация, **asyncio health/ops HTTP** (`health_http`, `ops_http_routes`)
+- `collector/` — сбор сообщений через Telethon
+- `ai/` — промпты и вызов OpenAI
+- `bot/` — админ-бот: inline-кнопки и публикация
+- `db/` — модели, сессия, репозиторий
+- `dashboard/` — read-only **операционный дашборд** (runtime + editorial + warnings + timeline)
+- `editorial/` — редакционная логика, **explainability** (`explanations.py`), **diff** (`diffing.py`)
+- `observability/` — лёгкие предупреждения (`runtime_warnings`)
+- `scheduler/` — пайплайн по расписанию (`jobs`, `runtime_context` — состояние тика для `/pipeline_status`)
+- `utils/` — логирование, метрики, диагностика, SQLite maintenance, **database URL helpers**, optional **Redis client**, **runtime health** snapshots
+- `worker/` — **job queue** (`JobEnvelope`), optional **reliable transport** (visibility / recovery / DLQ), heartbeat helpers
+- `workers/` — **async worker runtime** (dispatch, retries, `WorkerRuntime`, отдельные entrypoints `ingest_worker` / `ai_worker` / `publisher_worker`)
+- `publisher/` — форматирование, rate limit, **`publish_service`** (publication pipeline для бота, планировщика и publisher worker), **publish locks**
+
+## Установка (локально)
+
+```bash
+cd "telegram newsroom"
+python3.12 -m venv .venv
+source .venv/bin/activate
+make install-dev
+# или: pip install -r requirements.txt
+cp .env.example .env
+```
+
+Заполните `.env` (см. ниже), затем:
+
+```bash
+python -m app.main
+```
+
+## Quick start (directories + env scan)
+
+```bash
+bash deploy/bootstrap.sh
+python -m tools.admin_cli config-doctor --preview-missing
+```
+
+После заполнения `.env`: `python -m tools.admin_cli config-doctor` (сводка без секретов) и `python -m tools.admin_cli runtime-integrity-check`.
+
+## Как создать Telegram API (для Telethon)
+
+1. Откройте [https://my.telegram.org/apps](https://my.telegram.org/apps) и создайте приложение.
+2. Скопируйте `api_id` и `api_hash` в `.env` как `TELEGRAM_API_ID` и `TELEGRAM_API_HASH`.
+
+## Как получить BOT_TOKEN
+
+1. В Telegram откройте [@BotFather](https://t.me/BotFather), создайте бота командой `/newbot`.
+2. Токен вида `123456:ABC...` поместите в `BOT_TOKEN`.
+
+Бот должен иметь право писать в **целевой канал** (добавьте бота администратором с правом публикации сообщений). `TARGET_CHANNEL_ID` — числовой id (часто начинается с `-100` для супергрупп/каналов).
+
+## Как получить `ADMIN_USER_ID`
+
+Напишите [@userinfobot](https://t.me/userinfobot) или [@getidsbot](https://t.me/getidsbot) — скопируйте ваш числовой id в `ADMIN_USER_ID`.
+
+## Как получить `TELETHON_SESSION_STRING` или файл сессии
+
+### StringSession (как раньше)
+
+Один раз на машине с установленным `telethon`:
+
+```bash
+python - <<'PY'
+import asyncio
+from telethon.sessions import StringSession
+from telethon import TelegramClient
+
+api_id = int(input("API_ID: ").strip())
+api_hash = input("API_HASH: ").strip()
+
+async def main():
+    async with TelegramClient(StringSession(), api_id, api_hash) as client:
+        print("TELETHON_SESSION_STRING=" + client.session.save())
+
+asyncio.run(main())
+PY
+```
+
+Вставьте строку в `.env` как `TELETHON_SESSION_STRING`.
+
+### Файл сессии (рекомендуется в Docker)
+
+После первого интерактивного входа Telethon может сохранить сессию в файл SQLite (сессия переживает рестарт контейнера, если файл на volume):
+
+1. В `.env` задайте `TELETHON_SESSION_PATH=/data/telethon.session` (или другой путь внутри смонтированного каталога).
+2. Один раз выполните вход скриптом на хосте, указывая тот же путь, затем скопируйте файл в volume или смонтируйте каталог.
+
+В compose уже есть volume `newsroom_data` → `/data` (БД по умолчанию `newsroom.db`); тот же каталог удобен для `telethon.session`.
+
+Аккаунт Telethon должен иметь доступ к **публичным** каналам из `SOURCE_CHANNELS` (для приватных — состоять в канале).
+
+## Переменные `.env`
+
+См. `.env.example`. Важные поля:
+
+| Переменная | Назначение |
+|------------|------------|
+| `OPENAI_API_KEY` | ключ OpenAI |
+| `OPENAI_MODEL` | по умолчанию `gpt-4.1-mini` |
+| `OPENAI_JSON_MAX_RETRIES` | повторы при некорректном JSON от модели |
+| `SOURCE_CHANNELS` | список через запятую: `@channel`, `-100...` |
+| `OPENAI_REQUEST_TIMEOUT_SEC` | таймаут одного запроса chat completions (сек) |
+| `OPENAI_HTTP_TIMEOUT_SEC` | HTTP-таймаут клиента OpenAI |
+| `MAX_POST_CHARS` | обрезка текста одного raw-поста перед OpenAI |
+| `MAX_CLUSTER_POSTS` | максимум постов в одном батче после pre-cluster |
+| `RAW_FETCH_CAP` | сколько необработанных строк забирать из БД за тик |
+| `PRECLUSTER_BUCKET_HOURS` | ширина временного окна для лёгкого кластера |
+| `SUMMARY_STYLE` | стиль итогового текста: `concise`, `analytical`, `neutral`, `breaking-news`, `digest-style` (см. раздел ниже) |
+| `EDITORIAL_SAFETY` | `true` — дополнительные ограничения в system prompt (без сенсации, кликбейта, неподкреплённых выводов) |
+| `SOURCE_MENTIONS_IN_POST` | `true` — в конце поста просим строку «Источники: …» по каналам из входа |
+| `HEADLINE_MODE` | `none` \| `json` (поле `headline` в ответе модели + склейка с телом) \| `prefix` (заголовок = первая строка `post`) |
+| `DIGEST_MULTI_POST` | `true` — при низкой лексической связности кластера включается режим компактного дайджеста в user prompt |
+| `DIGEST_COHESION_TRIGGER_BELOW` | порог среднего pairwise Jaccard по кластеру; ниже — считаем темы слабо связанными (диапазон в конфиге 0.02–0.95) |
+| `QUALITY_SCORING_ENABLED` | логировать эвристики `quality.score.*` и мягкие `quality.warn.score_*` (не блокирует пайплайн) |
+| `CLUSTER_MIN_LEXICAL_JACCARD` | минимальное пересечение кандидата с текущим объединением слов при greedy-кластеризации |
+| `CLUSTER_MIN_PAIR_LAST_JACCARD` | дополнительный порог к последнему добавленному посту (`0` — отключить второй порог) |
+| `PRECLUSTER_TRIM_BUCKET_MULTIPLIER` | если в временном бакете слишком много сырья, берём хвост `max_cluster_posts * multiplier` постов перед кластеризацией |
+| `DRAFT_DEDUPE_WINDOW_HOURS` | дедуп черновиков только по черновикам моложе этого окна |
+| `TELETHON_SESSION_PATH` | путь к файлу сессии Telethon (SQLite), см. раздел про Docker |
+| `TELETHON_SESSION_STRING` | StringSession; не обязателен, если задан путь к файлу |
+| `DATABASE_URL` | async URL: по умолчанию SQLite (`sqlite+aiosqlite`); для масштабирования — `postgresql://…` или `postgresql+asyncpg://…` (см. `docs/ALEMBIC_POSTGRES.md`) |
+| `DATABASE_POOL_SIZE` / `DATABASE_MAX_OVERFLOW` | пул asyncpg (игнорируются для SQLite) |
+| `REDIS_ENABLED` / `REDIS_URL` | очередь задач и распределённые publish-lock’и; при ошибке подключения процесс стартует в **degraded** режиме |
+| `NEWSROOM_QUEUE_PREFIX` | префикс ключей Redis (очереди, locks, idempotency) |
+| `WORKER_HEARTBEAT_TTL_SEC` | TTL ключей `worker:hb:*` и JSON snapshot `worker:runtime:*` |
+| `WORKER_VISIBILITY_SEC` | окно видимости leased job (Redis inflight TTL / in-memory deadline) |
+| `WORKER_POLL_INTERVAL_SEC` | верхняя граница poll для cooperative shutdown (BRPOPLPUSH timeout) |
+| `WORKER_MAX_CONCURRENCY` | параллельных asyncio-задач на процесс |
+| `WORKER_GRACE_SHUTDOWN_SEC` | пауза drain при SIGTERM |
+| `WORKER_MAX_JOB_SEC` | wall-timeout одного handler |
+| `WORKER_RETRY_DEADLINE_SEC` | монотонный дедлайн retry-цепочки |
+| `WORKER_RETRY_JITTER_RATIO` | доля jitter к backoff |
+| `WORKER_INSTANCE_ID` | идентификатор инстанса (логи / Redis snapshot) |
+| `REDIS_TRANSPORT_MAX_RETRIES` / `REDIS_TRANSPORT_BACKOFF_SEC` / `REDIS_TRANSPORT_BACKOFF_MAX_SEC` | bounded retries + exponential backoff + jitter на операции Redis в `RedisReliableTransport` |
+| `RUNTIME_QUEUE_PENDING_WARN` / `RUNTIME_QUEUE_PROCESSING_WARN` / `RUNTIME_QUEUE_LAG_WARN_SEC` | пороги для `worker.queue_pressure` (structured warnings) |
+| `RUNTIME_QUEUE_GROWTH_WARN_DEPTH` | дополнительный порог «рост очереди» (давление) |
+| `RUNTIME_SUCCESS_STALE_WARN_SEC` | предупреждение при долгом отсутствии успешных job при активной работе |
+| `RUNTIME_RETRY_STORM_COUNT` / `RUNTIME_RETRY_STORM_WINDOW_SEC` | детекция «шторма» ретраев по скользящему окну |
+| `RUNTIME_ACTIVE_JOB_WARN_SEC` | предупреждение о слишком долгом выполнении одного job (watchdog, без kill) |
+| `HEALTH_HTTP_PORT` / `HEALTH_HTTP_BIND` | опциональный asyncio HTTP: `/health`, `/ready`, а также **`/ops`**, **`/ops.json`**, **`/metrics`** (см. `docs/WEB_ADMIN.md`) |
+| `OPS_HTTP_TOKEN` | опционально: общий секрет для `/ops*`, `/ops.json`, `/metrics` (query `token` или заголовок `X-Ops-Token`) |
+| `PIPELINE_INTERVAL_MINUTES` | интервал пайплайна (по умолчанию 30) |
+| `MIN_RAW_POSTS_FOR_AI` | минимум необработанных постов для вызова OpenAI (по умолчанию 3) |
+| `DRAFT_SIMILARITY_THRESHOLD` | порог похожести с недавними черновиками, 0.5–1.0 (по умолчанию 0.93) |
+| `TELETHON_OP_MAX_ATTEMPTS` | число попыток на операцию Telethon |
+| `CHANNEL_COLLECT_DELAY_SECONDS` | пауза между каналами при сборе |
+| `DRY_RUN` | `true` — без публикации в целевой канал (тест) |
+| `RETENTION_PROCESSED_RAW_DAYS` | Удалять обработанные `raw_posts` старше N дней (`0` — выкл.) |
+| `RETENTION_REJECTED_DRAFT_DAYS` | Удалять отклонённые черновики (`rejected`) старше N дней (`0` — выкл.) |
+| `TELEGRAM_INTER_CHUNK_DELAY_SEC` | Пауза между чанками при отправке в канал / длинном админ-уведомлении |
+| `LOG_MAX_FIELD_LEN` | Обрезка длинных строк в `log_event` (по умолчанию 480) |
+| `SOAK_TEST` | `true` — усиленная наблюдаемость: минимум `INFO` при завышенном `LOG_LEVEL`, авто `DIAGNOSTICS_INTERVAL=30` если не задан, логи RSS/задач asyncio на тик |
+| `TELEGRAM_STARTUP_NOTIFY` | `true` — после healthcheck отправить админу короткое сообщение о старте (DRY_RUN, SOAK, число каналов, интервал пайплайна) |
+| `DIAGNOSTICS_INTERVAL_MINUTES` | Период `diagnostics.runtime` + полный `metrics.pipeline_summary` (`0` — выкл.; при SOAK и `0` подставляется 30) |
+| `METRICS_SUMMARY_INTERVAL_MINUTES` | Интервал для heartbeat (вместе с diagnostics берётся **минимум** из ненулевых; при SOAK и `0` = как diagnostics) |
+| `SQLITE_ANALYZE_INTERVAL_HOURS` | Период `ANALYZE` в конце тика пайплайна (`0` — выкл.) |
+| `SQLITE_VACUUM_INTERVAL_HOURS` | Период `VACUUM` через отдельное соединение (`0` — выкл.; тяжёлая операция) |
+
+## Операционный поток (запуск → работа)
+
+1. `load_settings()` → **`validate_settings_for_launch()`** (формат id, модель OpenAI, ретеншн, интервалы) — при ошибке процесс завершается с читаемым логом.
+2. `setup_logging` с учётом **SOAK_TEST** (не дать «тихому» уровню выше INFO при soak).
+3. Инициализация БД, бот, OpenAI → **healthcheck** → опционально **стартовое сообщение** админу (`TELEGRAM_STARTUP_NOTIFY`).
+4. APScheduler: **`run_pipeline_wrapped`** (пайплайн) и при ненулевом интервале — **heartbeat** (диагностика + метрики).
+5. Логи тика: `scheduler.tick_wall_sec`, `pipeline.timings` (фазы: collect, cluster, openai, db_*, notify, retention, sqlite_maintenance), `openai.chat_completion_duration_sec`, при публикации — `publish.telegram_chunks_duration_sec` / `publish.db_finalize_duration_sec`, итог **`metrics.pipeline_summary`** (включая **`avg_pipeline_duration_sec`**, **`retries`** = `openai_failures` / `openai_retries` счётчики сохраняются отдельно).
+
+### Команды админа (личка, только `ADMIN_USER_ID`)
+
+- `/health` — `db_ping`, uptime, число asyncio-задач, RSS (best-effort), размер файла SQLite, флаги DRY_RUN / SOAK_TEST.
+- `/metrics` — снимок счётчиков и среднее время пайплайна.
+- `/pipeline_status` — последние фазы тика и `tick_in_progress`.
+
+## Soak testing (длительный прогон)
+
+Цель — убедиться, что процесс стабилен сутками: планировщик, SQLite, Telethon, OpenAI и бот не забивают диск логами.
+
+1. Поднимите сервис с volume на `/data` для БД и `TELETHON_SESSION_PATH`.
+2. Задайте реалистичный `PIPELINE_INTERVAL_MINUTES` (15–30) и умеренные `RAW_FETCH_CAP`, `MAX_CLUSTER_POSTS`, `OPENAI_REQUEST_TIMEOUT_SEC`.
+3. Для прогона без постинга в канал: `DRY_RUN=true`.
+4. Оставьте процесс на 24–72 ч.; смотрите stdout / `docker compose logs`.
+5. Строки `metrics.pipeline_summary` — счётчики: `posts_collected`, `clusters_created`, `drafts_generated`, `publishes`, `openai_failures`, `openai_retries` (и дублирующее поле `retries` для чтения), `skipped_duplicates`, **`avg_pipeline_duration_sec`**. Всплески `openai_failures` — проверить ключ, сеть, лимиты.
+6. Следите за размером `newsroom.db` и логов; при необходимости включите ротацию логов (см. ниже).
+
+## Мониторинг (без отдельного стека)
+
+- Процесс жив: `docker compose ps` или `systemctl is-active`.
+- Логи: периодические `metrics.pipeline_summary` после каждого тика пайплайна.
+- Ошибки: поиск по логам `pipeline_tick_failed`, `openai.summarize_failed`, `collector.pipeline_failed`, уровень `ERROR`.
+- Ретеншн: события `retention.cleanup` при удалениях.
+- Стартовые проверки: события `healthcheck.*`; падение при старте = токены, БД или сеть. При ошибке валидации конфига смотрите `Startup validation failed`.
+
+## Логи и ротация
+
+- Держите `LOG_LEVEL=INFO` на длительных прогонах; `DEBUG` сильно увеличивает объём.
+- `LOG_MAX_FIELD_LEN` ограничивает длину полей в JSON-хвостах `log_event`.
+- В Docker задайте ротацию драйвера логов (`json-file` с `max-size` / `max-file`) или внешнюю ротацию файлов на хосте.
+
+## Docker
+
+```bash
+cp .env.example .env
+# заполните .env
+docker compose up --build -d
+```
+
+База SQLite сохраняется в volume `newsroom_data` по пути `/data/newsroom.db` внутри контейнера (`DATABASE_URL` задан в `docker-compose.yml`). Тот же volume подходит для файла сессии Telethon.
+
+Минимальный **пример-only** compose (в т.ч. с опциональным Redis-профилем): `docker-compose.example.yml`.
+
+### Production / docker-lite
+
+- Один контейнер = один writer к SQLite; не подключайте одну и ту же БД двумя инстансам.
+- `TELETHON_SESSION_PATH=/data/telethon.session` + volume — сессия переживает `docker compose restart`.
+- Лимиты `MAX_POST_CHARS`, `MAX_CLUSTER_POSTS`, `RAW_FETCH_CAP` снижают стоимость и таймауты OpenAI.
+- `DRAFT_DEDUPE_WINDOW_HOURS` — дедуп только по свежим черновикам, чтобы не подавлять легитимные повторы через дни.
+- `DRY_RUN=true` — черновики в личку админу, в канал публикация не идёт; после «Publish» статус снова `pending`.
+- `RETENTION_*` — автоочистка старых обработанных `raw_posts` и отклонённых черновиков (`0` отключает соответствующую ветку).
+- `TELEGRAM_INTER_CHUNK_DELAY_SEC` — пауза между чанками при отправке в канал и при длинных уведомлениях админу (снижает риск flood).
+- Остановка: `SIGTERM`/`SIGINT` через aiogram `handle_signals=True`; в `finally` — `scheduler.shutdown` с таймаутом (через `asyncio.wait_for` + `to_thread`), затем `close_db()`, `openai.close()`, `bot.session.close()`, короткий sweep отмены оставшихся asyncio-задач.
+
+Логи:
+
+```bash
+docker compose logs -f newsroom
+```
+
+## Редакционная настройка (после soak)
+
+Цель — стабильный «голос» новостной комнаты без смены архитектуры: правки только в промптах, лёгком pre-cluster и логируемых эвристиках.
+
+### Рекомендуемые `SUMMARY_STYLE`
+
+| Значение | Когда уместно |
+|----------|----------------|
+| `neutral` | Универсальный деловой тон по умолчанию. |
+| `concise` | Много сырья, нужен короткий вердикт. |
+| `analytical` | Нужен контекст и связки, без ярлыков. |
+| `breaking-news` | Острое событие: сначала суть, потом детали; без крика. |
+| `digest-style` | Удобно для структурированного текста (абзацы/маркеры). |
+
+### Промпты и workflow правок
+
+1. Основной текст system/user prompt собирается в **`ai/editorial.py`** (`build_system_prompt`, `build_user_prompt`). Статичные строки в `ai/prompts.py` больше не используются пайплайном — ориентируйтесь на `editorial.py`.
+2. Меняйте **`SUMMARY_STYLE`** и флаги **`EDITORIAL_SAFETY`**, **`SOURCE_MENTIONS_IN_POST`**, **`HEADLINE_MODE`**, **`DIGEST_MULTI_POST`** в `.env`, перезапустите процесс.
+3. После правок смотрите логи: `openai.draft_parsed_ok` (режим дайджеста, `headline_mode`), `quality.score.summary`, `quality.warn.*`, `quality.warn.duplicate_summary_pattern`.
+4. Не блокируйте пайплайн жёсткими отсечками в коде — для экспериментов достаточно env и промптов.
+
+### Кластеризация (лёгкая, без эмбеддингов)
+
+Реализация: **`scheduler/precluster.py`** — временной бакет (`PRECLUSTER_BUCKET_HOURS`), обрезка слишком длинного бакета (`PRECLUSTER_TRIM_BUCKET_MULTIPLIER` × `MAX_CLUSTER_POSTS`), greedy-цепочка с Jaccard по словам (≥4 символов). Параметры **`CLUSTER_MIN_LEXICAL_JACCARD`** и **`CLUSTER_MIN_PAIR_LAST_JACCARD`** уменьшают склейку слабо связанных новостей; второй порог можно поставить в `0`, если цепочка стала слишком жёсткой.
+
+### Качество и наблюдаемость
+
+- **`ai/quality_score.py`** — эвристики coherence / repetition / source coverage / length / factual-confidence (только логи).
+- **`ai/summary_quality.py`** — предупреждения по тексту и источникам; дедуп строк источников и сверка числа `used_ids` с числом строк `sources`.
+- **`utils/observability.py`** — скользящие средние длины резюме, числа источников и доли повторяющихся биграмм в **`ops.report.summary`** (`editorial_*`), плюс предупреждение о повторяющихся префиксах хеша контента.
+
+## Как это работает
+
+1. По расписанию (один процессный `asyncio.Lock` в `scheduler/pipeline_lock.py`, `misfire_grace_time` у APScheduler) Telethon читает каналы; сессия может храниться в файле на volume (`TELETHON_SESSION_PATH`).
+2. Необработанные посты ограничиваются (`RAW_FETCH_CAP`, `MAX_POST_CHARS`); лёгкий **pre-cluster** по времени и пересечению слов (`PRECLUSTER_BUCKET_HOURS`, `MAX_CLUSTER_POSTS`, `CLUSTER_*`, `PRECLUSTER_TRIM_BUCKET_MULTIPLIER`); затем OpenAI возвращает пост, `used_raw_post_ids` и опционально `headline` (режим `HEADLINE_MODE=json`). В `drafts.sources` сохраняется JSON `[{"channel":"…","message_id":…}, …]` без дубликатов по паре канал+сообщение.
+3. Создаётся `drafts` со статусом `pending`, админ получает сообщение с кнопками.
+4. **Publish** — бот отправляет текст в `TARGET_CHANNEL_ID`, создаётся запись в `published_posts`.
+5. **Reject** — статус черновика `rejected`.
+
+## Безопасность MVP
+
+- Храните `.env` в секрете; не коммитьте его.
+- Кнопки согласования обрабатываются только в **личном чате** с ботом и только для `ADMIN_USER_ID`.
+
+## Надёжность (кратко)
+
+- SQLite: режим **WAL**, `busy_timeout`, `pool_pre_ping`, короткие транзакции через `session_scope`.
+- Telethon: повторы при `FloodWaitError` / `RPCError` / таймаутах, пауза между каналами (`CHANNEL_COLLECT_DELAY_SECONDS`), переподключение при обрыве.
+- OpenAI: приоритет **strict json_schema**, при ошибке формата — откат на `json_object`, разбор JSON с снятием markdown-ограждений и повтор запроса до `OPENAI_JSON_MAX_RETRIES`; ответ валидируется через **Pydantic** (`OpenAIClusterResponse`).
+- Пайплайн: один `asyncio.Lock` (`scheduler/pipeline_lock.py`) + `job_defaults.max_instances=1` / `misfire_grace_time` у APScheduler.
+- Черновики: `content_hash`, дедуп только в окне `DRAFT_DEDUPE_WINDOW_HOURS` и порог `DRAFT_SIMILARITY_THRESHOLD`; создание `drafts` и выставление `raw_posts.processed_at` — в **одной** транзакции; перед записью полезная нагрузка проверяется схемой **Pydantic** (`DraftCreatePayload` + `SourceItem`).
+- Публикация: атомарный переход `pending → publishing → published`, защита от двойного callback; в **DRY_RUN** в канал не пишется.
+- Сообщения: экранирование HTML для постинга в канал; длинные тексты режутся чанками (лимит Telegram 4096).
+- Стартовые **healthcheck**: БД `SELECT 1`, лёгкая проверка OpenAI `models.retrieve(<OPENAI_MODEL>)` с таймаутом, `bot.get_me()`, Telethon connect + `is_user_authorized`.
+
+## Troubleshooting
+
+| Симптом | Что проверить |
+|--------|----------------|
+| `Startup healthchecks failed: database` | Права на файл SQLite / volume в Docker, `DATABASE_URL`, не запущено ли второе приложение на том же файле. |
+| `database is locked` | Убедитесь, что один writer на файл БД; увеличьте `timeout` в `connect_args` при необходимости; не держите долгие транзакции. |
+| `openai: ...` на старте | Ключ, сеть, таймаут healthcheck; проверка идёт через `models.retrieve(OPENAI_MODEL)` (без тяжёлого `models.list`). |
+| Ошибки JSON / пустой ответ OpenAI | Логи `openai.*`; уменьшите `MAX_CLUSTER_POSTS` / `MAX_POST_CHARS`; проверьте `OPENAI_REQUEST_TIMEOUT_SEC`. |
+| Telethon: сессия слетела после рестарта | Используйте `TELETHON_SESSION_PATH` на persistent volume, не только StringSession в переменной окружения. |
+| `telegram_bot` | `BOT_TOKEN`, сеть, блокировки Telegram. |
+| `telethon: session not authorized` | Пересоздайте `TELETHON_SESSION_STRING`; для 2FA в MVP нужен аккаунт без интерактивного пароля в этом процессе. |
+| `SessionPasswordNeededError` | Сессия требует 2FA — пересоздайте StringSession после входа с паролем в интерактивном скрипте или используйте аккаунт без 2FA. |
+| FloodWait / долгий сбор | Увеличьте `CHANNEL_COLLECT_DELAY_SECONDS`, сократите `COLLECT_MESSAGES_PER_CHANNEL`, уменьшите число каналов. |
+| Публикация не идёт | Бот — админ канала с правом постинга; верный `TARGET_CHANNEL_ID` (часто `-100…`). |
+| Черновик со статусом `publishing` | Процесс упал между отправкой в канал и фиксацией — вручную проверьте канал и приведите статус в БД в согласованное состояние. |
+| Черновики не создаются | Меньше `MIN_RAW_POSTS_FOR_AI` необработанных постов; дубликаты по тексту отфильтрованы; смотрите логи `draft.skipped_duplicate`. |
+| Кнопки Publish/Reject: «Access denied» | Пишите боту в **личку** (private), `chat.id` должен совпадать с `ADMIN_USER_ID`. |
+
+Логи с суффиксом `| {...}` от `log_event` удобно фильтровать по ключам `collector.*`, `openai.*`, `draft.*`, `publish.*`, `scheduler.*`, `healthcheck.*`, `diagnostics.*`, `ops.*`, `quality.*`, `sqlite.*`, `telethon.*`.
+
+## 72h soak test (production-lite)
+
+1. Включите `SOAK_TEST=true`, задайте `DIAGNOSTICS_INTERVAL_MINUTES` (или оставьте авто 30 при soak), `OPERATIONAL_REPORT_INTERVAL_HOURS=4`, реалистичный `PIPELINE_INTERVAL_MINUTES`.
+2. Volume на `/data` для БД и `TELETHON_SESSION_PATH`; `LOG_LEVEL=INFO`.
+3. Для прогона без канала: `DRY_RUN=true`.
+4. 72 часа: `docker compose logs -f newsroom` или stdout; раз в несколько часов смотрите `ops.report.summary`.
+5. Ожидаемо стабильно: `metrics.pipeline_summary` растёт `posts_collected`, периодические `draft.created`, редкие `ops.warn.*`, WAL и `db_file_bytes` без бесконечного роста при работающем retention.
+6. После прогона — сравнить первые и последние `diagnostics.runtime` (backlog, RSS, asyncio_tasks).
+
+### Типичные предупреждения (`ops.warn.*`, `quality.warn.*`)
+
+| Лог | Смысл |
+|-----|--------|
+| `ops.warn.pipeline_slow` | Тик дольше абсолютного порога и/или заметно дольше среднего. |
+| `ops.warn.phase_slower_than_rolling_avg` | Фаза collect/openai/pipeline_wall дольше скользящего среднего × множитель. |
+| `ops.warn.monotonic_growth` | Серия диагностик подряд: рост tasks, RSS, raw_posts или backlog. |
+| `ops.warn.duplicate_skip_streak` | Много тиков подряд только дедуп без нового черновика. |
+| `ops.warn.openai_failures_burst` / `telethon_reconnect_burst` | Всплеск ошибок/переподключений между диагностиками. |
+| `ops.warn.telegram_api_failures_burst` | Много ошибок отправки в Telegram за интервал диагностики. |
+| `ops.warn.retention_no_db_shrink` | Retention удалил строки, но файл БД не уменьшился (нормально для SQLite без VACUUM). |
+| `quality.warn.*` | Эвристики текста/источников — не блокируют пайплайн. |
+| `quality.score.summary` | Сводка эвристических оценок черновика (включено `QUALITY_SCORING_ENABLED`). |
+| `quality.warn.duplicate_summary_pattern` | Один и тот же префикс `content_hash` часто подряд в скользящем окне. |
+
+### Production-lite checklist
+
+- Один процесс на файл SQLite; `DATABASE_URL` на persistent volume.
+- `TELETHON_SESSION_PATH` на том же volume.
+- Ротация логов Docker / лимиты размера.
+- `RETENTION_*` и при необходимости `SQLITE_VACUUM_INTERVAL_HOURS` (редко, тяжёлая операция).
+- Мониторинг по `ops.report.summary`, `diagnostics.runtime`, `sqlite.files_snapshot`.
+- Документация: **`docs/SELF_HOSTING.md`**, **`docs/OPERATIONS_RUNBOOK.md`**, **`docs/BACKUP_AND_RECOVERY.md`**, чеклист **`docs/DEPLOYMENT_UPGRADE_CHECKLIST.md`**, **`CHANGELOG.md`**.
+
+### Troubleshooting (операционный)
+
+- Нет `draft.created`, но растёт `skipped_duplicates` — проверьте источники и `DRAFT_SIMILARITY_THRESHOLD`.
+- Рост только `backlog_unprocessed` — увеличьте частоту пайплайна или `RAW_FETCH_CAP`, проверьте OpenAI.
+- Частые `telethon.op_recovered_after_retry` — сеть или FloodWait; увеличьте `CHANNEL_COLLECT_DELAY_SECONDS`.
+- `publish.chunk_send_retry` — права бота, лимиты Telegram; смотрите `telegram_api_failures`.
+- **Redis / workers:** при кратковременном падении Redis воркер **не завершается**: BRPOPLPUSH идёт в degraded loop с backoff (`redis.transport_retry` / `redis.transport_recovered`). После восстановления соединения очередь продолжает обрабатываться; при длительном outage проверьте `runtime-health`, задержку pending (`queue-pressure`), и при необходимости rolling restart.
+- **Дубликаты job / DLQ:** см. **`docs/RESILIENCE_AND_FAILURE_MODES.md`**; для публикаций используйте стабильный `idempotency_key` и следите за `publish.idempotent_skip` / `ALREADY_HANDLED`.
+
+## Runtime resilience (workers + Redis)
+
+Коротко: **at-least-once** семантика, bounded retries на Redis, DLQ с обогащённым JSON, heartbeat с **queue pressure** и **watchdog-предупреждениями** (без остановки процессов). Подробно — **`docs/RESILIENCE_AND_FAILURE_MODES.md`**.
+
+**Admin CLI (очередь / DLQ):**
+
+```bash
+python -m tools.admin_cli worker-queue-snapshot --json
+python -m tools.admin_cli queue-pressure --kind ai --json
+python -m tools.admin_cli dlq-list --kind publisher --limit 20
+python -m tools.admin_cli dlq-inspect --kind publisher --index 0
+python -m tools.admin_cli dlq-replay --kind publisher --index 0
+python -m tools.admin_cli retry-stats --json
+```
+
+### Redis integration tests (optional)
+
+Поднимите ephemeral Redis и задайте `NEWSROOM_TEST_REDIS_URL` (например `redis://127.0.0.1:63799/15`):
+
+```bash
+docker compose -f docker-compose.test.yml up -d
+export NEWSROOM_TEST_REDIS_URL=redis://127.0.0.1:63799/15
+python3 -m pytest tests/test_redis_integration.py tests/test_redis_reliable_transport_integration.py -q
+```
+
+Покрыто: BRPOPLPUSH + ACK, `recover_stale` после удаления inflight, DLQ list, transient `brpoplpush` через лёгкий proxy. Метрики reconnect / transport recovery: `checks.redis_transport_metrics` в `runtime-health`, поля `redis_transport_metrics` и `recoverable_processing_estimate` в `queue-pressure`.
+
+## AI governance & editorial signals
+
+- **Prompt registry:** `ai/prompt_registry.py`, `ai/prompt_types.py`, `ai/prompts/` — версии и fingerprint настроек; см. **`docs/AI_GOVERNANCE.md`**.
+- **Execution metadata:** после успешного cluster-draft вызова в `draft_extras.ai_generation` сохраняются модель, prompt version/fingerprint, токены (если есть), latency, retries, оценка стоимости, safety warnings.
+- **Editorial scores:** `editorial/scoring.py` → `draft_extras.editorial_scores` (rule-based); см. **`docs/EDITORIAL_SCORING.md`**.
+- **Semantic foundation:** `editorial/similarity.py` — протокол + Jaccard fallback без vector DB.
+- **CLI / отчёты:** `python -m tools.admin_cli ai-analytics`, блок `ai_governance` внутри `export-runtime-report`.
+
+### Editorial intelligence & relevance (no vector DB)
+
+- **Events & topics:** fingerprints, rolling history, update-vs-new heuristics, topic memory JSON — **`docs/EVENT_INTELLIGENCE.md`** (`editorial/events.py`, `editorial/topic_memory.py`, `editorial/entities.py`).
+- **Relevance & suppression:** unified explainable score + pre-LLM cluster gate — **`docs/RELEVANCE_SCORING.md`** (`editorial/relevance.py`, `editorial/cluster_rank.py`).
+- **Trends & feedback:** burst-style topic signals (`editorial/trends.py`), DB-backed aggregates (`editorial/feedback.py`) feeding a small relevance boost only.
+- **Post-draft signals:** `draft_extras.cluster_intelligence`, `editorial_confidence`, `headline_quality` (heuristics) after duplicate intel — see code in `scheduler/jobs.py`.
+- **CLI:** `topic-stats`, `event-inspect`, `trend-report`, `editorial-feedback-report`, `relevance-debug`; `export-intelligence-report --out …`; bundled поле `editorial_intelligence` в `export-runtime-report`.
+
+### Adaptive editorial policy & publishing (heuristics only)
+
+- **Per-channel policy:** `editorial/policy_models.py`, `editorial/policy.py`, JSON + optional `EDITORIAL_POLICIES_JSON` — **`docs/EDITORIAL_POLICY.md`**.
+- **Unified pipeline decision:** `editorial/pipeline_decision.py` (defer / suppress / hold / escalate) + `draft_extras.cluster_intelligence.pipeline_decision.editorial_pipeline`.
+- **Cadence & publish gate:** `editorial/cadence.py`, `publisher/publish_service.py` (`CADENCE_DEFERRED`), `draft_extras.publication_intel` — **`docs/PUBLISHING_INTELLIGENCE.md`**.
+- **Suppression TTL & duplicate burst:** `editorial/suppression_memory.py`.
+- **Drift snapshots:** `editorial/drift_detection.py` (embedded in `export-intelligence-report` / intelligence bundle).
+- **CLI:** `policy-debug`, `cadence-report`, `suppression-report`, `topic-saturation-report`, `editorial-drift-report`, `pipeline-decision-inspect`.
+
+## Deployment (production hardening)
+
+- **DB migrations (Alembic):** from repo root, with `DATABASE_URL` pointing at your SQLite file:
+  - `python -m alembic -c alembic.ini upgrade head`
+  - Downgrade (destructive to schema): `python -m alembic -c alembic.ini downgrade base`
+- **Backups:** `python tools/backup_cli.py backup-create` (archives DB + `RUNTIME_STATE_DIR` JSON/txt, metrics snapshot in metadata). List: `backup-list`, validate: `backup-validate <zip>`, restore: `backup-restore <zip>` (optional `--with-runtime`).
+- **Profiles:** `APP_DEPLOYMENT_PROFILE` / `NEWSROOM_PROFILE` = `development` | `staging` | `production` (stricter intervals, publish throttling defaults, production blocks `:memory:` SQLite and `DRY_RUN` unless `ALLOW_PRODUCTION_DRY_RUN=1`).
+- **Reports:** `python tools/admin_cli.py export-runtime-report --out var/reports/runtime.json` and `export-editorial-report --out var/reports/editorial.json` (`--format html` supported).
+- **Artifacts:** see `deploy/` — `bootstrap.sh`, `docker-compose.prod.yml`, **`docker-compose.postgres.yml`**, `Dockerfile.example`, `newsroom.service.example`, `systemd/newsroom-bot.service.example`, `env.production.example`, **`env.postgres.example`**, `logrotate.newsroom.example`.
+
+### PostgreSQL + Redis (scaling foundation)
+
+- Пример compose с Postgres, Redis, volume’ами и healthcheck’ами:  
+  `docker compose -f deploy/docker-compose.postgres.yml up --build`  
+  (скопируйте `deploy/env.postgres.example`, подставьте секреты.)
+- Миграции Alembic для Postgres: **`docs/ALEMBIC_POSTGRES.md`** (маппинг `postgresql+asyncpg` → sync `psycopg` для `alembic`).
+- Перенос данных SQLite → PostgreSQL: логический дамп / ETL внешними утилитами (в репозитории нет авто-конвертера, чтобы не скрыть потерю данных).
+- **Публикация:** `publisher/publish_service.py` — единая точка для бота, планировщика и будущих publisher worker’ов; опциональный `idempotency_key`, Redis **или** локальный lock (`publisher/publish_lock.py`).
+- **Очередь:** `worker/job_queue.py` — `JobKind` `ingest` / `ai` / `publisher`; **надёжный транспорт** `worker/reliable_transport.py` — leased dequeue, recovery sweep, DLQ (Redis или in-memory с ограничениями).
+- **Worker processes:** `python -m workers.ingest_worker` | `workers.ai_worker` | `workers.publisher_worker` — см. **`docs/WORKER_RUNTIME.md`** (at-least-once, retries, shutdown) и **`docs/RESILIENCE_AND_FAILURE_MODES.md`** (сбои Redis, DLQ, дубликаты, ограничения SQLite-режима).
+- **Наблюдаемость:** `python -m tools.admin_cli runtime-health --json`, `python docker/healthcheck.py --readiness`, при `HEALTH_HTTP_PORT>0` — HTTP `/ready`, `/health`, **`/ops.json`**, **`/metrics`**, минимальный HTML **`/ops`** (см. `docs/OBSERVABILITY.md`, `docs/WEB_ADMIN.md`). Экспорт: `python -m tools.admin_cli export-ops-dashboard --out reports/ops.json`.
+- **Explainability / модерация:** команды `/explain`, `/diff`, `/note`, `/policy_override`, `/find`, кнопки Explain/Diff у черновика — см. `docs/EDITORIAL_EXPLAINABILITY.md`.
+- **Интеграционные тесты (CI/локально):** задайте `NEWSROOM_TEST_POSTGRES_URL` и/или `NEWSROOM_TEST_REDIS_URL` — включатся `tests/test_postgres_compat.py` и `tests/test_redis_integration.py`.
+
+#### Операционные компромиссы
+
+| Вариант | Плюс | Минус |
+|---------|------|------|
+| SQLite по умолчанию | нулевая инфраструктура, быстрый dev/test | один writer, нет координации между хостами |
+| PostgreSQL | пул соединений, стандартные HA/backup паттерны | администрирование, миграции, сетевые задержки |
+| Redis + очередь | разделение ingest / AI / publisher процессов | ещё один SPOF без Sentinel/Cluster |
+| In-memory fallback при падении Redis | сервис остаётся живым в одном процессе | нет межпроцессной дедупликации публикаций |
+

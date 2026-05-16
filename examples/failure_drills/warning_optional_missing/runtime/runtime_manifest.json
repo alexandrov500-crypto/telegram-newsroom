@@ -1,0 +1,29 @@
+{
+  "artifact_count": 2,
+  "artifacts": [
+    {
+      "name": "health_snapshot.json",
+      "path": "runtime/health_snapshot.json",
+      "required": true,
+      "sha256": "9fb2471a582f00438863652269185009f9fc51b9daaf946cb2799eb46ba9aecf",
+      "size_bytes": 349
+    },
+    {
+      "name": "runtime_report.json",
+      "path": "runtime/runtime_report.json",
+      "required": true,
+      "sha256": "4f6cc51e0f479e799bf910ba23bf79cf884a0d1796ab0b3bda7b92ffe1d819ba",
+      "size_bytes": 783
+    }
+  ],
+  "bundle": {
+    "exists": false,
+    "path": "runtime_bundle.zip",
+    "sha256": null,
+    "size_bytes": null
+  },
+  "bundle_status": "WARNING",
+  "generated_at": "2026-05-15T08:55:57Z",
+  "qualification_status": "OK",
+  "schema_version": 1
+}

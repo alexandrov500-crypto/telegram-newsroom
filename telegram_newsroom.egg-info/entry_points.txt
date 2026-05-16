@@ -1,0 +1,12 @@
+[console_scripts]
+newsroom-audit-runtime = newsroom.cli.__main__:audit_runtime_main
+newsroom-check-compatibility = newsroom.cli.__main__:check_compatibility_main
+newsroom-compare-baseline = newsroom.cli.__main__:compare_baseline_main
+newsroom-create-baseline = newsroom.cli.__main__:create_baseline_main
+newsroom-health = newsroom.cli.__main__:health_main
+newsroom-inspect-capabilities = newsroom.cli.__main__:inspect_capabilities_main
+newsroom-inspect-policy = newsroom.cli.__main__:inspect_policy_main
+newsroom-replay-runtime = newsroom.cli.__main__:replay_runtime_main
+newsroom-runtime-index = newsroom.cli.__main__:runtime_index_main
+newsroom-validate-recovery = newsroom.cli.__main__:validate_recovery_main
+newsroom-verify-runtime = newsroom.cli.__main__:verify_runtime_main

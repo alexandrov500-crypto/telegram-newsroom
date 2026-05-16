@@ -1,0 +1,21 @@
+{
+  "bundle_extractable": true,
+  "generated_at": "2026-05-15T08:55:41Z",
+  "recovery_failures": [],
+  "recovery_status": "WARNING",
+  "recovery_warnings": [
+    "missing_optional:qualification.json"
+  ],
+  "required_artifacts_present": true,
+  "runtime_manifest_present": true,
+  "runtime_structure_valid": true,
+  "schema_version": 1,
+  "validated_paths": [
+    "ops_benchmark.json",
+    "runtime/health_snapshot.json",
+    "runtime/runtime_manifest.json",
+    "runtime/runtime_report.json",
+    "runtime_bundle.zip"
+  ],
+  "verification_status": "WARNING"
+}

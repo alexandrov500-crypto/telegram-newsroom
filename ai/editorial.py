@@ -1,0 +1,191 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from app.config import Settings
+    from db.models import RawPost
+
+ALLOWED_SUMMARY_STYLES = frozenset(
+    {"concise", "analytical", "neutral", "breaking-news", "digest-style"}
+)
+
+
+def normalize_summary_style(raw: str) -> str:
+    k = raw.strip().lower().replace("_", "-")
+    return k if k in ALLOWED_SUMMARY_STYLES else "neutral"
+
+
+ALLOWED_HEADLINE_MODES = frozenset({"none", "json", "prefix"})
+
+
+def normalize_headline_mode(raw: str) -> str:
+    k = raw.strip().lower()
+    return k if k in ALLOWED_HEADLINE_MODES else "none"
+
+
+def digest_prompt_active(settings: Settings, cluster: list[RawPost]) -> bool:
+    from scheduler.precluster import avg_pairwise_lexical_cohesion
+
+    if not settings.digest_multi_post_enabled or len(cluster) < 2:
+        return False
+    cohesion = avg_pairwise_lexical_cohesion(cluster)
+    return cohesion < settings.digest_cohesion_trigger_below
+
+
+def build_system_prompt(settings: Settings) -> str:
+    style = settings.summary_style
+    blocks = [
+        "Ты редактор Telegram-новостей.",
+        "Тебе даны новости из разных Telegram-каналов.",
+        "Найди записи, которые описывают ОДНО И ТО ЖЕ событие (одинаковые факты, одна история).",
+        "Не объединяй разные темы и не смешивай несвязные новости.",
+        "Если уверенности недостаточно или новости про разные события — не выдумывай связь.",
+        "",
+        _style_block_ru(style),
+        "",
+        "Строгие запреты:",
+        "* не выдумывай факты, даты, числа, имена, места и цитаты — только то, что явно следует из входных текстов;",
+        "* не добавляй «типичные» детали «наугад»;",
+        "* если источники противоречат друг другу — явно укажи неопределённость и не угадывай, что верно;",
+        "* не приписывай источникам формулировок, которых в данных нет.",
+    ]
+    if settings.editorial_safety_enabled:
+        blocks.extend(
+            [
+                "",
+                "Редакционная сдержанность:",
+                "* избегай сенсационных и крикливых формулировок;",
+                "* не делай категоричных выводов без опоры на цитаты/факты из входа;",
+                "* без эмоциональных усилителей и кликбейта;",
+                "* не преувеличивай значимость события.",
+            ]
+        )
+    blocks.extend(
+        [
+            "",
+            "Правила:",
+            "* только факты из входных текстов — не добавляй новых фактов и не домысливай;",
+            "* если информации мало для корректного поста — честно укажи, что данных недостаточно;",
+            "* до 1000 символов в поле post (если задан отдельный заголовок — он не входит в этот лимит).",
+        ]
+    )
+    return "\n".join(blocks)
+
+
+def _style_block_ru(style: str) -> str:
+    m = {
+        "concise": "Стиль: максимально сжато, без воды, короткие фразы.",
+        "analytical": "Стиль: аналитический — причины, контекст, связки между фактами; без оценочных ярлыков.",
+        "neutral": "Стиль: нейтральный деловой язык без эмоциональной окраски.",
+        "breaking-news": "Стиль: новостной — сначала суть и главный факт, затем детали; без сенсации и крика.",
+        "digest-style": "Стиль: дайджест — можно структурировать 2–4 короткими абзацами или маркированными строками, если это помогает ясности.",
+    }
+    return m.get(style, m["neutral"])
+
+
+def build_user_prompt(settings: Settings, items_json: str, *, digest_active: bool) -> str:
+    headline_rule = ""
+    if settings.headline_mode == "json":
+        headline_rule = (
+            'Поле "headline": короткий заголовок (до ~120 символов), без кликбейта; '
+            'поле "post": основной текст без дублирования заголовка дословно.'
+        )
+    elif settings.headline_mode == "prefix":
+        headline_rule = (
+            "Первая строка post — короткий заголовок (без markdown), вторая строка пустая, далее основной текст."
+        )
+
+    src_mentions = ""
+    if settings.source_mentions_in_post:
+        src_mentions = (
+            "В конце post добавь одну строку «Источники: …» с перечислением каналов (как в данных), "
+            "без выдуманных ссылок."
+        )
+
+    digest_block = ""
+    if digest_active:
+        digest_block = (
+            "Режим дайджеста: входные материалы слабо связаны по лексике — не объединяй их в одну «историю». "
+            "Сделай компактный дайджест по 1–2 предложения на каждую заметную тему из выбранных id, "
+            "явно разделяя темы; used_raw_post_ids перечисли все использованные id."
+        )
+
+    fmt_head = ""
+    if settings.headline_mode == "json":
+        fmt_head = ',\n  "headline": "короткий заголовок или пустая строка"'
+    fmt_required = '"post", "used_raw_post_ids"'
+    if settings.headline_mode == "json":
+        fmt_required = '"post", "used_raw_post_ids", "headline"'
+
+    return f"""Ниже список новостей в формате JSON. Каждый элемент содержит id, канал, id сообщения и текст.
+
+Задача:
+1) сгруппируй только те записи, которые описывают одно и то же событие (или следуй режиму дайджеста ниже);
+2) если такой группы нет — верни пустой used_raw_post_ids и пустой post;
+3) если группа есть — выбери только её и напиши итог;
+4) верни СТРОГО один JSON-объект без markdown-ограждений (без ```), без текста до/после JSON.
+
+Формат ответа (ровно эти поля):
+{{
+  "post": "текст итогового поста"{fmt_head},
+  "used_raw_post_ids": [числа id записей, которые вошли в итог]
+}}
+
+Ограничения:
+- used_raw_post_ids должен быть либо пустым массивом, либо содержать минимум 1 id;
+- если post пустой, used_raw_post_ids должен быть пустым;
+- post не длиннее 1000 символов;
+- used_raw_post_ids должны быть подмножеством id из входных данных;
+- не добавляй чисел, цитат и деталей, которых нет во входных текстовых полях;
+- required JSON keys: {fmt_required}.
+
+{headline_rule}
+{src_mentions}
+
+{digest_block}
+
+Входные данные:
+{items_json}
+"""
+
+
+def compose_post_with_headline(settings: Settings, post: str, headline: str) -> str:
+    h = (headline or "").strip()
+    p = (post or "").strip()
+    if settings.headline_mode != "json" or not h:
+        return p
+    if p.startswith(h):
+        return p
+    return f"{h}\n\n{p}"
+
+
+def run_pipeline(
+    text: str,
+    summarizer: "BaseSummarizer | None" = None,
+) -> dict[str, Any] | None:
+    """
+    Детерминированный smoke/integration путь без БД и Telegram.
+
+    ``summarizer`` по умолчанию — ``FakeSummarizer`` (без сети). Для продакшена
+    можно передать ``OpenAISummarizer`` (только вне активного asyncio-цикла).
+
+    Возвращает ``summary`` (результат ``summarizer.summarize``) и ``quality_score``.
+    Полный тик планировщика — ``scheduler.jobs.run_pipeline`` с ``PipelineContext``.
+    """
+    from ai.quality_score import compute_quality_scores
+    from ai.summarizer import FakeSummarizer
+
+    t = (text or "").strip()
+    if not t:
+        return None
+    s = summarizer if summarizer is not None else FakeSummarizer()
+    summary_text = s.summarize(t)
+    return {
+        "summary": summary_text,
+        "quality_score": compute_quality_scores(
+            post_text=summary_text,
+            used_ids=[1],
+            cluster_size=1,
+        ),
+    }

@@ -1,0 +1,14 @@
+ai
+app
+bot
+collector
+dashboard
+db
+editorial
+newsroom
+observability
+publisher
+scheduler
+utils
+worker
+workers

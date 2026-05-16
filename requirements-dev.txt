@@ -1,0 +1,5 @@
+# Pinned development toolchain (see docs/REPRODUCIBILITY.md).
+# Install: pip install -r requirements-dev.txt  (after requirements.txt)
+
+pytest==8.3.4
+ruff==0.9.6

@@ -1,0 +1,11 @@
+{
+  "capability_failures": [],
+  "capability_validation_status": "OK",
+  "capability_warnings": [],
+  "constraint_violations": [],
+  "deployment_profile_supported": true,
+  "generated_at": "2026-05-15T08:55:41Z",
+  "profile_present": false,
+  "runtime_model_supported": true,
+  "schema_version": 1
+}

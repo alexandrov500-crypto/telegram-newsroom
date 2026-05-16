@@ -1,0 +1,22 @@
+# Sanitized transcript: make compare-baseline
+# drift_status=OK (within 15s duration warning threshold)
+
+$ make create-baseline OUTPUT_DIR=./runtime_ops_output
+baseline_status: OK
+wrote runtime/runtime_baseline.json
+
+$ make compare-baseline OUTPUT_DIR=./runtime_ops_output
+drift_status: OK
+runtime_duration_sec: 42.5
+baseline_duration_sec: 41.2
+delta_sec: 1.3
+threshold_warning_sec: 15.0
+
+drift_warnings: (none)
+drift_failures: (none)
+
+exit code: 0
+
+# If baseline missing (first compare without create):
+# drift_status: WARNING
+# note: baseline_not_found

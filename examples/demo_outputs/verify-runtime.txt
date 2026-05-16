@@ -1,0 +1,19 @@
+# Sanitized transcript: make verify-runtime
+# verification_status=OK  manifest checksums match on-disk files
+
+$ make verify-runtime OUTPUT_DIR=./runtime_ops_output
+verification_status: OK
+bundle_status: OK
+artifact_count: 4
+manifest_generated_at: 2026-05-15T03:15:04Z
+
+checksums:
+  health_snapshot.json     sha256=aaaa…aaaa  size=312   OK
+  runtime_report.json      sha256=bbbb…bbbb  size=890   OK
+  qualification.json       sha256=cccc…cccc  size=420   OK
+  runtime_bundle.zip       sha256=dddd…dddd  size=8192  OK
+
+mismatches: (none)
+missing_required: (none)
+
+exit code: 0

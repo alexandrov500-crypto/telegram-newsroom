@@ -1,0 +1,72 @@
+{
+  "derived": {
+    "ai_last_cluster_latency_sec": null,
+    "avg_moderation_publish_latency_sec": null,
+    "avg_publish_attempts_recent": null,
+    "pipeline_duration_avg_sec": null,
+    "publish_success_proxy": 0.0,
+    "retry_frequency_vs_posts": 0.0,
+    "suppression_ratio_vs_posts": 0.0
+  },
+  "editorial_analytics": {
+    "ai_failure_ratio_vs_cluster_calls": null,
+    "avg_publish_attempts_ring": null,
+    "cadence_blocked_publish_pressure": null,
+    "cadence_defer_ratio_vs_clusters": null,
+    "draft_edits_counter": 0,
+    "drafts_created_counter": 0,
+    "drafts_rejected_counter": 0,
+    "duplicate_skip_rate": 0.0,
+    "editorial_edits_per_publish": null,
+    "intelligence_suppress_ratio_vs_clusters": null,
+    "moderation_latency_avg_sec": null,
+    "moderation_latency_samples": 0,
+    "openai_retries_counter": 0,
+    "publish_failures_counter": 0,
+    "publish_success_rate": 0.0,
+    "publishes_counter": 0,
+    "rejection_rate": 0.0,
+    "skipped_duplicates_counter": 0
+  },
+  "metrics_export": {
+    "counters": {
+      "admin_notify_failures": 0,
+      "cadence_blocked_publish": 0,
+      "cadence_deferred_cluster": 0,
+      "clusters_created": 0,
+      "draft_edits": 0,
+      "drafts_approved": 0,
+      "drafts_created": 0,
+      "drafts_generated": 0,
+      "drafts_published": 0,
+      "drafts_rejected": 0,
+      "openai_failures": 0,
+      "openai_retries": 0,
+      "posts_collected": 0,
+      "publish_failures": 0,
+      "publish_retries": 0,
+      "publishes": 0,
+      "scheduled_publish_fired": 0,
+      "skipped_duplicates": 0,
+      "skipped_intelligence_suppress": 0,
+      "telegram_api_failures": 0,
+      "telethon_reconnects": 0
+    },
+    "gauges": {},
+    "pipeline_duration_avg_sec": null,
+    "pipeline_duration_sample_count": 0,
+    "pipeline_duration_sum_sec": 0.0
+  },
+  "queue_depth_by_kind": {
+    "mode": "uninitialized"
+  },
+  "rss_bytes": 67076096,
+  "runtime_state_file_bytes": {
+    "editorial_drift_snapshots.json": 0,
+    "event_history.json": 0,
+    "operational_timeline.json": 12498,
+    "suppression_state.json": 0
+  },
+  "ts": 1778793365.236358,
+  "uptime_sec": 0.0
+}

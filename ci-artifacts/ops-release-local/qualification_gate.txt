@@ -1,0 +1,14 @@
+Release qualification summary
+
+runtime_bundle: /Users/markusgronholm/telegram newsroom/ci-artifacts/nightly-local/runtime_bundle.zip
+baseline_bundle: /Users/markusgronholm/telegram newsroom/ci-artifacts/baseline-stage/runtime_bundle_ci_baseline.zip
+
+Integrity: OK
+Regression: OK
+Queue health: OK
+Runtime state: OK
+Soak: OK
+Bundle load: OK
+
+Qualification status: OK
+RELEASE_READY: true

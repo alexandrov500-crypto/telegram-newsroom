@@ -1,0 +1,16 @@
+[Unit]
+Description=Telegram AI Newsroom
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/newsroom
+EnvironmentFile=/opt/newsroom/.env
+ExecStart=/opt/newsroom/.venv/bin/python -m app.main
+Restart=on-failure
+RestartSec=10
+User=newsroom
+Group=newsroom
+
+[Install]
+WantedBy=multi-user.target

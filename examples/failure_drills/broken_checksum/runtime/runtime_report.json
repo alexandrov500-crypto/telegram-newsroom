@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "artifact_inventory": {
+    "health_snapshot.json": true,
+    "runtime_bundle.zip": true,
+    "qualification.json": true
+  },
+  "generated_at": "2026-05-15T03:15:03Z",
+  "health_snapshot_path": "runtime/health_snapshot.json",
+  "incident_level": "NONE",
+  "incident_summary": "Nightly pipeline completed without incidents.",
+  "pipeline_status": "OK",
+  "qualification_status": "OK",
+  "runtime_bundle": {
+    "exists": true,
+    "path": "runtime_bundle.zip"
+  },
+  "runtime_duration_sec": 42.5,
+  "step_status": {
+    "ingestion": "OK",
+    "clustering": "OK",
+    "summarization": "OK",
+    "publishing": "OK"
+  },
+  "warnings": []
+}

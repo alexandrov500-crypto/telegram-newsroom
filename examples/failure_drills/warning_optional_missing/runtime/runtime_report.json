@@ -1,0 +1,31 @@
+{
+  "artifact_inventory": {
+    "health_snapshot": true,
+    "qualification_report": false,
+    "runtime_bundle": true
+  },
+  "generated_at": "2026-05-15T08:55:41Z",
+  "health_snapshot_path": "/private/tmp/newsroom-drill-gen/out/runtime/health_snapshot.json",
+  "incident_level": "WARNING",
+  "incident_summary": [
+    "missing_artifact:qualification_report"
+  ],
+  "pipeline_status": "OK",
+  "qualification_status": null,
+  "runtime_bundle": {
+    "exists": true,
+    "modified_at": "2026-05-15T08:55:41Z",
+    "size_mb": 0.0043
+  },
+  "runtime_duration_sec": 0.438,
+  "schema_version": 1,
+  "step_status": {
+    "clustering": "OK",
+    "ingestion": "OK",
+    "publishing": "OK",
+    "summarization": "SKIPPED"
+  },
+  "warnings": [
+    "missing_artifact:qualification_report"
+  ]
+}

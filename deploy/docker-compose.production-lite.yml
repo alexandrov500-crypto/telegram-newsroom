@@ -1,0 +1,34 @@
+# Production-lite single-node Compose (no orchestration semantics).
+# Usage (from repository root):
+#   cp deploy/example.env.production-lite .env   # fill secrets locally
+#   docker compose -f deploy/docker-compose.production-lite.yml up --build -d
+#
+# Nightly ops run on the host or via deploy/systemd/newsroom-nightly.* — not as a Compose service.
+
+name: telegram-newsroom-production-lite
+
+services:
+  newsroom:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.example
+    image: telegram-newsroom:production-lite
+    container_name: telegram-newsroom-production-lite
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      DATABASE_URL: sqlite+aiosqlite:////data/newsroom.db
+      RUNTIME_STATE_DIR: /data/runtime
+      NEWSROOM_BACKUP_DIR: /data/backups
+    volumes:
+      - newsroom_data:/data
+      - newsroom_runtime:/data/runtime
+    working_dir: /app
+    command: ["python", "-m", "app.main"]
+
+volumes:
+  newsroom_data:
+    name: telegram-newsroom-production-lite-data
+  newsroom_runtime:
+    name: telegram-newsroom-production-lite-runtime

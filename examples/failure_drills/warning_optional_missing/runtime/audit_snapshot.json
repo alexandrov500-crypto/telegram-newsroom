@@ -1,0 +1,18 @@
+{
+  "audit_status": "WARNING",
+  "generated_at": "2026-05-15T08:55:41Z",
+  "history_entries": 1,
+  "latest_incident_level": "WARNING",
+  "latest_qualification_status": "OK",
+  "recent_failures": [],
+  "recent_warnings": [
+    "missing_artifact:qualification_report",
+    "missing_optional:qualification.json"
+  ],
+  "schema_version": 1,
+  "status_summary": {
+    "FAIL": 0,
+    "OK": 1,
+    "WARNING": 0
+  }
+}

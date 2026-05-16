@@ -1,0 +1,17 @@
+# Example production compose (run from repository root):
+#   docker compose -f deploy/docker-compose.prod.yml build
+services:
+  newsroom:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.example
+    restart: unless-stopped
+    env_file:
+      - deploy/env.production.example
+    volumes:
+      - newsroom_data:/data
+    working_dir: /app
+    command: ["python", "-m", "app.main"]
+
+volumes:
+  newsroom_data:

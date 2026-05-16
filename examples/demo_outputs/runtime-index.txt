@@ -1,0 +1,28 @@
+# Sanitized transcript: make runtime-index (v1.0.0 stable)
+# OUTPUT_DIR=./runtime_ops_output — after make runtime-nightly
+# index_status=OK  runtime_model=single-node  artifact_count=14
+
+$ make runtime-index OUTPUT_DIR=./runtime_ops_output
+Wrote runtime/runtime_index.json
+index_status: OK
+runtime_model: single-node
+artifact_count: 14
+generated_at: 2026-05-15T03:15:05Z
+
+artifacts (lifecycle order):
+  1  health_snapshot.json          health         required  OK
+  2  runtime_report.json           reporting      required  OK
+  3  runtime_manifest.json         verification   required  OK
+  4  recovery_report.json          recovery       required  OK
+  5  compatibility_report.json   compatibility  required  OK
+  6  qualification_history.json  audit          required  OK
+  7  audit_snapshot.json           audit          required  OK
+  8  runtime_baseline.json         baseline       optional  (present)
+  9  drift_report.json             baseline       optional  (present)
+ 10  runtime_capabilities.json     capabilities   required  OK
+ 11  capability_report.json        capabilities   required  OK
+ 12  runtime_policy.json           policy         required  OK
+ 13  policy_report.json            policy         required  OK
+ 14  runtime_index.json            reporting      required  OK
+
+exit code: 0

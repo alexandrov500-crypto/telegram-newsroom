@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/><title>Runtime ops dashboard</title>
+<style>
+body{font-family:system-ui,-apple-system,sans-serif;margin:1.25rem;color:#111827;line-height:1.45;max-width:1100px}
+h1{font-size:1.25rem;margin:0 0 0.5rem}
+h2{font-size:1.05rem;margin:1.5rem 0 0.5rem;border-bottom:1px solid #e5e7eb;padding-bottom:0.25rem}
+.meta{color:#6b7280;font-size:0.9rem;margin-bottom:1rem}
+table{border-collapse:collapse;width:100%;font-size:0.9rem;margin:0.5rem 0}
+th,td{border:1px solid #e5e7eb;padding:0.35rem 0.5rem;text-align:left;vertical-align:top}
+th{background:#f9fafb}
+pre{background:#f3f4f6;padding:0.75rem;border-radius:6px;overflow:auto;font-size:0.82rem}
+.badge{font-weight:600;margin-right:0.35rem}
+.badge-ok{color:#15803d}
+.badge-warn{color:#b45309}
+.badge-fail{color:#b91c1c}
+.badge-unknown{color:#6b7280}
+ul{margin:0.25rem 0 0.5rem 1.1rem}
+.section{margin-bottom:0.25rem}
+</style></head><body>
+<header><h1>Runtime ops dashboard</h1><div class="meta">generated_at: 2026-05-14T21:16:05Z</div></header>
+<section id="overview"><h2>Overview</h2><div class="section">
+<p><span class="badge badge-ok">[OK]</span> <strong>Qualification</strong>: OK</p>
+<p><strong>RELEASE_READY</strong>: true</p>
+<p><strong>Baseline</strong>: /Users/markusgronholm/telegram newsroom/ci-artifacts/baseline-stage/runtime_bundle_ci_baseline.zip</p>
+<p><strong>Runtime bundle</strong>: /Users/markusgronholm/telegram newsroom/ci-artifacts/nightly-local/runtime_bundle.zip</p>
+<p><strong>git sha</strong> (manifest): n/a</p>
+</div></section><section id="runtime_summary"><h2>Runtime summary</h2><h3>Bounded state</h3>
+<table><tbody><tr><th>drift_snapshots</th><td><pre>0</pre></td></tr><tr><th>drift_snapshots_file_bytes</th><td><pre>0</pre></td></tr><tr><th>duplicate_burst</th><td><pre>0</pre></td></tr><tr><th>event_history_events</th><td><pre>0</pre></td></tr><tr><th>event_history_file_bytes</th><td><pre>0</pre></td></tr><tr><th>integrity_issues</th><td><pre>[]</pre></td></tr><tr><th>ok</th><td><pre>true</pre></td></tr><tr><th>rss_bytes</th><td><pre>67092480</pre></td></tr><tr><th>runtime_dir</th><td><pre>&quot;/Users/markusgronholm/telegram newsroom/ci-artifacts/runtime-live&quot;</pre></td></tr><tr><th>suppression_entries</th><td><pre>0</pre></td></tr><tr><th>suppression_ratio_posts</th><td><pre>0.0</pre></td></tr><tr><th>timeline_events</th><td><pre>120</pre></td></tr><tr><th>timeline_file_bytes</th><td><pre>13886</pre></td></tr></tbody></table>
+<h3>Queue</h3>
+<table><tbody><tr><th>queue_depth_by_kind</th><td><pre>{&quot;mode&quot;: &quot;uninitialized&quot;}</pre></td></tr></tbody></table>
+<h3>Moderation</h3>
+<table><tbody><tr><th>avg_publish_attempts_recent</th><td><pre>null</pre></td></tr><tr><th>moderation_latency_avg_sec</th><td><pre>null</pre></td></tr></tbody></table>
+<h3>Reliability counters (subset)</h3>
+<table><tbody><tr><th>admin_notify_failures</th><td><pre>0</pre></td></tr><tr><th>cadence_blocked_publish</th><td><pre>0</pre></td></tr><tr><th>cadence_deferred_cluster</th><td><pre>0</pre></td></tr><tr><th>clusters_created</th><td><pre>12</pre></td></tr><tr><th>draft_edits</th><td><pre>0</pre></td></tr><tr><th>drafts_approved</th><td><pre>0</pre></td></tr><tr><th>drafts_created</th><td><pre>0</pre></td></tr><tr><th>drafts_generated</th><td><pre>0</pre></td></tr><tr><th>drafts_published</th><td><pre>0</pre></td></tr><tr><th>drafts_rejected</th><td><pre>0</pre></td></tr><tr><th>openai_failures</th><td><pre>0</pre></td></tr><tr><th>openai_retries</th><td><pre>0</pre></td></tr><tr><th>posts_collected</th><td><pre>12</pre></td></tr><tr><th>publish_failures</th><td><pre>0</pre></td></tr><tr><th>publish_retries</th><td><pre>0</pre></td></tr><tr><th>publishes</th><td><pre>0</pre></td></tr><tr><th>scheduled_publish_fired</th><td><pre>0</pre></td></tr><tr><th>skipped_duplicates</th><td><pre>0</pre></td></tr><tr><th>skipped_intelligence_suppress</th><td><pre>0</pre></td></tr><tr><th>telegram_api_failures</th><td><pre>0</pre></td></tr><tr><th>telethon_reconnects</th><td><pre>0</pre></td></tr></tbody></table></section><section id="regression_summary"><h2>Regression summary</h2><p><span class="badge badge-ok">[OK]</span> <strong>Overall</strong>: OK</p><table><thead><tr><th>Metric</th><th>Baseline</th><th>Current</th><th>%Δ</th><th>Status</th></tr></thead><tbody><tr><td><span class="badge badge-ok">[OK]</span> RSS memory</td><td>65.568768</td><td>67.076096</td><td>2.2989</td><td>OK</td></tr><tr><td><span class="badge badge-ok">[OK]</span> RSS peak</td><td>65.568768</td><td>67.09248</td><td>2.3238</td><td>OK</td></tr><tr><td><span class="badge badge-ok">[OK]</span> queue oldest age</td><td>None</td><td>None</td><td>None</td><td>OK</td></tr><tr><td><span class="badge badge-ok">[OK]</span> queue pressure</td><td>None</td><td>None</td><td>None</td><td>OK</td></tr><tr><td><span class="badge badge-ok">[OK]</span> pending jobs total</td><td>None</td><td>None</td><td>None</td><td>OK</td></tr><tr><td><span class="badge badge-ok">[OK]</span> event_history size</td><td>0.0</td><td>0.0</td><td>0.0</td><td>OK</td></tr><tr><td><span class="badge badge-ok">[OK]</span> timeline size</td><td>0.0</td><td>13886.0</td><td>None</td><td>OK</td></tr><tr><td><span class="badge badge-ok">[OK]</span> suppression state size</td><td>0.0</td><td>0.0</td><td>0.0</td><td>OK</td></tr><tr><td><span class="badge badge-ok">[OK]</span> drift snapshots size</td><td>0.0</td><td>0.0</td><td>0.0</td><td>OK</td></tr><tr><td><span class="badge badge-ok">[OK]</span> moderation latency</td><td>None</td><td>None</td><td>None</td><td>OK</td></tr><tr><td><span class="badge badge-ok">[OK]</span> publish attempts (recent avg)</td><td>None</td><td>None</td><td>None</td><td>OK</td></tr><tr><td><span class="badge badge-ok">[OK]</span> telethon reconnects (counter)</td><td>0.0</td><td>0.0</td><td>0.0</td><td>OK</td></tr><tr><td><span class="badge badge-ok">[OK]</span> transport op recoveries</td><td>None</td><td>None</td><td>None</td><td>OK</td></tr><tr><td><span class="badge badge-ok">[OK]</span> transport / API failures (bounded proxy)</td><td>0.0</td><td>0.0</td><td>0.0</td><td>OK</td></tr></tbody></table></section><section id="qualification"><h2>Qualification</h2><p><span class="badge badge-ok">[OK]</span> <strong>Decision</strong>: OK release_ready=True</p><table><thead><tr><th>Check</th><th>Detail</th></tr></thead><tbody><tr><td><span class="badge badge-ok">[OK]</span> bundle_load</td><td><pre>{}</pre></td></tr><tr><td><span class="badge badge-ok">[OK]</span> integrity</td><td><pre>{}</pre></td></tr><tr><td><span class="badge badge-ok">[OK]</span> queue_health</td><td><pre>{&quot;warning_metrics&quot;: []}</pre></td></tr><tr><td><span class="badge badge-ok">[OK]</span> regression</td><td><pre>{&quot;overall&quot;: &quot;OK&quot;}</pre></td></tr><tr><td><span class="badge badge-ok">[OK]</span> runtime_state</td><td><pre>{&quot;rows&quot;: [{&quot;key&quot;: &quot;drift_snapshots&quot;, &quot;pct_change&quot;: 0.0, &quot;status&quot;: &quot;OK&quot;}, {&quot;key&quot;: &quot;event_history_events&quot;, &quot;pct_change&quot;: 0.0, &quot;status&quot;: &quot;OK&quot;}, {&quot;key&quot;: &quot;suppression_entries&quot;, &quot;pct_change&quot;: 0.0, &quot;status&quot;: &quot;OK&quot;}, {&quot;key&quot;: &quot;timeline_events&quot;, &quot;notes&quot;: [&quot;qualification_skipped:configured&quot;], &quot;pct_change&quot;: null, &quot;status&quot;: &quot;OK&quot;}, {&quot;key&quot;: &quot;timeline_file_bytes&quot;, &quot;notes&quot;: [&quot;qualification_skipped:configured&quot;], &quot;pct_change&quot;: null, &quot;status&quot;: &quot;OK&quot;}]}</pre></td></tr><tr><td><span class="badge badge-ok">[OK]</span> soak</td><td><pre>{&quot;bounded_ok&quot;: true}</pre></td></tr></tbody></table></section><section id="retention"><h2>Retention</h2><p><em>No retention report</em></p></section><section id="artifacts"><h2>Artifacts</h2><table><tbody>
+<tr><th>bundle_version</th><td>1</td></tr>
+<tr><th>generated_at (manifest)</th><td>2026-05-14T21:16:05Z</td></tr>
+</tbody></table>
+<h3>Included files</h3><ul>
+<li>benchmark.json</li>
+<li>environment.json</li>
+<li>integrity.json</li>
+<li>manifest.json</li>
+<li>queue_pressure.json</li>
+<li>runtime_summary.json</li>
+<li>soak_report.json</li>
+<li>stability.json</li>
+</ul><h3>Missing files</h3><ul>
+</ul><h3>Artifact sizes</h3>
+<table><tbody><tr><th>benchmark.json</th><td><pre>2125</pre></td></tr><tr><th>environment.json</th><td><pre>174</pre></td></tr><tr><th>integrity.json</th><td><pre>295</pre></td></tr><tr><th>manifest.json</th><td><pre>823</pre></td></tr><tr><th>queue_pressure.json</th><td><pre>3</pre></td></tr><tr><th>runtime_summary.json</th><td><pre>706</pre></td></tr><tr><th>soak_report.json</th><td><pre>14337</pre></td></tr><tr><th>stability.json</th><td><pre>2185</pre></td></tr></tbody></table></section><section id="input_warnings"><h2>Input warnings</h2><p><em>No input warnings</em></p></section>
+
+</body></html>

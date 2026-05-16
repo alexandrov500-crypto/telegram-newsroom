@@ -1,0 +1,16 @@
+{
+  "entries": [
+    {
+      "bundle_status": "OK",
+      "compatibility_status": "OK",
+      "incident_level": "WARNING",
+      "qualification_status": "OK",
+      "recovery_status": "WARNING",
+      "runtime_duration_sec": 0.438,
+      "timestamp": "2026-05-15T08:55:41Z",
+      "verification_status": "WARNING"
+    }
+  ],
+  "history_limit": 20,
+  "schema_version": 1
+}

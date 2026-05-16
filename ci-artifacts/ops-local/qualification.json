@@ -1,0 +1,84 @@
+{
+  "baseline_bundle": "/Users/markusgronholm/telegram newsroom/ci-artifacts/baseline-stage/runtime_bundle_ci_baseline.zip",
+  "checks": {
+    "bundle_load": {
+      "detail": {},
+      "status": "OK"
+    },
+    "integrity": {
+      "detail": {},
+      "status": "OK"
+    },
+    "queue_health": {
+      "detail": {
+        "warning_metrics": []
+      },
+      "status": "OK"
+    },
+    "regression": {
+      "detail": {
+        "overall": "OK"
+      },
+      "status": "OK"
+    },
+    "runtime_state": {
+      "detail": {
+        "rows": [
+          {
+            "key": "drift_snapshots",
+            "pct_change": 0.0,
+            "status": "OK"
+          },
+          {
+            "key": "event_history_events",
+            "pct_change": 0.0,
+            "status": "OK"
+          },
+          {
+            "key": "suppression_entries",
+            "pct_change": 0.0,
+            "status": "OK"
+          },
+          {
+            "key": "timeline_events",
+            "notes": [
+              "qualification_skipped:configured"
+            ],
+            "pct_change": null,
+            "status": "OK"
+          },
+          {
+            "key": "timeline_file_bytes",
+            "notes": [
+              "qualification_skipped:configured"
+            ],
+            "pct_change": null,
+            "status": "OK"
+          }
+        ]
+      },
+      "status": "OK"
+    },
+    "soak": {
+      "detail": {
+        "bounded_ok": true
+      },
+      "status": "OK"
+    }
+  },
+  "evaluated_at": "2026-05-14T21:16:05Z",
+  "failures": [],
+  "qualification_status": "OK",
+  "release_ready": true,
+  "runtime_bundle": "/Users/markusgronholm/telegram newsroom/ci-artifacts/nightly-local/runtime_bundle.zip",
+  "threshold_config": {
+    "allow_warning": true,
+    "fail_threshold_pct": 50.0,
+    "require_integrity_clean": true,
+    "require_regression_ok": false,
+    "require_soak": false,
+    "strict": false,
+    "warning_threshold_pct": 15.0
+  },
+  "warnings": []
+}

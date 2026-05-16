@@ -1,0 +1,110 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "telegram-newsroom"
+dynamic = ["version"]
+description = "Production-lite Telegram newsroom: collect, cluster with OpenAI, moderate, publish."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Newsroom maintainers" }]
+keywords = [
+  "telegram",
+  "newsroom",
+  "openai",
+  "aiogram",
+  "telethon",
+  "production-lite",
+  "runtime-inspection",
+]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Communications :: Chat",
+  "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
+dependencies = [
+  "python-dotenv==1.0.1",
+  "telethon==1.38.1",
+  "aiogram==3.17.0",
+  "openai==1.59.6",
+  "sqlalchemy==2.0.36",
+  "greenlet>=3.0.0",
+  "aiosqlite==0.20.0",
+  "asyncpg>=0.29.0",
+  "redis>=5.0.0",
+  "psycopg[binary]>=3.2.0",
+  "alembic==1.14.1",
+  "APScheduler==3.10.4",
+  "pydantic==2.10.3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==8.3.4",
+  "ruff==0.9.6",
+]
+
+[project.urls]
+Documentation = "https://github.com/example/telegram-newsroom/blob/main/docs/START_HERE.md"
+Repository = "https://github.com/example/telegram-newsroom"
+Changelog = "https://github.com/example/telegram-newsroom/blob/main/CHANGELOG.md"
+
+[tool.setuptools.dynamic]
+version = { attr = "newsroom.__version__" }
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["observability", "newsroom", "tests/contracts"]
+
+[tool.ruff.lint]
+# Governance scope: pyflakes only (F). No whole-repo E501/I import-style migration (ADR-016).
+select = ["F"]
+
+[tool.setuptools.packages.find]
+include = [
+  "app*",
+  "ai*",
+  "bot*",
+  "collector*",
+  "dashboard*",
+  "db*",
+  "editorial*",
+  "newsroom*",
+  "observability*",
+  "publisher*",
+  "scheduler*",
+  "utils*",
+  "worker*",
+  "workers*",
+]
+
+[project.scripts]
+newsroom-health = "newsroom.cli.__main__:health_main"
+newsroom-verify-runtime = "newsroom.cli.__main__:verify_runtime_main"
+newsroom-validate-recovery = "newsroom.cli.__main__:validate_recovery_main"
+newsroom-replay-runtime = "newsroom.cli.__main__:replay_runtime_main"
+newsroom-check-compatibility = "newsroom.cli.__main__:check_compatibility_main"
+newsroom-audit-runtime = "newsroom.cli.__main__:audit_runtime_main"
+newsroom-create-baseline = "newsroom.cli.__main__:create_baseline_main"
+newsroom-compare-baseline = "newsroom.cli.__main__:compare_baseline_main"
+newsroom-inspect-capabilities = "newsroom.cli.__main__:inspect_capabilities_main"
+newsroom-inspect-policy = "newsroom.cli.__main__:inspect_policy_main"
+newsroom-runtime-index = "newsroom.cli.__main__:runtime_index_main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = [
+  "live_telegram: opt-in real Telegram API (TELEGRAM_LIVE_VALIDATE=1 + credentials)",
+]
+filterwarnings = [
+  "ignore::DeprecationWarning",
+]

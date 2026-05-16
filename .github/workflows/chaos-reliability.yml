@@ -1,0 +1,68 @@
+name: Chaos reliability matrix
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "tests/chaos/**"
+      - "workers/runtime.py"
+      - "publisher/publish_lock.py"
+      - "utils/reliability_diagnostics.py"
+      - "docs/runbooks/**"
+      - "docs/v1_1_operational_validation_report.md"
+
+concurrency:
+  group: chaos-reliability-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  chaos-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - redis_enabled: "false"
+            publish_lock_strict: "false"
+            worker_retry_safe: "false"
+          - redis_enabled: "false"
+            publish_lock_strict: "false"
+            worker_retry_safe: "true"
+          - redis_enabled: "true"
+            publish_lock_strict: "true"
+            worker_retry_safe: "true"
+          - redis_enabled: "true"
+            publish_lock_strict: "false"
+            worker_retry_safe: "false"
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+      REDIS_ENABLED: ${{ matrix.redis_enabled }}
+      PUBLISH_LOCK_STRICT: ${{ matrix.publish_lock_strict }}
+      WORKER_RETRY_SAFE: ${{ matrix.worker_retry_safe }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+          pip install -e . --no-deps
+
+      - name: Chaos suite
+        run: python3 -m pytest tests/chaos -q --tb=short --maxfail=3
+
+  chaos-gate:
+    runs-on: ubuntu-latest
+    needs: chaos-matrix
+    steps:
+      - run: echo "chaos matrix complete"

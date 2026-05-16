@@ -1,0 +1,95 @@
+name: Nightly runtime ops
+
+on:
+  schedule:
+    - cron: "15 5 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-runtime-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e . --no-deps
+
+      - name: Prepare CI dirs + minimal runtime JSON (baseline vs live)
+        run: |
+          set -euo pipefail
+          mkdir -p ci-artifacts/runtime-baseline ci-artifacts/runtime-live ci-artifacts/baseline-stage "ci-artifacts/ops-${{ github.run_id }}"
+          for d in ci-artifacts/runtime-baseline ci-artifacts/runtime-live; do
+            echo '{}' > "$d/queue_pressure.json"
+            echo '{"profile":"low","ci":true}' > "$d/soak_report.json"
+          done
+
+      - name: Runtime preflight (live tree)
+        run: |
+          set -euo pipefail
+          set -a
+          source .github/ci-minimal.env
+          set +a
+          python tools/runtime_preflight.py --runtime-dir ci-artifacts/runtime-live --strict
+
+      - name: Build baseline bundle (immutable snapshot dir)
+        run: |
+          set -euo pipefail
+          set -a
+          source .github/ci-minimal.env
+          set +a
+          python tools/runtime_ops.py bundle \
+            --runtime-dir ci-artifacts/runtime-baseline \
+            --output-dir ci-artifacts/baseline-stage
+          cp -f ci-artifacts/baseline-stage/runtime_bundle.zip ci-artifacts/baseline-stage/runtime_bundle_ci_baseline.zip
+
+      - name: Nightly runtime ops (short soak, strict)
+        run: |
+          set -euo pipefail
+          set -a
+          source .github/ci-minimal.env
+          set +a
+          OUT="ci-artifacts/nightly-${{ github.run_id }}"
+          OPS="ci-artifacts/ops-${{ github.run_id }}"
+          mkdir -p "$OUT" "$OPS"
+          python tools/runtime_ops.py nightly-check \
+            --runtime-dir ci-artifacts/runtime-live \
+            --output-dir "$OUT" \
+            --baseline ci-artifacts/baseline-stage/runtime_bundle_ci_baseline.zip \
+            --short-soak \
+            --strict \
+            --json-output > "$OPS/ops_summary.json"
+
+      - name: Stage artifacts (stable names)
+        run: |
+          set -euo pipefail
+          SRC="ci-artifacts/nightly-${{ github.run_id }}"
+          DST="ci-artifacts/ops-${{ github.run_id }}"
+          for f in runtime_bundle.zip operational_dashboard.html qualification.json regression.json retention.json ops_benchmark.json; do
+            if [ -f "$SRC/$f" ]; then cp -f "$SRC/$f" "$DST/$f"; fi
+          done
+          ls -la "$DST"
+
+      - name: Upload operational artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ops-ci-${{ github.run_id }}-${{ github.run_number }}
+          path: ci-artifacts/ops-${{ github.run_id }}/
+          if-no-files-found: error

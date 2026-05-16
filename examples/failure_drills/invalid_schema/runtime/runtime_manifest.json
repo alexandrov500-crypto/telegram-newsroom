@@ -1,0 +1,43 @@
+{
+  "artifact_count": 4,
+  "artifacts": [
+    {
+      "name": "health_snapshot.json",
+      "path": "runtime/health_snapshot.json",
+      "required": true,
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "size_bytes": 312
+    },
+    {
+      "name": "runtime_report.json",
+      "path": "runtime/runtime_report.json",
+      "required": true,
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "size_bytes": 890
+    },
+    {
+      "name": "qualification.json",
+      "path": "qualification.json",
+      "required": false,
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "size_bytes": 420
+    },
+    {
+      "name": "runtime_bundle.zip",
+      "path": "runtime_bundle.zip",
+      "required": false,
+      "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "size_bytes": 8192
+    }
+  ],
+  "bundle": {
+    "exists": true,
+    "path": "runtime_bundle.zip",
+    "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "size_bytes": 8192
+  },
+  "bundle_status": "OK",
+  "generated_at": "2026-05-15T03:15:04Z",
+  "qualification_status": "OK",
+  "schema_version": 1
+}

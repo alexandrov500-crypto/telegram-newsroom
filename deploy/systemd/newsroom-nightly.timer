@@ -1,0 +1,14 @@
+# Timer for production-lite nightly runtime ops.
+# Default: 03:15 UTC daily. Change OnCalendar= for local timezone preference.
+
+[Unit]
+Description=Run Telegram Newsroom nightly runtime check daily
+Documentation=file:/opt/newsroom/docs/DEPLOYMENT_QUICKSTART.md
+
+[Timer]
+OnCalendar=*-*-* 03:15:00 UTC
+Persistent=true
+Unit=newsroom-nightly.service
+
+[Install]
+WantedBy=timers.target

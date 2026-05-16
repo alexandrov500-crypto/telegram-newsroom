@@ -1,0 +1,132 @@
+{
+  "baseline_bundle": "/Users/markusgronholm/telegram newsroom/ci-artifacts/baseline-stage/runtime_bundle_ci_baseline.zip",
+  "compared_at": "2026-05-14T21:16:05Z",
+  "current_bundle": "/Users/markusgronholm/telegram newsroom/ci-artifacts/nightly-local/runtime_bundle.zip",
+  "metrics": [
+    {
+      "baseline": 65.568768,
+      "current": 67.076096,
+      "metric": "rss_mb",
+      "notes": [],
+      "pct_change": 2.2989,
+      "status": "OK"
+    },
+    {
+      "baseline": 65.568768,
+      "current": 67.09248,
+      "metric": "peak_rss_mb",
+      "notes": [],
+      "pct_change": 2.3238,
+      "status": "OK"
+    },
+    {
+      "baseline": null,
+      "current": null,
+      "metric": "avg_oldest_pending_age_sec_sampled_kinds",
+      "notes": [],
+      "pct_change": null,
+      "status": "OK"
+    },
+    {
+      "baseline": null,
+      "current": null,
+      "metric": "queue_pressure_score",
+      "notes": [],
+      "pct_change": null,
+      "status": "OK"
+    },
+    {
+      "baseline": null,
+      "current": null,
+      "metric": "pending_jobs_total",
+      "notes": [],
+      "pct_change": null,
+      "status": "OK"
+    },
+    {
+      "baseline": 0.0,
+      "current": 0.0,
+      "metric": "event_history_bytes",
+      "notes": [],
+      "pct_change": 0.0,
+      "status": "OK"
+    },
+    {
+      "baseline": 0.0,
+      "current": 13886.0,
+      "metric": "timeline_bytes",
+      "notes": [
+        "regression_skipped:configured"
+      ],
+      "pct_change": null,
+      "status": "OK"
+    },
+    {
+      "baseline": 0.0,
+      "current": 0.0,
+      "metric": "suppression_bytes",
+      "notes": [],
+      "pct_change": 0.0,
+      "status": "OK"
+    },
+    {
+      "baseline": 0.0,
+      "current": 0.0,
+      "metric": "drift_bytes",
+      "notes": [],
+      "pct_change": 0.0,
+      "status": "OK"
+    },
+    {
+      "baseline": null,
+      "current": null,
+      "metric": "avg_moderation_publish_latency_sec",
+      "notes": [],
+      "pct_change": null,
+      "status": "OK"
+    },
+    {
+      "baseline": null,
+      "current": null,
+      "metric": "avg_publish_attempts_recent",
+      "notes": [],
+      "pct_change": null,
+      "status": "OK"
+    },
+    {
+      "baseline": 0.0,
+      "current": 0.0,
+      "metric": "reconnect_count",
+      "notes": [],
+      "pct_change": 0.0,
+      "status": "OK"
+    },
+    {
+      "baseline": null,
+      "current": null,
+      "metric": "recovery_count",
+      "notes": [],
+      "pct_change": null,
+      "status": "OK"
+    },
+    {
+      "baseline": 0.0,
+      "current": 0.0,
+      "metric": "transport_failures",
+      "notes": [],
+      "pct_change": 0.0,
+      "status": "OK"
+    }
+  ],
+  "overall_status": "OK",
+  "threshold_config": {
+    "fail_threshold_pct": 50.0,
+    "ignore_missing": true,
+    "regression_skip_metrics": [
+      "timeline_bytes"
+    ],
+    "strict": false,
+    "warning_threshold_pct": 15.0
+  },
+  "warnings": []
+}

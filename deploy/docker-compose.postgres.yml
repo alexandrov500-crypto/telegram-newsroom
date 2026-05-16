@@ -1,0 +1,145 @@
+# PostgreSQL + Redis + newsroom (run from repository root):
+#   docker compose -f deploy/docker-compose.postgres.yml up --build
+#
+# Example env: copy deploy/env.postgres.example to deploy/.env.postgres and pass:
+#   docker compose -f deploy/docker-compose.postgres.yml --env-file deploy/.env.postgres up -d
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: newsroom
+      POSTGRES_PASSWORD: newsroom
+      POSTGRES_DB: newsroom
+    volumes:
+      - newsroom_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U newsroom -d newsroom"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - newsroom_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 4s
+      retries: 5
+
+  newsroom:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.example
+    restart: unless-stopped
+    working_dir: /app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - env.postgres.example
+    environment:
+      REDIS_ENABLED: "true"
+      REDIS_URL: redis://redis:6379/0
+      HEALTH_HTTP_PORT: "8080"
+    ports:
+      - "8080:8080"
+    volumes:
+      - newsroom_appdata:/data
+    healthcheck:
+      test: ["CMD", "python", "/app/docker/healthcheck.py"]
+      interval: 60s
+      timeout: 20s
+      retries: 3
+      start_period: 60s
+
+  ingest_worker:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.example
+    restart: unless-stopped
+    working_dir: /app
+    stop_grace_period: 45s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - env.postgres.example
+    environment:
+      REDIS_ENABLED: "true"
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - newsroom_appdata:/data
+    command: ["python", "-m", "workers.ingest_worker"]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import workers.ingest_worker\""]
+      interval: 45s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  ai_worker:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.example
+    restart: unless-stopped
+    working_dir: /app
+    stop_grace_period: 45s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - env.postgres.example
+    environment:
+      REDIS_ENABLED: "true"
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - newsroom_appdata:/data
+    command: ["python", "-m", "workers.ai_worker"]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import workers.ai_worker\""]
+      interval: 45s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  publisher_worker:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.example
+    restart: unless-stopped
+    working_dir: /app
+    stop_grace_period: 45s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - env.postgres.example
+    environment:
+      REDIS_ENABLED: "true"
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - newsroom_appdata:/data
+    command: ["python", "-m", "workers.publisher_worker"]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import workers.publisher_worker\""]
+      interval: 45s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  newsroom_pgdata:
+  newsroom_redis:
+  newsroom_appdata:

@@ -1,0 +1,129 @@
+{
+  "artifact_categories": {
+    "reporting": 1
+  },
+  "artifact_count": 14,
+  "artifacts": [
+    {
+      "name": "health_snapshot.json",
+      "path": "runtime/health_snapshot.json",
+      "category": "health",
+      "schema_version": null,
+      "required": true,
+      "status_field": "pipeline_status",
+      "generation_order": 1
+    },
+    {
+      "name": "runtime_report.json",
+      "path": "runtime/runtime_report.json",
+      "category": "reporting",
+      "schema_version": 1,
+      "required": true,
+      "status_field": "incident_level",
+      "generation_order": 2
+    },
+    {
+      "name": "runtime_manifest.json",
+      "path": "runtime/runtime_manifest.json",
+      "category": "verification",
+      "schema_version": null,
+      "required": true,
+      "status_field": "bundle_status",
+      "generation_order": 3
+    },
+    {
+      "name": "recovery_report.json",
+      "path": "runtime/recovery_report.json",
+      "category": "recovery",
+      "schema_version": null,
+      "required": true,
+      "status_field": "recovery_status",
+      "generation_order": 4
+    },
+    {
+      "name": "compatibility_report.json",
+      "path": "runtime/compatibility_report.json",
+      "category": "compatibility",
+      "schema_version": null,
+      "required": true,
+      "status_field": "compatibility_status",
+      "generation_order": 5
+    },
+    {
+      "name": "qualification_history.json",
+      "path": "runtime/qualification_history.json",
+      "category": "audit",
+      "schema_version": null,
+      "required": true,
+      "status_field": "qualification_status",
+      "generation_order": 6
+    },
+    {
+      "name": "audit_snapshot.json",
+      "path": "runtime/audit_snapshot.json",
+      "category": "audit",
+      "schema_version": null,
+      "required": true,
+      "status_field": "audit_status",
+      "generation_order": 7
+    },
+    {
+      "name": "runtime_baseline.json",
+      "path": "runtime/runtime_baseline.json",
+      "category": "baseline",
+      "schema_version": null,
+      "required": false,
+      "status_field": "baseline_status",
+      "generation_order": 8
+    },
+    {
+      "name": "drift_report.json",
+      "path": "runtime/drift_report.json",
+      "category": "baseline",
+      "schema_version": null,
+      "required": false,
+      "status_field": "drift_status",
+      "generation_order": 9
+    },
+    {
+      "name": "runtime_capabilities.json",
+      "path": "runtime/runtime_capabilities.json",
+      "category": "capabilities",
+      "schema_version": null,
+      "required": true,
+      "status_field": "capability_status",
+      "generation_order": 10
+    },
+    {
+      "name": "capability_report.json",
+      "path": "runtime/capability_report.json",
+      "category": "capabilities",
+      "schema_version": null,
+      "required": true,
+      "status_field": "capability_validation_status",
+      "generation_order": 11
+    },
+    {
+      "name": "runtime_policy.json",
+      "path": "runtime/runtime_policy.json",
+      "category": "policy",
+      "schema_version": null,
+      "required": true,
+      "status_field": "policy_status",
+      "generation_order": 12
+    },
+    {
+      "name": "policy_report.json",
+      "path": "runtime/policy_report.json",
+      "category": "policy",
+      "schema_version": null,
+      "required": true,
+      "status_field": "policy_validation_status",
+      "generation_order": 13
+    }
+  ],
+  "generated_at": "2026-05-15T03:15:05Z",
+  "index_status": "FAIL",
+  "runtime_model": "single-node",
+  "schema_version": 1
+}

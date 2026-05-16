@@ -1,0 +1,10 @@
+{
+  "constraint_violations": [],
+  "generated_at": "2026-05-15T03:15:05Z",
+  "guardrail_violations": [],
+  "policy_failures": [],
+  "policy_present": true,
+  "policy_validation_status": "OK",
+  "policy_warnings": [],
+  "schema_version": 1
+}
