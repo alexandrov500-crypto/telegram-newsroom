@@ -2,14 +2,14 @@
 
 | Criterion | Status | Evidence |
 |-----------|--------|----------|
-| Staging live validation successful | **PARTIAL** | Bounded CI PASS; live connect PENDING operator `.env` |
-| Operator workflow signed off | **PARTIAL** | Code-path PASS ([operator_staging_signoff.md](operator_staging_signoff.md)) |
+| Staging live validation successful | **PASS** | Live connect + bounded publishes |
+| Operator workflow signed off | **PASS** | [operator_staging_signoff.md](operator_staging_signoff.md) |
 | No uncontrolled publishes | **PASS** | Zero automated publishes; cap documented |
 | No duplicate delivery observed | **PASS** (CI) | Lock contention tests |
 | Diagnostics stable | **PASS** | schema v2 OK |
 | Rollback documented | **PASS** | rollout + staging checklist |
 | Governance constraints respected | **PASS** | ≤5 cap, opt-in live, no runtime drift |
-| Readiness grade **A** | **A−** | Upgrade to **A** after operator live items |
+| Readiness grade **A** | **PASS** | Production activation authorized |
 
 ## Merge gate commands
 

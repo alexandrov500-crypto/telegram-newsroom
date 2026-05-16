@@ -14,6 +14,16 @@ All notable changes are documented here. Runtime governance is **frozen** as of 
 
 ## [Unreleased]
 
+### v3.1 production-lite activation (controlled)
+
+- `docs/operations/production_bootstrap.md` — P0–P3 startup phases
+- `docs/operations/production_safeguards.md` — enforceable safeguards map
+- `docs/operations/alerting_baseline.md`, `72h_stability_window.md`
+- `docs/runbooks/controlled_activation.md`, `incident_response.md`
+- `docs/releases/merge_summary_v3.1.md`, `release_integrity_checklist.md`, `deployment_checksum_notes.md`
+- `make production-validate`; tag `v3.1-production-lite`
+- Readiness grade **A**; merge-ready
+
 ### v3.1 production-lite rollout (staging sign-off package)
 
 - `docs/staging/*` — environment checklist, live sign-off, operator sign-off, failure injection results

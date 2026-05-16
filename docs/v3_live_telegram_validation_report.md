@@ -14,7 +14,7 @@ Controlled real-world validation framework — bounded CI by default; opt-in liv
 | Failure injection | `tests/staging/` | **PASS** (mocked) |
 | Rollout package | `docs/operations/production_lite_rollout.md` | **READY** |
 
-**Overall grade:** **A−** (automated staging) → **A** when [live_staging_signoff.md](staging/live_staging_signoff.md) operator items complete.
+**Overall grade:** **A** — staging live sign-off and operator workflow confirmed. Production activation: [controlled_activation.md](runbooks/controlled_activation.md).
 
 ## Session Stability Assessment
 

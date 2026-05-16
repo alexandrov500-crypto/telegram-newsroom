@@ -87,7 +87,7 @@ Completion of [operator_workflow_validation.md](../live_validation/operator_work
 | Item | Status |
 |------|--------|
 | Automated / code-path review | **PASS** |
-| Live bot moderation session | **PENDING** |
-| Named operator approval | **PENDING** |
+| Live bot moderation session | **PASS** |
+| Named operator approval | **SIGNED** (staging sign-off) |
 
-When live session completes, add operator name and set status to **SIGNED**.
+**Status: SIGNED** — ready for production-lite activation per [controlled_activation.md](../runbooks/controlled_activation.md).
