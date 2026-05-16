@@ -16,6 +16,7 @@ STAGING_DOCS = (
     "docs/staging/live_staging_signoff.md",
     "docs/staging/operator_staging_signoff.md",
     "docs/staging/failure_injection_results.md",
+    "docs/staging/staging_acceptance_criteria.md",
 )
 
 OPS_ROLLOUT_DOCS = (
