@@ -1,0 +1,63 @@
+# Horizontal worker mesh — run beside staging/production stack
+# Usage:
+#   docker compose -f deploy/staging/docker-compose.staging.yml \
+#     -f deploy/live-ops/docker-compose.workers.yml up -d
+
+services:
+  ingest-worker:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    env_file:
+      - ../../.env
+    environment:
+      NODE_ID: ingest-worker-1
+      LIVE_OPS_ENABLED: "true"
+      REDIS_ENABLED: "true"
+      REDIS_URL: redis://redis:6379/0
+    command: ["python", "-m", "bot.live_ops.workers.cli", "ingest", "--node-id", "ingest-worker-1"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  cognition-worker:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    env_file:
+      - ../../.env
+    environment:
+      NODE_ID: cognition-worker-1
+      LIVE_OPS_ENABLED: "true"
+      REDIS_ENABLED: "true"
+    command: ["python", "-m", "bot.live_ops.workers.cli", "cognition", "--node-id", "cognition-worker-1"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  publish-worker:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    env_file:
+      - ../../.env
+    environment:
+      NODE_ID: publish-worker-1
+      LIVE_OPS_ENABLED: "true"
+    command: ["python", "-m", "bot.live_ops.workers.cli", "publish", "--node-id", "publish-worker-1"]
+    restart: unless-stopped
+
+  recovery-worker:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    env_file:
+      - ../../.env
+    environment:
+      NODE_ID: recovery-worker-1
+      LIVE_OPS_ENABLED: "true"
+      RECOVERY_MODE: "false"
+    command: ["python", "-m", "bot.live_ops.workers.cli", "recovery", "--node-id", "recovery-worker-1"]
+    restart: unless-stopped

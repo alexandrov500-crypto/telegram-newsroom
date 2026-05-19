@@ -1,0 +1,60 @@
+services:
+  newsroom:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: telegram-ai-newsroom
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      APP_ENV: production
+      HEALTH_HTTP_PORT: "8080"
+      HEALTH_HTTP_BIND: "0.0.0.0"
+      NEWSROOM_LANGUAGES: "ru,en"
+      STRUCTURED_LOGGING: "true"
+      WATCHDOG_ENABLED: "true"
+    ports:
+      - "8080:8080"
+    volumes:
+      - newsroom_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: newsroom-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - newsroom
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: newsroom-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  newsroom_data:
+  prometheus_data:
+  grafana_data:

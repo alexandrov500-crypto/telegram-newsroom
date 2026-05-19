@@ -1,0 +1,38 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: newsroom-operator
+    static_configs:
+      - targets: ["operator:8080"]
+    metrics_path: /metrics
+
+  - job_name: newsroom-ingest-eu
+    static_configs:
+      - targets: ["ingest-eu:8081"]
+    metrics_path: /metrics
+
+  - job_name: newsroom-ingest-us
+    static_configs:
+      - targets: ["ingest-us:8082"]
+    metrics_path: /metrics
+
+  - job_name: newsroom-ingest-apac
+    static_configs:
+      - targets: ["ingest-apac:8083"]
+    metrics_path: /metrics
+
+  - job_name: newsroom-signal
+    static_configs:
+      - targets: ["signal:8084"]
+    metrics_path: /metrics
+
+  - job_name: newsroom-digest
+    static_configs:
+      - targets: ["digest:8085"]
+    metrics_path: /metrics
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

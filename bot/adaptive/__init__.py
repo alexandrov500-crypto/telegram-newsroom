@@ -1,0 +1,1 @@
+"""Adaptive editorial operations."""

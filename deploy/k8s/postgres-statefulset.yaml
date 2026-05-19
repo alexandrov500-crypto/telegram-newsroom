@@ -1,0 +1,59 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: newsroom-postgres
+  namespace: newsroom
+spec:
+  ports:
+    - port: 5432
+  clusterIP: None
+  selector:
+    app: newsroom-postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: newsroom-postgres
+  namespace: newsroom
+spec:
+  serviceName: newsroom-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: newsroom-postgres
+  template:
+    metadata:
+      labels:
+        app: newsroom-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: newsroom
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: newsroom-secrets
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              value: newsroom
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "newsroom"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+  volumeClaimTemplates:
+    - metadata:
+        name: pgdata
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi

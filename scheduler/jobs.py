@@ -33,7 +33,7 @@ from editorial.policy import dominant_channel_key, load_editorial_policy_bundle,
 from editorial.publication_priority import compute_publication_priority_score, compute_publish_readiness_score
 from editorial.scoring import compute_editorial_score_card
 from editorial.trends import detect_topic_trends, source_convergence_score
-from bot.handlers import notify_admin_new_draft
+from bot.admin_handlers import notify_admin_new_draft
 from collector.service import collect_all_channels
 from dashboard.timeline import append_timeline_event
 from collector.telethon_client import build_telethon_client

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from bot import handlers
+from bot import admin_handlers as handlers
 from bot.keyboards import draft_actions_keyboard, queue_pagination_keyboard
 
 

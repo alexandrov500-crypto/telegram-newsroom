@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: newsroom-config
+  namespace: newsroom
+data:
+  EVENT_BUS_BACKEND: redis
+  REDIS_ENABLED: "true"
+  REDIS_URL: redis://newsroom-redis:6379/0
+  DATABASE_URL: postgresql+asyncpg://newsroom:newsroom@newsroom-postgres:5432/newsroom
+  CLUSTER_ENABLED: "true"
+  METRICS_ENABLED: "true"
+  HEALTH_HTTP_PORT: "8080"
+  HEALTH_HTTP_BIND: "0.0.0.0"

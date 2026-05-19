@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from bot import handlers
+from bot import admin_handlers as handlers
 from db import repository as repo
 from db.models import DraftStatus
 from db.session import close_db, init_db, session_scope

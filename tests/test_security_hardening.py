@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from bot import handlers
+from bot import admin_handlers as handlers
 from tests.conftest import minimal_test_settings
 from utils.runtime_dump import sanitize_settings_for_dump
 from utils.telegram_html import sanitize_telegram_html_output

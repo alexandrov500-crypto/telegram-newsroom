@@ -1,0 +1,134 @@
+# Production Telegram newsroom — operator + data plane
+# Usage:
+#   cp deploy/production/env.production.example .env.production
+#   bash scripts/production_activate.sh
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-newsroom}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-newsroom}
+    volumes:
+      - prod_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-newsroom}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 1gb --maxmemory-policy allkeys-lru
+    volumes:
+      - prod_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 8
+
+  migrate:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    env_file:
+      - ${ENV_FILE:-../../.env.production}
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["python", "-c", "from bot.storage.db import init_database, default_db_path; init_database(default_db_path()); print('db_ok')"]
+    restart: "no"
+
+  operator:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ${ENV_FILE:-../../.env.production}
+    environment:
+      NODE_ID: ${NODE_ID:-operator-1}
+      NODE_ROLE: operator
+      APP_ENV: production
+      STAGING_MODE: "false"
+      PRODUCTION_STRICT_STARTUP: "true"
+      GO_LIVE_STRICT_STARTUP: "true"
+      GO_LIVE_ENABLED: "true"
+      HEALTH_HTTP_PORT: "8080"
+      CLUSTER_ENABLED: "true"
+      EVENT_BUS_BACKEND: redis
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://newsroom:newsroom@postgres:5432/newsroom}
+      SHADOW_PUBLISH_ONLY: ${SHADOW_PUBLISH_ONLY:-true}
+      PRODUCTION_ROLLOUT_STAGE: ${PRODUCTION_ROLLOUT_STAGE:-INTERNAL_SHADOW}
+      RELIABILITY_PUBLISH_MODE: ${RELIABILITY_PUBLISH_MODE:-SHADOW}
+    ports:
+      - "${HEALTH_HTTP_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+    command: ["python", "-m", "bot.main"]
+
+  ingest-eu:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ${ENV_FILE:-../../.env.production}
+    environment:
+      NODE_ID: ingest-eu-1
+      NODE_ROLE: ingest
+      APP_ENV: production
+      CLUSTER_ENABLED: "true"
+      EVENT_BUS_BACKEND: redis
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: ${DATABASE_URL}
+      HEALTH_HTTP_PORT: "8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["python", "-m", "bot.main"]
+
+  signal:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ${ENV_FILE:-../../.env.production}
+    environment:
+      NODE_ID: signal-1
+      NODE_ROLE: signal
+      APP_ENV: production
+      CLUSTER_ENABLED: "true"
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: ${DATABASE_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["python", "-m", "bot.main"]
+
+volumes:
+  prod_pgdata:
+  prod_redis:

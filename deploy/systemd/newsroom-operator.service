@@ -1,0 +1,28 @@
+[Unit]
+Description=Autonomous Newsroom Operator (Telegram)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=newsroom
+Group=newsroom
+WorkingDirectory=/opt/newsroom
+EnvironmentFile=/opt/newsroom/.env.production
+ExecStart=/usr/bin/docker compose -f deploy/production/docker-compose.production.yml up operator --no-deps
+ExecStop=/usr/bin/docker compose -f deploy/production/docker-compose.production.yml stop operator
+Restart=on-failure
+RestartSec=15
+TimeoutStopSec=120
+LimitNOFILE=65536
+
+# Health probe (host curl to published port)
+ExecStartPost=/bin/sleep 20
+ExecStartPost=/usr/bin/curl -sf http://127.0.0.1:8080/health
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=newsroom-operator
+
+[Install]
+WantedBy=multi-user.target

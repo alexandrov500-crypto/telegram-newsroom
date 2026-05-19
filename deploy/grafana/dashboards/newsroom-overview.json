@@ -1,0 +1,389 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0},
+      "id": 1,
+      "targets": [
+        {"expr": "sum(rate(articles_ingested_total[5m]))", "legendFormat": "ingested/s", "refId": "A"}
+      ],
+      "title": "Ingestion rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "fieldConfig": {"defaults": {"unit": "currencyUSD"}},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0},
+      "id": 2,
+      "targets": [
+        {"expr": "sum(increase(openai_cost_usd_total[24h]))", "legendFormat": "24h cost", "refId": "A"}
+      ],
+      "title": "OpenAI cost (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0},
+      "id": 3,
+      "targets": [
+        {"expr": "queue_backlog", "legendFormat": "pending", "refId": "A"}
+      ],
+      "title": "Editorial queue backlog",
+      "type": "gauge"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "id": 4,
+      "targets": [
+        {
+          "expr": "sum(rate(telegram_publish_success_total[5m])) / (sum(rate(telegram_publish_success_total[5m])) + sum(rate(telegram_publish_failures_total[5m])) + 0.001)",
+          "legendFormat": "success ratio",
+          "refId": "A"
+        }
+      ],
+      "title": "Publish success ratio",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "fieldConfig": {"defaults": {"unit": "s"}},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "id": 5,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(publish_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95",
+          "refId": "A"
+        }
+      ],
+      "title": "Publish latency p95",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "id": 6,
+      "targets": [
+        {"expr": "sum(rate(openai_requests_total[5m])) by (operation, status)", "legendFormat": "{{operation}} {{status}}", "refId": "A"}
+      ],
+      "title": "OpenAI requests",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "fieldConfig": {"defaults": {"unit": "decmbytes"}},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "id": 7,
+      "targets": [
+        {"expr": "process_memory_mb", "legendFormat": "RSS MB", "refId": "A"},
+        {"expr": "histogram_quantile(0.95, sum(rate(event_loop_latency_seconds_bucket[5m])) by (le))", "legendFormat": "event loop p95", "refId": "B"}
+      ],
+      "title": "Burn-in stability",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 24},
+      "id": 8,
+      "targets": [
+        {"expr": "stories_active_total", "legendFormat": "active", "refId": "A"}
+      ],
+      "title": "Active stories",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 24},
+      "id": 9,
+      "targets": [
+        {"expr": "sum(rate(story_updates_total[5m])) by (kind)", "legendFormat": "{{kind}}", "refId": "A"},
+        {"expr": "sum(rate(story_escalations_total[5m]))", "legendFormat": "escalations", "refId": "B"}
+      ],
+      "title": "Story updates & escalations",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 24},
+      "id": 10,
+      "targets": [
+        {"expr": "histogram_quantile(0.95, sum(rate(narrative_detection_latency_seconds_bucket[5m])) by (le))", "legendFormat": "p95", "refId": "A"}
+      ],
+      "title": "Narrative detection latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32},
+      "id": 11,
+      "targets": [
+        {"expr": "histogram_quantile(0.5, sum(rate(importance_score_distribution_bucket[5m])) by (le))", "legendFormat": "median", "refId": "A"}
+      ],
+      "title": "Importance score distribution",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 32},
+      "id": 12,
+      "targets": [
+        {"expr": "digest_story_count", "legendFormat": "digest stories", "refId": "A"}
+      ],
+      "title": "Digest narrative count",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 40},
+      "id": 13,
+      "targets": [
+        {"expr": "sum(rate(signals_detected_total[5m]))", "legendFormat": "signals/s", "refId": "A"}
+      ],
+      "title": "Signal detection rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 40},
+      "id": 14,
+      "targets": [
+        {"expr": "histogram_quantile(0.95, sum(rate(signal_detection_latency_seconds_bucket[5m])) by (le))", "legendFormat": "p95", "refId": "A"}
+      ],
+      "title": "Signal detection latency p95",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 40},
+      "id": 15,
+      "targets": [
+        {"expr": "sum(rate(anomalies_detected_total[5m])) by (anomaly_type)", "legendFormat": "{{anomaly_type}}", "refId": "A"}
+      ],
+      "title": "Anomaly heatmap (rate)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 48},
+      "id": 16,
+      "targets": [
+        {"expr": "sum(rate(forecast_escalations_total[5m]))", "legendFormat": "escalations", "refId": "A"}
+      ],
+      "title": "Predicted escalations",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 48},
+      "id": 17,
+      "targets": [
+        {"expr": "sum(rate(event_bus_dropped_total[5m]))", "legendFormat": "dropped", "refId": "A"}
+      ],
+      "title": "Event bus backpressure",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 56},
+      "id": 18,
+      "targets": [
+        {"expr": "forecast_accuracy_score", "legendFormat": "forecast accuracy", "refId": "A"},
+        {"expr": "signal_precision_score", "legendFormat": "signal precision", "refId": "B"}
+      ],
+      "title": "Learning scores",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 56},
+      "id": 19,
+      "targets": [
+        {"expr": "sum(increase(openai_cost_usd_total[24h]))", "legendFormat": "24h AI cost", "refId": "A"}
+      ],
+      "title": "AI cost (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 56},
+      "id": 20,
+      "targets": [
+        {"expr": "sum(rate(agent_decisions_total[5m])) by (action)", "legendFormat": "{{action}}", "refId": "A"}
+      ],
+      "title": "Agent decisions",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 64},
+      "id": 21,
+      "targets": [
+        {"expr": "sum(increase(adaptive_policy_changes_total[24h]))", "legendFormat": "policy changes", "refId": "A"},
+        {"expr": "sum(increase(replay_runs_total[24h]))", "legendFormat": "replays", "refId": "B"}
+      ],
+      "title": "Adaptive ops",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 64},
+      "id": 22,
+      "targets": [
+        {"expr": "sum(increase(cost_optimization_savings_total[24h]))", "legendFormat": "est savings USD", "refId": "A"}
+      ],
+      "title": "Cost optimization savings",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 72},
+      "id": 23,
+      "targets": [
+        {"expr": "cluster_nodes_total", "legendFormat": "{{status}}", "refId": "A"}
+      ],
+      "title": "Cluster nodes",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 72},
+      "id": 24,
+      "targets": [
+        {"expr": "sum(rate(distributed_events_total[5m])) by (backend)", "legendFormat": "{{backend}}", "refId": "A"}
+      ],
+      "title": "Distributed events",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 72},
+      "id": 25,
+      "targets": [
+        {"expr": "sum(increase(cluster_leader_changes_total[1h]))", "legendFormat": "leader changes", "refId": "A"},
+        {"expr": "sum(increase(node_failovers_total[1h]))", "legendFormat": "failovers", "refId": "B"}
+      ],
+      "title": "Cluster failover",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 80},
+      "id": 26,
+      "targets": [{"expr": "topology_health_score", "legendFormat": "topology", "refId": "A"}],
+      "title": "Topology health",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 80},
+      "id": 27,
+      "targets": [{"expr": "scheduler_pressure_score", "legendFormat": "pressure", "refId": "A"}],
+      "title": "Scheduler pressure",
+      "type": "gauge"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 80},
+      "id": 28,
+      "targets": [
+        {"expr": "sum(autonomous_operations_total)", "legendFormat": "ops actions", "refId": "A"},
+        {"expr": "workflow_stalled_total", "legendFormat": "stalled", "refId": "B"}
+      ],
+      "title": "Autonomous ops",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 88},
+      "id": 29,
+      "targets": [{"expr": "cognitive_health_score", "legendFormat": "cognitive", "refId": "A"}],
+      "title": "Cognitive health",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 88},
+      "id": 30,
+      "targets": [{"expr": "histogram_quantile(0.5, sum(rate(cognitive_evaluation_score_bucket[5m])) by (le))", "legendFormat": "p50 eval", "refId": "A"}],
+      "title": "Evaluation scores",
+      "type": "gauge"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 88},
+      "id": 31,
+      "targets": [{"expr": "sum(rate(cognitive_model_routes_total[5m])) by (model)", "legendFormat": "{{model}}", "refId": "A"}],
+      "title": "Model routes",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 96},
+      "id": 32,
+      "targets": [{"expr": "mesh_health_score", "legendFormat": "mesh", "refId": "A"}],
+      "title": "Mesh health",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 96},
+      "id": 33,
+      "targets": [{"expr": "sum(rate(mesh_cognitive_events_total[5m])) by (lane)", "legendFormat": "{{lane}}", "refId": "A"}],
+      "title": "Cognitive propagation",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 96},
+      "id": 34,
+      "targets": [{"expr": "mesh_gossip_budget_remaining", "legendFormat": "gossip budget", "refId": "A"}],
+      "title": "Gossip budget",
+      "type": "gauge"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 104},
+      "id": 35,
+      "targets": [{"expr": "epistemic_stability_score", "legendFormat": "stability", "refId": "A"}],
+      "title": "Epistemic stability",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 104},
+      "id": 36,
+      "targets": [{"expr": "misinformation_pressure_score", "legendFormat": "misinfo", "refId": "A"}],
+      "title": "Misinformation pressure",
+      "type": "gauge"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 104},
+      "id": 37,
+      "targets": [{"expr": "epistemic_open_contradictions", "legendFormat": "contradictions", "refId": "A"}],
+      "title": "Open contradictions",
+      "type": "stat"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["newsroom", "telegram"],
+  "templating": {"list": []},
+  "time": {"from": "now-6h", "to": "now"},
+  "timezone": "utc",
+  "title": "Newsroom Overview",
+  "uid": "newsroom-overview",
+  "version": 1
+}

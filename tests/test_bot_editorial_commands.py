@@ -7,7 +7,7 @@ import pytest
 from aiogram.enums import ChatType
 from aiogram.types import Chat, User
 
-from bot import handlers
+from bot import admin_handlers as handlers
 from db import repository as repo
 from db.session import close_db, init_db, session_scope
 from tests.conftest import minimal_test_settings

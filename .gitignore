@@ -1,17 +1,55 @@
+# --- Secrets (never commit) ---
 .env
+.env.*
+!.env.example
+deploy/timeweb/.env
+deploy/timeweb/.env.local
+*.pem
+*.key
+
+# --- Python ---
 .venv/
 venv/
 __pycache__/
 *.py[cod]
-*.db
-*.session
+*$py.class
 .pytest_cache/
-var/ops_history/
-var/ops_reports/
-var/ops_archive/
-var/ops_bundle/
-var/ops_release_kit/
-var/stewardship_audit/
-var/stewardship_integrity/
-var/immutable_archive/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+*.egg-info/
+dist/
+build/
+
+# --- Local DB & Telegram sessions ---
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.session
+*.session-journal
+
+# --- Runtime / ops artifacts (local dev) ---
+var/
+artifacts/
+ci-artifacts/
+runtime_ops_output/
+newsroom.db
 .pycache/
+
+# --- IDE ---
+.idea/
+.vscode/
+.cursor/
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Coverage ---
+htmlcov/
+.coverage
+coverage.xml
+
+# --- Node (if any tooling) ---
+node_modules/

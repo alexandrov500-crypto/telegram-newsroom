@@ -15,7 +15,7 @@ from app.config import Settings, load_settings
 from app.health import run_startup_healthchecks
 from app.startup_notify import send_startup_banner
 from app.startup_validation import validate_settings_for_launch
-from bot.handlers import register_handlers
+from bot.admin_handlers import register_handlers
 from db.session import init_db
 from scheduler.jobs import (
     build_pipeline_context,

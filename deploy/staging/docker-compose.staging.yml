@@ -1,0 +1,251 @@
+# 24/7 staging newsroom cluster — multi-region cognitive mesh (shadow production)
+# Usage:
+#   cp deploy/staging/env.staging.example .env
+#   bash scripts/staging_activate.sh
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: newsroom
+      POSTGRES_PASSWORD: newsroom
+      POSTGRES_DB: newsroom
+    ports:
+      - "5432:5432"
+    volumes:
+      - staging_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U newsroom"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    volumes:
+      - ./prometheus-staging.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    depends_on:
+      - operator
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ../grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
+  tempo:
+    image: grafana/tempo:2.6.1
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./tempo.yaml:/etc/tempo.yaml:ro
+    ports:
+      - "3200:3200"
+      - "4317:4317"
+      - "4318:4318"
+
+  ingest-eu:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    env_file:
+      - ../../.env
+    environment:
+      NODE_ID: ingest-eu-1
+      NODE_ROLE: ingest
+      NODE_REGION: eu
+      APP_ENV: staging
+      STAGING_MODE: "true"
+      CLUSTER_ENABLED: "true"
+      EVENT_BUS_BACKEND: redis
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+asyncpg://newsroom:newsroom@postgres:5432/newsroom
+      HEALTH_HTTP_PORT: "8081"
+      METRICS_ENABLED: "true"
+      WATCHDOG_ENABLED: "true"
+      OPS_BURNIN_ENABLED: "false"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["python", "-m", "bot.main"]
+
+  ingest-us:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    env_file:
+      - ../../.env
+    environment:
+      NODE_ID: ingest-us-1
+      NODE_ROLE: ingest
+      NODE_REGION: us
+      APP_ENV: staging
+      STAGING_MODE: "true"
+      CLUSTER_ENABLED: "true"
+      EVENT_BUS_BACKEND: redis
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+asyncpg://newsroom:newsroom@postgres:5432/newsroom
+      HEALTH_HTTP_PORT: "8082"
+      METRICS_ENABLED: "true"
+      OPS_BURNIN_ENABLED: "false"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["python", "-m", "bot.main"]
+
+  ingest-apac:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    env_file:
+      - ../../.env
+    environment:
+      NODE_ID: ingest-apac-1
+      NODE_ROLE: ingest
+      NODE_REGION: apac
+      APP_ENV: staging
+      STAGING_MODE: "true"
+      CLUSTER_ENABLED: "true"
+      EVENT_BUS_BACKEND: redis
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+asyncpg://newsroom:newsroom@postgres:5432/newsroom
+      HEALTH_HTTP_PORT: "8083"
+      METRICS_ENABLED: "true"
+      OPS_BURNIN_ENABLED: "false"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["python", "-m", "bot.main"]
+
+  signal:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    env_file:
+      - ../../.env
+    environment:
+      NODE_ID: signal-1
+      NODE_ROLE: signal
+      NODE_REGION: us
+      APP_ENV: staging
+      STAGING_MODE: "true"
+      CLUSTER_ENABLED: "true"
+      EVENT_BUS_BACKEND: redis
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+asyncpg://newsroom:newsroom@postgres:5432/newsroom
+      HEALTH_HTTP_PORT: "8084"
+      METRICS_ENABLED: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["python", "-m", "bot.main"]
+
+  digest:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    env_file:
+      - ../../.env
+    environment:
+      NODE_ID: digest-1
+      NODE_ROLE: digest
+      NODE_REGION: eu
+      APP_ENV: staging
+      STAGING_MODE: "true"
+      SHADOW_PUBLISH_ONLY: "true"
+      AUTO_APPROVAL_ENABLED: "false"
+      CLUSTER_ENABLED: "true"
+      EVENT_BUS_BACKEND: redis
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+asyncpg://newsroom:newsroom@postgres:5432/newsroom
+      HEALTH_HTTP_PORT: "8085"
+      METRICS_ENABLED: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["python", "-m", "bot.main"]
+
+  operator:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    env_file:
+      - ../../.env
+    environment:
+      NODE_ID: operator-1
+      NODE_ROLE: operator
+      NODE_REGION: global
+      APP_ENV: staging
+      STAGING_MODE: "true"
+      SHADOW_PUBLISH_ONLY: "true"
+      STAGING_STRICT_STARTUP: "true"
+      AUTO_APPROVAL_ENABLED: "false"
+      CLUSTER_ENABLED: "true"
+      EVENT_BUS_BACKEND: redis
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+asyncpg://newsroom:newsroom@postgres:5432/newsroom
+      HEALTH_HTTP_PORT: "8080"
+      HEALTH_HTTP_BIND: "0.0.0.0"
+      METRICS_ENABLED: "true"
+      WATCHDOG_ENABLED: "true"
+      OPS_BURNIN_ENABLED: "true"
+      OPS_BURNIN_PROFILE: "24h"
+      RELIABILITY_LAYER_ENABLED: "true"
+      RELIABILITY_PUBLISH_MODE: "SHADOW"
+      RELIABILITY_PROBE_INTERVAL_SEC: "30"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      tempo:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    command: ["python", "-m", "bot.main"]
+
+volumes:
+  staging_pgdata:

@@ -1,0 +1,107 @@
+# Multi-node newsroom cluster (local / staging).
+# Usage: docker compose -f deploy/docker-compose.distributed.yml up -d
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: newsroom
+      POSTGRES_PASSWORD: newsroom
+      POSTGRES_DB: newsroom
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U newsroom"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+
+  ingest-eu:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    env_file:
+      - ../.env
+    environment:
+      NODE_ID: ingest-eu-1
+      NODE_ROLE: ingest
+      NODE_REGION: eu
+      EVENT_BUS_BACKEND: redis
+      REDIS_ENABLED: "true"
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+asyncpg://newsroom:newsroom@postgres:5432/newsroom
+      CLUSTER_ENABLED: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    command: ["python", "-m", "bot.main"]
+
+  signal-us:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    env_file:
+      - ../.env
+    environment:
+      NODE_ID: signal-us-1
+      NODE_ROLE: signal
+      NODE_REGION: us
+      EVENT_BUS_BACKEND: redis
+      REDIS_ENABLED: "true"
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+asyncpg://newsroom:newsroom@postgres:5432/newsroom
+    depends_on:
+      - postgres
+      - redis
+    command: ["python", "-m", "bot.main"]
+
+  digest:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    env_file:
+      - ../.env
+    environment:
+      NODE_ID: digest-1
+      NODE_ROLE: digest
+      EVENT_BUS_BACKEND: redis
+      REDIS_ENABLED: "true"
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+asyncpg://newsroom:newsroom@postgres:5432/newsroom
+    depends_on:
+      - postgres
+      - redis
+    command: ["python", "-m", "bot.main"]
+
+  operator:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    env_file:
+      - ../.env
+    environment:
+      NODE_ID: operator-1
+      NODE_ROLE: operator
+      EVENT_BUS_BACKEND: redis
+      REDIS_ENABLED: "true"
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+asyncpg://newsroom:newsroom@postgres:5432/newsroom
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - redis
+    command: ["python", "-m", "bot.main"]
+
+volumes:
+  pgdata:

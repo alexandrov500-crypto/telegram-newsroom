@@ -5,6 +5,40 @@
 > **Operational freeze:** Runtime governance and inspection model are **operationally frozen as of v1.0.0**. Stabilization over expansion; compatibility-first maintenance ([docs/STABILITY_GUARANTEES.md](docs/STABILITY_GUARANTEES.md)).
 >
 > This project optimizes for **operational simplicity over platform-scale extensibility** — a maintainable long-lived system, not an evolving architecture experiment.
+>
+> **Historical status (editorial stewardship):** Architecture is [operationally complete](docs/architecture/ARCHITECTURAL_COMPLETION.md). Future changes are **exceptional**, not evolutionary — [passive continuity](docs/operations/PASSIVE_CONTINUITY_DECLARATION.md) · [terminal stewardship note](docs/operations/TERMINAL_STEWARDSHIP_NOTE.md).
+
+### Repository preservation status
+
+| Value | Meaning |
+|-------|---------|
+| `ACTIVE` | Legacy — routine evolution expected (not current) |
+| `PRESERVED` | Frozen surface; custodianship active (superseded) |
+| `ARCHIVED_CONTINUITY` | **Default** — operationally valid; **not expected to evolve** |
+
+**Current:** `ARCHIVED_CONTINUITY` — [institutional preservation record](docs/architecture/INSTITUTIONAL_PRESERVATION_RECORD.md) · [stewardship archive boundary](docs/operations/stewardship_archive_boundary.md) · [historical interpretation](docs/architecture/historical_interpretation.md)
+
+### Repository lifecycle status
+
+| Value | Meaning |
+|-------|---------|
+| `EVOLVING` | Legacy — active engineering evolution expected (not current) |
+| `PRESERVED` | Frozen; custodianship routine (superseded) |
+| `DORMANT_CONTINUITY` | **Default** — operationally relevant; **no active evolution expected** |
+
+**Current:** `DORMANT_CONTINUITY` — [institutional dormancy declaration](docs/operations/INSTITUTIONAL_DORMANCY_DECLARATION.md) · [continuity seal](docs/architecture/CONTINUITY_SEAL.md) · [future custodian orientation](docs/operations/future_custodian_orientation.md)
+
+*`ARCHIVED_CONTINUITY` (preservation) and `DORMANT_CONTINUITY` (lifecycle) describe the same operational posture.*
+
+### Operational activity expectation
+
+| Value | Meaning |
+|-------|---------|
+| `ACTIVE_DEVELOPMENT` | Legacy — routine engineering expected (not current) |
+| `PRESERVATION_ACTIVITY` | Occasional evidence-based maintenance only |
+| `STEWARDSHIP_SILENCE` | **Default** — long inactivity **expected and acceptable** |
+
+**Current:** `STEWARDSHIP_SILENCE` — [stewardship silence protocol](docs/operations/STEWARDSHIP_SILENCE_PROTOCOL.md) · [operational stillness](docs/operations/operational_stillness.md)
 
 | | |
 |---|---|

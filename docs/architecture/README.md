@@ -4,6 +4,8 @@ Concise **engineering intent** and **ADRs** for this repository. New readers: [.
 
 **Governance model:** Complete (ADR-001–014). **Stabilization:** [RUNTIME_CONTRACTS.md](RUNTIME_CONTRACTS.md), [RUNTIME_MATURITY.md](RUNTIME_MATURITY.md), [ADR-015](ADR-015-runtime-stabilization-and-contract-freeze.md). No further runtime governance layers planned.
 
+**Steady-state (editorial stewardship):** [CONTINUITY_SEAL.md](CONTINUITY_SEAL.md) · [INSTITUTIONAL_PRESERVATION_RECORD.md](INSTITUTIONAL_PRESERVATION_RECORD.md) · [historical_interpretation.md](historical_interpretation.md) · [INFRASTRUCTURE_FINALIZATION_RECORD.md](INFRASTRUCTURE_FINALIZATION_RECORD.md) · [ARCHITECTURAL_COMPLETION.md](ARCHITECTURAL_COMPLETION.md) · [governance_surface_freeze.md](governance_surface_freeze.md) · [institutional_architecture_snapshot.md](institutional_architecture_snapshot.md) · [operational_time_capsule.md](operational_time_capsule.md) · [../operations/continuity_covenant.md](../operations/continuity_covenant.md) · [../operations/STEADY_STATE_STATUS.md](../operations/STEADY_STATE_STATUS.md)
+
 ## ADR index
 
 | ADR | Topic | Status | Related docs |

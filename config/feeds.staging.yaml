@@ -1,0 +1,51 @@
+# Staging RSS catalog — real-world noisy + multilingual feeds
+# Loaded when STAGING_MODE=true or STAGING_FEEDS_PATH points here.
+# RSS_FEEDS env (comma-separated) merges on top for operator overrides.
+
+feeds:
+  - name: reuters_world
+    url: https://feeds.reuters.com/reuters/worldNews
+    language: en
+    trust: high
+
+  - name: ap_top
+    url: https://rsshub.app/apnews/topics/apf-topnews
+    language: en
+    trust: high
+
+  - name: bbc_world
+    url: http://feeds.bbci.co.uk/news/world/rss.xml
+    language: en
+    trust: high
+
+  - name: dw_world
+    url: https://rss.dw.com/rdf/rss-en-world
+    language: en
+    trust: medium
+
+  - name: france24_en
+    url: https://www.france24.com/en/rss
+    language: en
+    trust: medium
+
+  - name: rfi_fr
+    url: https://www.rfi.fr/fr/rss
+    language: fr
+    trust: medium
+
+  - name: rt_ru
+    url: https://russian.rt.com/rss
+    language: ru
+    trust: low
+
+  - name: noisy_bbc_all
+    url: http://feeds.bbci.co.uk/news/rss.xml
+    language: en
+    trust: low
+    noisy: true
+
+  - name: duplicate_burst_test
+    url: http://feeds.bbci.co.uk/news/world/rss.xml
+    language: en
+    trust: medium
+    noisy: true

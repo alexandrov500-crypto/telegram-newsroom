@@ -1,11 +1,52 @@
-__pycache__
-*.pyc
-*.pyo
-.env
-.venv
-venv
+# Git & local env
 .git
-*.db
-*.session
+.gitignore
+.github
+.env
+.env.*
+!.env.example
+deploy/timeweb/.env
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
 .pytest_cache
 .mypy_cache
+.ruff_cache
+.hypothesis
+.venv
+venv
+*.egg-info
+dist
+build
+
+# Data & secrets (never in image)
+*.db
+*.db-journal
+*.session
+var/
+artifacts/
+ci-artifacts/
+runtime_ops_output/
+newsroom.db
+
+# Docs & ops noise (not needed at runtime)
+docs/
+*.md
+!deploy/timeweb/README.md
+.cursor
+.idea
+.vscode
+*.log
+
+# Tests (image runs app.main only)
+tests/
+htmlcov/
+.coverage
+coverage.xml
+
+# Large / optional trees
+node_modules/
+*.tar
+*.zip

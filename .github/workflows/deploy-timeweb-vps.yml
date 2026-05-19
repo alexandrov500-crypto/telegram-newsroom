@@ -1,0 +1,91 @@
+# Deploy production-lite to Timeweb VPS via SSH.
+#
+# Required repository secrets:
+#   VPS_HOST      = 213.171.3.133
+#   VPS_USER      = newsroom
+#   VPS_SSH_KEY   = private key (ed25519), full PEM including newlines
+#   VPS_APP_DIR   = /opt/newsroom
+#
+# Server must already have: Docker, git clone at VPS_APP_DIR, deploy/timeweb/.env (not in git)
+
+name: Deploy Timeweb VPS
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git branch or tag to deploy
+        required: true
+        default: main
+      skip_backup:
+        description: Skip SQLite backup before deploy (not recommended)
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-timeweb-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout (for metadata only)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Deploy on VPS over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DEPLOY_REF: ${{ inputs.ref }}
+          SKIP_BACKUP: ${{ inputs.skip_backup }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          envs: DEPLOY_REF,SKIP_BACKUP
+          script_stop: true
+          script: |
+            set -euo pipefail
+            APP_DIR="${{ secrets.VPS_APP_DIR }}"
+            COMPOSE_DIR="${APP_DIR}/deploy/timeweb"
+            REF="${DEPLOY_REF}"
+
+            test -d "${APP_DIR}/.git" || { echo "Missing git repo at ${APP_DIR}"; exit 1; }
+            test -f "${COMPOSE_DIR}/.env" || { echo "Missing ${COMPOSE_DIR}/.env — create on server first"; exit 1; }
+            test -f "${COMPOSE_DIR}/docker-compose.yml" || { echo "Missing compose file"; exit 1; }
+
+            cd "${APP_DIR}"
+            git fetch origin --prune
+            git checkout "${REF}"
+            git pull --ff-only origin "${REF}" 2>/dev/null || git reset --hard "origin/${REF}"
+
+            if [ "${SKIP_BACKUP}" != "true" ] && [ -f /opt/newsroom/data/newsroom.db ]; then
+              mkdir -p /opt/newsroom/data/backups
+              cp /opt/newsroom/data/newsroom.db \
+                "/opt/newsroom/data/backups/newsroom.db.bak.$(date +%Y%m%d-%H%M%S)"
+            fi
+
+            cd "${COMPOSE_DIR}"
+            docker compose -f docker-compose.yml build
+            docker compose -f docker-compose.yml up -d
+            docker compose -f docker-compose.yml ps
+
+            echo "Waiting for health (up to 150s)..."
+            for i in $(seq 1 30); do
+              STATUS=$(docker inspect --format='{{.State.Health.Status}}' telegram-newsroom 2>/dev/null || echo "unknown")
+              echo "health=${STATUS} attempt=${i}"
+              if [ "${STATUS}" = "healthy" ]; then
+                break
+              fi
+              sleep 5
+            done
+
+            docker inspect --format='{{.State.Health.Status}}' telegram-newsroom
+            curl -sf http://127.0.0.1:8080/health >/dev/null
+            curl -sf http://127.0.0.1:8080/ready >/dev/null
+            docker compose -f docker-compose.yml exec -T newsroom python /app/docker/http_ready_probe.py
+            echo "Deploy finished: ref=${REF}"
