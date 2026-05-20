@@ -11,7 +11,6 @@ services:
     image: telegram-newsroom:timeweb-production
     container_name: telegram-newsroom
     restart: unless-stopped
-    init: true
     stop_grace_period: 45s
     env_file:
       - .env

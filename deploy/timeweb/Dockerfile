@@ -7,7 +7,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PYTHONPATH=/app
+    PYTHONPATH=/app \
+    TINI_SUBREAPER=1
 
 WORKDIR /app
 
@@ -49,5 +50,5 @@ STOPSIGNAL SIGTERM
 HEALTHCHECK --interval=60s --timeout=20s --start-period=120s --retries=3 \
   CMD ["python", "/app/docker/healthcheck.py"]
 
-ENTRYPOINT ["/usr/bin/tini", "--"]
+ENTRYPOINT ["/usr/bin/tini", "-s", "--"]
 CMD ["python", "-m", "app.main"]

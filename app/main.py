@@ -13,6 +13,7 @@ from app import lifecycle
 from app.config import Settings, load_settings
 from app.health import run_startup_healthchecks
 from app.telegram_bot import create_newsroom_bot
+from app.telegram_polling import run_polling_supervisor
 from app.startup_notify import send_startup_banner
 from app.startup_validation import validate_settings_for_launch
 from bot.admin_handlers import register_handlers
@@ -143,16 +144,33 @@ async def main() -> None:
     scheduler.start()
     logger.info("Scheduler started (pipeline every %s minutes)", settings.pipeline_interval_minutes)
 
+    shutdown_event = asyncio.Event()
+
+    def _request_shutdown() -> None:
+        shutdown_event.set()
+
     try:
-        await dp.start_polling(
-            bot,
-            handle_signals=True,
-            allowed_updates=dp.resolve_used_update_types(),
-        )
+        loop = asyncio.get_running_loop()
+        for sig in (asyncio.signal.Signals.SIGTERM, asyncio.signal.Signals.SIGINT):
+            try:
+                loop.add_signal_handler(sig, _request_shutdown)
+            except (NotImplementedError, RuntimeError):
+                pass
+    except Exception:
+        pass
+
+    try:
+        await run_polling_supervisor(bot, dp, settings, shutdown_event=shutdown_event)
     except asyncio.CancelledError:
         logger.info("Main polling cancelled")
+        shutdown_event.set()
         raise
     finally:
+        shutdown_event.set()
+        try:
+            await dp.stop_polling()
+        except Exception:
+            pass
         try:
             await lifecycle.graceful_shutdown(
                 scheduler=scheduler,

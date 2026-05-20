@@ -52,6 +52,8 @@ class RuntimeDependencyState:
     ai_pipeline_enabled: bool = True
     collector_enabled: bool = True
     startup_complete: bool = False
+    polling_active: bool = False
+    polling_retry_count: int = 0
 
     def set_dependency(
         self,
@@ -97,13 +99,18 @@ class RuntimeDependencyState:
         }
 
     def health_payload(self) -> dict[str, Any]:
+        tg = self.telegram_api.to_dict()
+        tg["polling_active"] = self.polling_active
+        tg["retry_count"] = self.polling_retry_count
+        deps = self.dependencies_dict()
+        deps["telegram_api"] = tg
         return {
             "status": self.aggregate_status().value,
             "service": "newsroom",
             "startup_complete": self.startup_complete,
             "ai_pipeline_enabled": self.ai_pipeline_enabled,
             "collector_enabled": self.collector_enabled,
-            "dependencies": self.dependencies_dict(),
+            "dependencies": deps,
         }
 
 
