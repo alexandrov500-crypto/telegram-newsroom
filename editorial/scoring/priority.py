@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from editorial.scoring.base import clamp01, safe_float
+from editorial.scoring.base import (
+    WEIGHT_CLUSTER_CHANNELS,
+    WEIGHT_CLUSTER_CONVERGENCE,
+    WEIGHT_CLUSTER_SIZE,
+    normalize_score,
+    safe_float,
+)
 
 
 def compute_duplicate_confidence(
@@ -16,7 +22,7 @@ def compute_duplicate_confidence(
     card = editorial_scores_card or {}
     max_pct = safe_float(intel.get("max_similarity_pct"), 0.0) / 100.0
     card_dup = safe_float(card.get("duplicate_confidence"), 0.0)
-    return round(clamp01(max(max_pct, card_dup)), 4)
+    return normalize_score(max(max_pct, card_dup))
 
 
 def compute_cluster_importance_score(
@@ -25,10 +31,14 @@ def compute_cluster_importance_score(
     unique_channel_count: int,
     source_convergence: float,
 ) -> float:
-    size_part = clamp01(cluster_size / 12.0)
-    channel_part = clamp01(unique_channel_count / 5.0)
-    conv_part = clamp01(source_convergence)
-    return round(clamp01(0.45 * size_part + 0.35 * channel_part + 0.2 * conv_part), 4)
+    size_part = normalize_score(cluster_size / 12.0)
+    channel_part = normalize_score(unique_channel_count / 5.0)
+    conv_part = normalize_score(source_convergence)
+    return normalize_score(
+        WEIGHT_CLUSTER_SIZE * size_part
+        + WEIGHT_CLUSTER_CHANNELS * channel_part
+        + WEIGHT_CLUSTER_CONVERGENCE * conv_part
+    )
 
 
 def compute_publish_priority_score(
@@ -55,4 +65,4 @@ def compute_publish_priority_score(
             base += 0.15
         elif lvl == "low":
             base -= 0.1
-    return round(clamp01(base), 4)
+    return normalize_score(base)

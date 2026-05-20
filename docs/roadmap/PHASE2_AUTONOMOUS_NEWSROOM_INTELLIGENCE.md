@@ -9,13 +9,24 @@ Evolve from **stable operational runtime** to **autonomous editorial intelligenc
 
 ## Workstreams
 
-### 1. Quality scoring (runtime-integrated)
+### 1. Quality scoring (Phase 2.1 — shipped on `feature/phase2-quality-scoring`)
+
+- Explainable `editorial_scores` + `draft_extras.editorial_intelligence` (contract: `editorial/scoring/CONTRACT.md`)
+- Per-draft signals persisted; operator preview in Telegram
+
+### 2. Source trust evolution (Phase 2.2 — recommended next)
+
+- Dynamic source reputation beyond static JSON
+- Historical accuracy, operator corrections, cluster reliability
+- Source decay/recovery on existing scoring substrate
+
+### 3. Editorial memory (Phase 2.3+)
 
 - Per-draft / per-cluster quality signals persisted and exposed on `/health` v2 extensions
 - Gate publish decisions on configurable thresholds (profile-aware)
 - Operator-visible quality breakdown in admin Telegram + dashboard
 
-### 2. Editorial memory
+### 4. Editorial memory (continued)
 
 - Long-horizon context: topics, entities, recurring narratives, channel voice
 - Memory retrieval in summarization / headline / safety passes
@@ -27,13 +38,13 @@ Evolve from **stable operational runtime** to **autonomous editorial intelligenc
 - Scheduler tick budget allocation (collect → cluster → draft → publish)
 - Degraded-mode aware: skip AI-heavy stages when OpenAI/Telethon unavailable
 
-### 4. Semantic dedup evolution
+### 5. Semantic dedup evolution
 
 - Move beyond lexical Jaccard: embedding-backed near-duplicate detection (optional, feature-flagged)
 - Cross-channel duplicate suppression with explainable skip reasons in metrics
 - Backward-compatible fallback to current lexical pipeline
 
-### 5. Operator analytics layer
+### 6. Operator analytics layer
 
 - **Follow-up (separate PR):** fix `runtime_ops_state` persistence — atomic writes for
   `consecutive_failures`, `last_degraded_reason`, recovery timestamps, dependency transitions

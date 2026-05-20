@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+import json
+from dataclasses import dataclass, field, replace
 from typing import Any
+
+from editorial.scoring.base import SCORING_VERSION, normalize_score, publish_priority_label
 
 
 @dataclass(slots=True)
@@ -33,33 +36,67 @@ class EditorialIntelligenceScores:
     cluster_importance_score: float
     publish_priority_score: float
     operator_feedback_score: float | None = None
-    publish_priority_label: str = "medium"
+    operator_feedback_label: str | None = None
+    publish_priority_label: str = "MEDIUM"
+    scoring_version: str = SCORING_VERSION
+    reason_codes: list[str] = field(default_factory=list)
     reasons: list[str] = field(default_factory=list)
 
+    def normalized(self) -> EditorialIntelligenceScores:
+        """Enforce ``[0, 1]`` contract on all dimension scores."""
+        return replace(
+            self,
+            quality_score=normalize_score(self.quality_score),
+            novelty_score=normalize_score(self.novelty_score),
+            source_trust_score=normalize_score(self.source_trust_score),
+            duplicate_confidence=normalize_score(self.duplicate_confidence),
+            cluster_importance_score=normalize_score(self.cluster_importance_score),
+            publish_priority_score=normalize_score(self.publish_priority_score),
+            operator_feedback_score=(
+                normalize_score(self.operator_feedback_score)
+                if self.operator_feedback_score is not None
+                else None
+            ),
+            publish_priority_label=publish_priority_label(self.publish_priority_score),
+            scoring_version=SCORING_VERSION,
+        )
+
     def to_extras_payload(self) -> dict[str, Any]:
+        n = self.normalized()
         return {
-            "quality_score": round(self.quality_score, 4),
-            "novelty_score": round(self.novelty_score, 4),
-            "source_trust_score": round(self.source_trust_score, 4),
-            "duplicate_confidence": round(self.duplicate_confidence, 4),
-            "cluster_importance_score": round(self.cluster_importance_score, 4),
-            "publish_priority_score": round(self.publish_priority_score, 4),
-            "publish_priority": self.publish_priority_label,
-            "operator_feedback_score": self.operator_feedback_score,
-            "reasons": list(self.reasons),
+            "scoring_version": n.scoring_version,
+            "quality_score": n.quality_score,
+            "novelty_score": n.novelty_score,
+            "source_trust_score": n.source_trust_score,
+            "duplicate_confidence": n.duplicate_confidence,
+            "cluster_importance_score": n.cluster_importance_score,
+            "publish_priority_score": n.publish_priority_score,
+            "publish_priority": n.publish_priority_label,
+            "operator_feedback_score": n.operator_feedback_score,
+            "operator_feedback_label": n.operator_feedback_label,
+            "reason_codes": list(n.reason_codes),
+            "reasons": list(n.reasons),
         }
 
     def to_db_row(self, *, draft_id: int) -> dict[str, Any]:
-        import json
-
+        n = self.normalized()
         return {
             "draft_id": draft_id,
-            "quality_score": self.quality_score,
-            "novelty_score": self.novelty_score,
-            "source_trust_score": self.source_trust_score,
-            "duplicate_confidence": self.duplicate_confidence,
-            "cluster_importance_score": self.cluster_importance_score,
-            "publish_priority_score": self.publish_priority_score,
-            "operator_feedback_score": self.operator_feedback_score,
-            "reasons_json": json.dumps({"reasons": self.reasons}, ensure_ascii=False),
+            "scoring_version": n.scoring_version,
+            "quality_score": n.quality_score,
+            "novelty_score": n.novelty_score,
+            "source_trust_score": n.source_trust_score,
+            "duplicate_confidence": n.duplicate_confidence,
+            "cluster_importance_score": n.cluster_importance_score,
+            "publish_priority_score": n.publish_priority_score,
+            "operator_feedback_score": n.operator_feedback_score,
+            "operator_feedback_label": n.operator_feedback_label,
+            "reasons_json": json.dumps(
+                {
+                    "scoring_version": n.scoring_version,
+                    "reason_codes": list(n.reason_codes),
+                    "reasons": list(n.reasons),
+                },
+                ensure_ascii=False,
+            ),
         }

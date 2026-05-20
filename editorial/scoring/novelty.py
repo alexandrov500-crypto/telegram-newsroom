@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from editorial.scoring.base import clamp01, safe_float
+from editorial.scoring.base import normalize_score, safe_float
 
 
 def compute_novelty_score(
@@ -21,4 +21,4 @@ def compute_novelty_score(
     related = intel.get("related") if isinstance(intel.get("related"), list) else []
     if len(related) >= 3:
         base -= 0.08
-    return round(clamp01(base), 4)
+    return normalize_score(base)

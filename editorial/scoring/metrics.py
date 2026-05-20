@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from editorial.scoring.base import SCORING_VERSION
 from editorial.scoring.models import EditorialIntelligenceScores
 from utils.metrics import inc, set_gauge
 
@@ -16,8 +17,11 @@ _count_scores = 0
 
 
 def record_scoring_success(scores: EditorialIntelligenceScores) -> None:
+    """Aggregate counters only — never attach reason codes/text as metric labels."""
     global _sum_quality, _sum_novelty, _count_scores
     inc(SCORED_ARTICLES_TOTAL)
+    # Fixed low-cardinality version marker (not per-reason labels).
+    set_gauge("editorial_scoring_version_epoch", 1.0 if scores.scoring_version == SCORING_VERSION else 0.0)
     _count_scores += 1
     _sum_quality += scores.quality_score
     _sum_novelty += scores.novelty_score

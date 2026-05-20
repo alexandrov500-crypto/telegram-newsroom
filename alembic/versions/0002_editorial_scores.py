@@ -36,6 +36,8 @@ def upgrade() -> None:
         sa.Column("cluster_importance_score", sa.Float(), nullable=False, server_default="0"),
         sa.Column("publish_priority_score", sa.Float(), nullable=False, server_default="0"),
         sa.Column("operator_feedback_score", sa.Float(), nullable=True),
+        sa.Column("operator_feedback_label", sa.String(length=64), nullable=True),
+        sa.Column("scoring_version", sa.String(length=32), nullable=False, server_default="phase2.1-v1"),
         sa.Column("reasons_json", sa.Text(), nullable=False, server_default="{}"),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.UniqueConstraint("draft_id", name="uq_editorial_scores_draft_id"),

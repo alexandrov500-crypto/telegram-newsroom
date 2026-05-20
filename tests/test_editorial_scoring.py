@@ -11,7 +11,9 @@ from sqlalchemy import select
 
 from db.models import Draft, EditorialScore, RawPost
 from db.session import init_db, session_scope
-from editorial.scoring.explainability import build_explainability_reasons
+from editorial.scoring.base import SCORING_VERSION, PRIORITY_HIGH_THRESHOLD, publish_priority_label
+from editorial.scoring.explainability import REASON_CATALOG, build_explainability
+from editorial.scoring.operator_feedback import apply_operator_feedback
 from editorial.scoring.metrics import (
     SCORED_ARTICLES_TOTAL,
     SCORING_FAILURES_TOTAL,
@@ -73,12 +75,47 @@ def test_compute_editorial_intelligence_deterministic() -> None:
     assert 0.0 <= a.quality_score <= 1.0
 
 
-def test_explainability_reasons_not_empty() -> None:
+def test_explainability_reason_codes_and_labels() -> None:
     inp = _scoring_input()
     scores = compute_editorial_intelligence(inp)
-    scores.reasons = build_explainability_reasons(inp, scores)
+    assert scores.reason_codes
+    assert "multi_source_confirmation" in scores.reason_codes
     assert scores.reasons
-    assert "multi-source confirmation" in scores.reasons
+    assert REASON_CATALOG["multi_source_confirmation"] in scores.reasons
+
+
+def test_scores_normalized_to_unit_interval() -> None:
+    inp = _scoring_input()
+    scores = compute_editorial_intelligence(inp)
+    for attr in (
+        "quality_score",
+        "novelty_score",
+        "source_trust_score",
+        "duplicate_confidence",
+        "cluster_importance_score",
+        "publish_priority_score",
+    ):
+        v = getattr(scores, attr)
+        assert 0.0 <= v <= 1.0
+
+
+def test_priority_label_from_thresholds() -> None:
+    assert publish_priority_label(PRIORITY_HIGH_THRESHOLD) == "HIGH"
+    assert publish_priority_label(0.5) == "MEDIUM"
+    assert publish_priority_label(0.1) == "LOW"
+
+
+def test_scoring_version_present() -> None:
+    scores = compute_editorial_intelligence(_scoring_input())
+    assert scores.scoring_version == SCORING_VERSION
+    assert scores.to_extras_payload()["scoring_version"] == SCORING_VERSION
+
+
+def test_operator_feedback_hook() -> None:
+    base = compute_editorial_intelligence(_scoring_input())
+    updated = apply_operator_feedback(base, operator_feedback_score=0.9, operator_feedback_label="approve")
+    assert updated.operator_feedback_score == pytest.approx(0.9)
+    assert updated.operator_feedback_label == "approve"
 
 
 def test_preview_html_includes_scores_and_reasons() -> None:
@@ -179,7 +216,11 @@ def test_db_persistence_roundtrip() -> None:
                 timeout_sec=2.0,
             )
             assert payload is not None
+            assert payload.get("reason_codes")
+            assert payload.get("reason_codes")
             assert payload.get("reasons")
+            assert payload.get("scoring_version") == SCORING_VERSION
+            assert payload.get("scoring_version") == SCORING_VERSION
 
             from db.editorial_scores_repository import get_editorial_scores_for_draft
 

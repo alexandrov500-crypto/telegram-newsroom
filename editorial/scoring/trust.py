@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from editorial.scoring.base import clamp01, mean_or
+from editorial.scoring.base import mean_or, normalize_score
 
 
 def compute_source_trust_score(source_trust_by_channel: dict[str, float]) -> float:
     if not source_trust_by_channel:
         return 0.5
-    return round(clamp01(mean_or(0.5, list(source_trust_by_channel.values()))), 4)
+    return mean_or(0.5, list(source_trust_by_channel.values()))

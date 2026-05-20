@@ -18,6 +18,7 @@ def render_editorial_intelligence_html(intel: dict[str, Any] | None) -> str:
     cluster = intel.get("cluster_importance_score")
     pri = str(intel.get("publish_priority") or level_label(float(intel.get("publish_priority_score") or 0)).upper())
     reasons = intel.get("reasons") if isinstance(intel.get("reasons"), list) else []
+    version = str(intel.get("scoring_version") or "")
 
     lines = [
         "",
@@ -28,6 +29,8 @@ def render_editorial_intelligence_html(intel: dict[str, Any] | None) -> str:
         lines.append(f"Cluster importance: <code>{float(cluster):.2f}</code> • Priority: <code>{escape_telegram_html(pri)}</code>")
     else:
         lines.append(f"Priority: <code>{escape_telegram_html(pri)}</code>")
+    if version:
+        lines.append(f"<i>scoring</i> <code>{escape_telegram_html(version)}</code>")
     if reasons:
         lines.append("<b>Why selected</b>")
         for r in reasons[:8]:

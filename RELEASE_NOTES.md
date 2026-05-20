@@ -1,3 +1,36 @@
+# Release Notes
+
+## Phase 2.1 — Editorial quality intelligence (`feature/phase2-quality-scoring`)
+
+**Mandatory pre-start (DB upgrade):**
+
+```bash
+cd /opt/newsroom && alembic upgrade head
+```
+
+- Explainable scoring layer (`editorial/scoring/`, contract `CONTRACT.md`)
+- `editorial_scores` table + `draft_extras.editorial_intelligence`
+- Scoring version `phase2.1-v1`, reason codes + human labels, fail-open enrichment
+- Does **not** change runtime lifecycle (enrichment only)
+
+---
+
+# Release Notes
+
+## Phase 2.1 — Editorial quality intelligence (`feature/phase2-quality-scoring`)
+
+**Mandatory pre-start (existing DB):**
+
+```bash
+cd /opt/newsroom && alembic upgrade head
+```
+
+- New table `editorial_scores` (migration `0002`, contract columns `0003`)
+- Scoring contract: all scores `0.0..1.0`, version `phase2.1-v1`, stable `reason_codes`
+- See `editorial/scoring/CONTRACT.md`
+
+---
+
 # Release Notes — v3-production-degraded-runtime
 
 **Date:** 2026-05-20  

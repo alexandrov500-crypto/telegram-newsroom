@@ -92,6 +92,8 @@ class EditorialScore(Base):
     cluster_importance_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     publish_priority_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     operator_feedback_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    operator_feedback_label: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    scoring_version: Mapped[str] = mapped_column(String(32), nullable=False, default="phase2.1-v1")
     reasons_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 

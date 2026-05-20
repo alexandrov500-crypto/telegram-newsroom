@@ -10,7 +10,8 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import RawPost
-from editorial.scoring.explainability import build_explainability_reasons
+from editorial.scoring.base import SCORING_VERSION, publish_priority_label
+from editorial.scoring.explainability import build_explainability
 from editorial.scoring.models import EditorialIntelligenceScores, ScoringInput
 from editorial.scoring.novelty import compute_novelty_score
 from editorial.scoring.priority import (
@@ -20,7 +21,6 @@ from editorial.scoring.priority import (
 )
 from editorial.scoring.quality import compute_quality_score
 from editorial.scoring.trust import compute_source_trust_score
-from editorial.scoring.base import level_label
 from utils.source_reputation import export_channel_scores_for_priority
 from utils.structured_log import log_event
 
@@ -66,7 +66,6 @@ def compute_editorial_intelligence(inp: ScoringInput) -> EditorialIntelligenceSc
         cluster_importance=cluster_imp,
         quality_score=quality,
     )
-    label = level_label(pub_score, high=0.72, medium=0.45).upper()
     draft = EditorialIntelligenceScores(
         quality_score=quality,
         novelty_score=novelty,
@@ -75,10 +74,14 @@ def compute_editorial_intelligence(inp: ScoringInput) -> EditorialIntelligenceSc
         cluster_importance_score=cluster_imp,
         publish_priority_score=pub_score,
         operator_feedback_score=None,
-        publish_priority_label=label,
+        operator_feedback_label=None,
+        publish_priority_label=publish_priority_label(pub_score),
+        scoring_version=SCORING_VERSION,
     )
-    draft.reasons = build_explainability_reasons(inp, draft)
-    return draft
+    codes, labels = build_explainability(inp, draft)
+    draft.reason_codes = codes
+    draft.reasons = labels
+    return draft.normalized()
 
 
 def _build_input(
@@ -150,7 +153,13 @@ async def enrich_draft_editorial_intelligence(
         return None
 
     t0 = time.perf_counter()
-    log_event(logger, "editorial.scoring.started", draft_id=draft_id, timeout_sec=timeout_sec)
+    log_event(
+        logger,
+        "editorial.scoring.started",
+        draft_id=draft_id,
+        timeout_sec=timeout_sec,
+        scoring_version=SCORING_VERSION,
+    )
 
     try:
         inp = _build_input(
@@ -208,6 +217,7 @@ async def enrich_draft_editorial_intelligence(
             "editorial.scoring.failed",
             draft_id=draft_id,
             duration_sec=round(time.perf_counter() - t0, 4),
+            scoring_version=SCORING_VERSION,
             error="timeout",
             recovery="fail_open_skip",
         )
@@ -221,6 +231,7 @@ async def enrich_draft_editorial_intelligence(
             "editorial.scoring.failed",
             draft_id=draft_id,
             duration_sec=round(time.perf_counter() - t0, 4),
+            scoring_version=SCORING_VERSION,
             error=repr(exc)[:500],
             recovery="fail_open_skip",
         )
