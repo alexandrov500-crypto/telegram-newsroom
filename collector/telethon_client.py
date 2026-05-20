@@ -18,12 +18,15 @@ def build_telethon_client(
     session_string: str | None = None,
     session_path: str | None = None,
 ) -> TelegramClient:
-    if session_path:
+    if (session_string or "").strip():
+        session = StringSession(session_string.strip())
+        log_event(logger, "telethon.session_backend", backend="string")
+    elif session_path:
         session = SQLiteSession(session_path)
         log_event(logger, "telethon.session_backend", backend="sqlite", path=session_path)
     else:
-        session = StringSession(session_string or "")
-        log_event(logger, "telethon.session_backend", backend="string")
+        session = StringSession("")
+        log_event(logger, "telethon.session_backend", backend="string", empty=True)
 
     return TelegramClient(session, api_id, api_hash)
 
