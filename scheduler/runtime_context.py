@@ -13,6 +13,8 @@ class PipelineContext:
     settings: Settings
     bot: Bot
     openai: AsyncOpenAI
+    ai_pipeline_enabled: bool = True
+    collector_enabled: bool = True
     tick_timings: dict[str, float] = field(default_factory=dict)
     last_scheduler_wall_sec: float = 0.0
     tick_in_progress: bool = False

@@ -51,6 +51,8 @@ class Settings:
     worker_heartbeat_ttl_sec: int
     health_http_port: int
     health_http_bind: str
+    healthcheck_timeout_sec: float
+    telegram_http_timeout_sec: float
     # Optional shared secret for /ops* and /metrics when set (empty = no auth).
     ops_http_token: str
     pipeline_interval_minutes: int
@@ -251,6 +253,8 @@ def load_settings() -> Settings:
     openai_request_timeout = float(os.getenv("OPENAI_REQUEST_TIMEOUT_SEC", "90"))
     openai_http_timeout = float(os.getenv("OPENAI_HTTP_TIMEOUT_SEC", "120"))
     openai_max_retries = int(os.getenv("OPENAI_HTTP_MAX_RETRIES", "2"))
+    healthcheck_timeout = float(os.getenv("HEALTHCHECK_TIMEOUT_SEC", "60"))
+    telegram_http_timeout = float(os.getenv("TELEGRAM_HTTP_TIMEOUT_SEC", "60"))
 
     retention_raw = int(os.getenv("RETENTION_PROCESSED_RAW_DAYS", "30"))
     retention_rej = int(os.getenv("RETENTION_REJECTED_DRAFT_DAYS", "60"))
@@ -379,6 +383,8 @@ def load_settings() -> Settings:
         worker_heartbeat_ttl_sec=max(15, min(worker_hb_ttl, 3600)),
         health_http_port=max(0, min(health_http_port, 65535)),
         health_http_bind=health_http_bind,
+        healthcheck_timeout_sec=max(10.0, min(healthcheck_timeout, 300.0)),
+        telegram_http_timeout_sec=max(10.0, min(telegram_http_timeout, 300.0)),
         ops_http_token=ops_http_token[:512],
         pipeline_interval_minutes=max(1, pipeline_interval),
         collect_messages_per_channel=max(1, min(collect_limit, 200)),

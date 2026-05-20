@@ -34,7 +34,7 @@ services:
       test: ["CMD", "python", "/app/docker/http_ready_probe.py"]
       interval: 60s
       timeout: 20s
-      start_period: 120s
+      start_period: 180s
       retries: 3
     logging:
       driver: json-file

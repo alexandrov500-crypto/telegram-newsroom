@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from app.dependency_state import AggregateStatus, reset_dependency_state
 from app.startup_validation import validate_settings_for_launch
 from tests.conftest import minimal_test_settings
 
@@ -60,6 +61,8 @@ def test_run_startup_healthchecks_success(monkeypatch):
     pytest.importorskip("openai")
     from app.health import run_startup_healthchecks
 
+    reset_dependency_state()
+
     class FakeConn:
         async def execute(self, *args, **kwargs):
             return None
@@ -86,9 +89,10 @@ def test_run_startup_healthchecks_success(monkeypatch):
     settings = minimal_test_settings()
 
     async def main() -> None:
-        await run_startup_healthchecks(settings, mock_bot, mock_openai, health_timeout_sec=5.0)
+        return await run_startup_healthchecks(settings, mock_bot, mock_openai)
 
-    asyncio.run(main())
+    result = asyncio.run(main())
+    assert result.aggregate == AggregateStatus.HEALTHY
 
     mock_engine.connect.assert_called()
     mock_openai.models.retrieve.assert_called_once()
@@ -98,6 +102,8 @@ def test_run_startup_healthchecks_success(monkeypatch):
 def test_run_startup_healthchecks_raises_on_db_failure(monkeypatch):
     pytest.importorskip("openai")
     from app.health import run_startup_healthchecks
+
+    reset_dependency_state()
 
     mock_engine = MagicMock()
 
@@ -121,7 +127,35 @@ def test_run_startup_healthchecks_raises_on_db_failure(monkeypatch):
     settings = minimal_test_settings()
 
     async def main() -> None:
-        await run_startup_healthchecks(settings, mock_bot, mock_openai, health_timeout_sec=5.0)
+        await run_startup_healthchecks(settings, mock_bot, mock_openai)
 
     with pytest.raises(RuntimeError, match="Startup healthchecks failed"):
         asyncio.run(main())
+
+
+def test_telegram_bot_get_me_retries_on_timeout(monkeypatch):
+    pytest.importorskip("aiogram")
+    from app.health import _check_telegram_bot
+
+    calls = {"n": 0}
+
+    async def flaky_get_me():
+        calls["n"] += 1
+        if calls["n"] < 2:
+            raise TimeoutError()
+        m = MagicMock()
+        m.id = 42
+        m.username = "retrybot"
+        return m
+
+    mock_bot = MagicMock()
+    mock_bot.get_me = AsyncMock(side_effect=flaky_get_me)
+    monkeypatch.setattr("app.health.asyncio.sleep", AsyncMock())
+
+    settings = minimal_test_settings(healthcheck_timeout_sec=5.0)
+
+    async def main() -> None:
+        await _check_telegram_bot(settings, mock_bot)
+
+    asyncio.run(main())
+    assert calls["n"] == 2

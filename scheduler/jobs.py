@@ -79,9 +79,22 @@ from utils.text_hash import sha256_hex
 logger = logging.getLogger(__name__)
 
 
-def build_pipeline_context(settings: Settings, bot: Bot, openai: AsyncOpenAI) -> PipelineContext:
+def build_pipeline_context(
+    settings: Settings,
+    bot: Bot,
+    openai: AsyncOpenAI,
+    *,
+    ai_pipeline_enabled: bool = True,
+    collector_enabled: bool = True,
+) -> PipelineContext:
     configure_deque_maxlen(settings)
-    ctx = PipelineContext(settings=settings, bot=bot, openai=openai)
+    ctx = PipelineContext(
+        settings=settings,
+        bot=bot,
+        openai=openai,
+        ai_pipeline_enabled=ai_pipeline_enabled,
+        collector_enabled=collector_enabled,
+    )
     set_pipeline_context(ctx)
     return ctx
 
@@ -91,6 +104,9 @@ def _round_timings(d: dict[str, float]) -> dict[str, float]:
 
 
 async def _collect_step(ctx: PipelineContext) -> None:
+    if not ctx.collector_enabled:
+        log_event(logger, "collector.skipped", reason="telethon_degraded")
+        return
     settings = ctx.settings
     t0 = time.perf_counter()
     client = build_telethon_client(
@@ -161,6 +177,9 @@ async def _retention_step(settings: Settings) -> tuple[float, int, int]:
 
 
 async def _summarize_step(ctx: PipelineContext) -> None:
+    if not ctx.ai_pipeline_enabled:
+        log_event(logger, "scheduler.summarize_skipped", reason="openai_degraded", stage="startup")
+        return
     openai = ctx.openai
     settings = ctx.settings
     bot = ctx.bot

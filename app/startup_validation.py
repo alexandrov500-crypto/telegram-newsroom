@@ -19,6 +19,10 @@ def _append_runtime_environment_checks(settings: Settings, errors: list[str]) ->
         errors.append("OpenAI request/HTTP timeouts must be positive")
     if settings.openai_request_timeout_sec > settings.openai_http_timeout_sec:
         errors.append("OPENAI_REQUEST_TIMEOUT_SEC must be <= OPENAI_HTTP_TIMEOUT_SEC")
+    if settings.healthcheck_timeout_sec <= 0 or settings.telegram_http_timeout_sec <= 0:
+        errors.append("HEALTHCHECK_TIMEOUT_SEC and TELEGRAM_HTTP_TIMEOUT_SEC must be positive")
+    if settings.healthcheck_timeout_sec > settings.telegram_http_timeout_sec:
+        errors.append("HEALTHCHECK_TIMEOUT_SEC should be <= TELEGRAM_HTTP_TIMEOUT_SEC")
 
     try:
         from sqlalchemy.engine.url import make_url

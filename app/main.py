@@ -5,14 +5,14 @@ import logging
 import time
 from datetime import datetime
 
-from aiogram import Bot, Dispatcher
-from aiogram.enums import ParseMode
+from aiogram import Dispatcher
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from ai.openai_client import create_openai_client
 from app import lifecycle
 from app.config import Settings, load_settings
 from app.health import run_startup_healthchecks
+from app.telegram_bot import create_newsroom_bot
 from app.startup_notify import send_startup_banner
 from app.startup_validation import validate_settings_for_launch
 from bot.admin_handlers import register_handlers
@@ -65,19 +65,37 @@ async def main() -> None:
 
         health_http_server = await serve_health_http(settings)
 
-    bot = Bot(settings.bot_token, parse_mode=ParseMode.HTML)
+    bot = create_newsroom_bot(settings)
     openai = create_openai_client(
         settings.openai_api_key,
         timeout=settings.openai_http_timeout_sec,
         max_retries=settings.openai_max_retries,
     )
-    await run_startup_healthchecks(settings, bot, openai)
-    await send_startup_banner(bot, settings)
+    from app.dependency_state import AggregateStatus, get_dependency_state
+
+    startup = await run_startup_healthchecks(settings, bot, openai)
+    if startup.aggregate == AggregateStatus.DEGRADED:
+        logger.warning(
+            "Starting in degraded mode (ai_pipeline=%s collector=%s)",
+            startup.ai_pipeline_enabled,
+            startup.collector_enabled,
+        )
+    try:
+        await send_startup_banner(bot, settings)
+    except Exception as exc:
+        logger.warning("Startup banner skipped: %s", exc)
 
     dp = Dispatcher()
     register_handlers(dp, settings)
 
-    ctx = build_pipeline_context(settings, bot, openai)
+    deps = get_dependency_state()
+    ctx = build_pipeline_context(
+        settings,
+        bot,
+        openai,
+        ai_pipeline_enabled=deps.ai_pipeline_enabled,
+        collector_enabled=deps.collector_enabled,
+    )
 
     scheduler = AsyncIOScheduler(
         job_defaults={

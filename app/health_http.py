@@ -62,8 +62,13 @@ async def _handle_client(
     if method != "GET":
         writer.write(_http_response(405, b'{"error":"method_not_allowed"}'))
     elif path_only in ("/health", "/healthz"):
-        body = json.dumps({"status": "ok", "service": "newsroom"}, separators=(",", ":")).encode("utf-8")
-        writer.write(_http_response(200, body))
+        from app.dependency_state import get_dependency_state
+
+        payload = get_dependency_state().health_payload()
+        status = str(payload.get("status") or "healthy")
+        http_code = 503 if status == "unhealthy" else 200
+        body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        writer.write(_http_response(http_code, body))
     elif path_only in ("/ready", "/readiness"):
         from utils.runtime_health import gather_runtime_health
 
