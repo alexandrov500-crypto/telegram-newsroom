@@ -5,7 +5,6 @@ import asyncio
 import logging
 import os
 import socket
-import subprocess
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
