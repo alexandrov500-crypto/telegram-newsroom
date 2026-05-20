@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from editorial.scoring.base import mean_or, normalize_score
+from editorial.scoring.base import mean_or
 
 
 def compute_source_trust_score(source_trust_by_channel: dict[str, float]) -> float:

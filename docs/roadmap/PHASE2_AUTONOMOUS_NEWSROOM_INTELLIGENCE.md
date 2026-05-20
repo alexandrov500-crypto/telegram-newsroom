@@ -1,7 +1,7 @@
 # Phase 2 — Autonomous newsroom intelligence
 
 **Status:** roadmap (post `v3.0.0-production-runtime-baseline`)  
-**Baseline:** production-grade runtime on Timeweb VPS (`v3-live-telegram-validation` → `main`, tag `v3.0.0-production-runtime-baseline`)
+**Baseline:** production-grade runtime on Timeweb VPS (`main`, tag `v3.0.0-production-runtime-baseline`)
 
 ## Goal
 
@@ -9,64 +9,51 @@ Evolve from **stable operational runtime** to **autonomous editorial intelligenc
 
 ## Workstreams
 
-### 1. Quality scoring (Phase 2.1 — shipped on `feature/phase2-quality-scoring`)
+### 1. Quality scoring (Phase 2.1 — `feature/phase2-quality-scoring`)
 
-- Explainable `editorial_scores` + `draft_extras.editorial_intelligence` (contract: `editorial/scoring/CONTRACT.md`)
-- Per-draft signals persisted; operator preview in Telegram
+- Explainable `editorial_scores` + `draft_extras.editorial_intelligence`
+- Contract: `editorial/scoring/CONTRACT.md` (`phase2.1-v1`, scores `0.0..1.0`, `reason_codes`)
+- Operator preview in Telegram; fail-open enrichment
 
 ### 2. Source trust evolution (Phase 2.2 — recommended next)
 
 - Dynamic source reputation beyond static JSON
 - Historical accuracy, operator corrections, cluster reliability
-- Source decay/recovery on existing scoring substrate
+- Source decay/recovery on scoring substrate
 
-### 3. Editorial memory (Phase 2.3+)
-
-- Per-draft / per-cluster quality signals persisted and exposed on `/health` v2 extensions
-- Gate publish decisions on configurable thresholds (profile-aware)
-- Operator-visible quality breakdown in admin Telegram + dashboard
-
-### 4. Editorial memory (continued)
+### 3. Editorial memory
 
 - Long-horizon context: topics, entities, recurring narratives, channel voice
 - Memory retrieval in summarization / headline / safety passes
-- Retention policy aligned with `runtime_ops` and SQLite/Postgres backends
 
-### 3. Adaptive prioritization
+### 4. Adaptive prioritization
 
 - Source and cluster priority from engagement, freshness, conflict density, pipeline backlog
 - Scheduler tick budget allocation (collect → cluster → draft → publish)
-- Degraded-mode aware: skip AI-heavy stages when OpenAI/Telethon unavailable
 
 ### 5. Semantic dedup evolution
 
-- Move beyond lexical Jaccard: embedding-backed near-duplicate detection (optional, feature-flagged)
-- Cross-channel duplicate suppression with explainable skip reasons in metrics
-- Backward-compatible fallback to current lexical pipeline
+- Embedding-backed near-duplicate detection (feature-flagged)
+- Explainable skip reasons in metrics
 
 ### 6. Operator analytics layer
 
-- **Follow-up (separate PR):** fix `runtime_ops_state` persistence — atomic writes for
-  `consecutive_failures`, `last_degraded_reason`, recovery timestamps, dependency transitions
+- Fix `runtime_ops_state` persistence (separate ops PR)
 - SLO dashboards from Prometheus + structured logs
-- Incident bundle enrichment (`tools/debug_telegram_runtime.sh`)
 
 ## Non-goals (Phase 2)
 
 - Kubernetes / workflow orchestration (ADR-003)
 - Mandatory AI on startup (remain fail-open degraded)
-- Replacing Telegram polling supervisor
+- RLHF / autonomous publishing / self-modifying ranking
 
-## Acceptance (Phase 2 exit)
+## Deploy note (Phase 2.1)
 
-- [ ] Quality score visible per published post; configurable publish gate
-- [ ] Editorial memory influences ≥1 pipeline stage with measurable latency budget
-- [ ] Prioritization changes source order under load without starvation
-- [ ] Semantic dedup reduces duplicate publishes in soak test (metric: `skipped_duplicates`)
-- [ ] `runtime_ops_state` rows reflect live transitions after restart
+```bash
+alembic upgrade head   # mandatory before app start
+```
 
-## Suggested GitHub issue title
+## Suggested GitHub issues
 
-**Phase 2 — Autonomous newsroom intelligence**
-
-Copy this file into the issue body or link: `docs/roadmap/PHASE2_AUTONOMOUS_NEWSROOM_INTELLIGENCE.md`
+- **Phase 2.2 — Source trust evolution**
+- **Phase 2 — Autonomous newsroom intelligence** (umbrella)
