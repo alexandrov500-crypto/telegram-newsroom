@@ -136,6 +136,7 @@ def minimal_test_settings(**overrides: object) -> Settings:
         digest_multi_post_enabled=False,
         digest_cohesion_trigger_below=0.11,
         quality_scoring_enabled=True,
+        editorial_scoring_timeout_sec=2.0,
         newsroom_timezone="UTC",
         channel_routing_rules_json="{}",
         editorial_policies_json="{}",

@@ -1060,8 +1060,20 @@ async def on_diff_callback(callback: CallbackQuery, settings: Settings) -> None:
     await callback.answer("Diff sent")
 
 
-async def notify_admin_new_draft(bot: Bot, settings: Settings, *, draft_id: int, content: str, sources: str) -> None:
+async def notify_admin_new_draft(
+    bot: Bot,
+    settings: Settings,
+    *,
+    draft_id: int,
+    content: str,
+    sources: str,
+    editorial_intelligence: dict[str, object] | None = None,
+) -> None:
     html_body = format_draft_message(draft_id=draft_id, content=content, sources=sources)
+    if editorial_intelligence:
+        from editorial.scoring.preview import render_editorial_intelligence_html
+
+        html_body = html_body + render_editorial_intelligence_html(editorial_intelligence)
     if len(html_body) <= SAFE_CHUNK:
         msg = await bot.send_message(
             chat_id=settings.admin_user_id,

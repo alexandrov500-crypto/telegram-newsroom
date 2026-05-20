@@ -42,6 +42,8 @@ _counts: dict[str, int] = {
     "telegram_network_failures_total": 0,
     "openai_failures_total": 0,
     "degraded_state_transitions_total": 0,
+    "scored_articles_total": 0,
+    "scoring_failures_total": 0,
 }
 
 _gauges: dict[str, float] = {}

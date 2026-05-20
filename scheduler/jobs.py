@@ -378,6 +378,7 @@ async def _summarize_step(ctx: PipelineContext) -> None:
     dedupe_since = utcnow() - timedelta(hours=settings.draft_dedupe_window_hours)
 
     t_dbw = time.perf_counter()
+    editorial_intel: dict[str, object] | None = None
     async with session_scope() as session:
         recent = await fetch_recent_drafts_for_dedupe(
             session,
@@ -587,6 +588,34 @@ async def _summarize_step(ctx: PipelineContext) -> None:
             },
         )
 
+        src_conv = round(source_convergence_score(used_posts), 4)
+        if settings.quality_scoring_enabled:
+            from editorial.scoring.service import enrich_draft_editorial_intelligence
+
+            editorial_intel = await enrich_draft_editorial_intelligence(
+                session,
+                draft_id=draft_id,
+                draft_text=draft_body,
+                used_posts=used_posts,
+                cluster_size=len(cluster),
+                sources_payload=sources_payload,
+                quality_scores=scores,
+                duplicate_intel=intel,
+                editorial_scores_card=ed_card.to_dict(),
+                publication_priority=pub_pri if isinstance(pub_pri, dict) else None,
+                editorial_priority=pri if isinstance(pri, dict) else None,
+                runtime_dir=settings.runtime_state_dir,
+                source_convergence=src_conv,
+                timeout_sec=settings.editorial_scoring_timeout_sec,
+                enabled=True,
+            )
+            if editorial_intel:
+                await merge_draft_extras(
+                    session,
+                    draft_id,
+                    {"editorial_intelligence": editorial_intel},
+                )
+
     inc("drafts_generated")
     log_event(
         logger,
@@ -605,6 +634,7 @@ async def _summarize_step(ctx: PipelineContext) -> None:
             draft_id=draft_id,
             content=draft_body,
             sources=sources_display,
+            editorial_intelligence=editorial_intel if isinstance(editorial_intel, dict) else None,
         )
         append_runtime_event(
             "draft_pending_moderation",

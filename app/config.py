@@ -113,6 +113,7 @@ class Settings:
     digest_multi_post_enabled: bool
     digest_cohesion_trigger_below: float
     quality_scoring_enabled: bool
+    editorial_scoring_timeout_sec: float
     # Newsroom operator UX (timezone label + optional JSON routing map: tag/category -> channel id)
     newsroom_timezone: str
     channel_routing_rules_json: str
@@ -461,6 +462,10 @@ def load_settings() -> Settings:
         digest_multi_post_enabled=_env_bool("DIGEST_MULTI_POST", "false"),
         digest_cohesion_trigger_below=max(0.02, min(digest_coh, 0.95)),
         quality_scoring_enabled=_env_bool("QUALITY_SCORING_ENABLED", "true"),
+        editorial_scoring_timeout_sec=max(
+            0.5,
+            min(float(os.getenv("EDITORIAL_SCORING_TIMEOUT_SEC", "2.0")), 30.0),
+        ),
         newsroom_timezone=newsroom_tz,
         channel_routing_rules_json=routing_rules,
         editorial_policies_json=editorial_policies_json,

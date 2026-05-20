@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -71,6 +71,29 @@ class RuntimeOpsState(Base):
     consecutive_failures: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_transition_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     state_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+
+
+class EditorialScore(Base):
+    """Explainable editorial intelligence per draft (Phase 2.1)."""
+
+    __tablename__ = "editorial_scores"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    draft_id: Mapped[int] = mapped_column(
+        ForeignKey("drafts.id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+    quality_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    novelty_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    source_trust_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    duplicate_confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    cluster_importance_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    publish_priority_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    operator_feedback_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    reasons_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class PublishedPost(Base):

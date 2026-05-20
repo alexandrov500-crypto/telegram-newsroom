@@ -40,6 +40,11 @@ def export_merged_metrics() -> dict:
         TELEGRAM_NETWORK_FAILURES,
         OPENAI_FAILURES_TOTAL,
         DEGRADED_TRANSITIONS,
+        "scored_articles_total",
+        "scoring_failures_total",
     ):
         ctr.setdefault(key, 0)
+    g = snap.setdefault("gauges", {})
+    g.setdefault("average_quality_score", 0.0)
+    g.setdefault("average_novelty_score", 0.0)
     return snap

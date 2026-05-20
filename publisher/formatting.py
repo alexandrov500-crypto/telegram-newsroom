@@ -133,7 +133,14 @@ def render_rich_draft_preview_html(
 
     parts: list[str] = [f"📰 <b>{title}</b>", "", f"<i>{summary}</i>"]
 
-    if quality:
+    intel = extras.get("editorial_intelligence") if isinstance(extras.get("editorial_intelligence"), dict) else {}
+    if intel:
+        from editorial.scoring.preview import render_editorial_intelligence_html
+
+        block = render_editorial_intelligence_html(intel)
+        if block:
+            parts.append(block)
+    elif quality:
         parts.extend(["", "<b>Quality</b>"])
         for k in sorted(quality.keys()):
             if k.endswith("_raw"):
