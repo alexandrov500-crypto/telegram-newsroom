@@ -16,7 +16,7 @@ from editorial.explanations import (
     explain_from_draft_extras,
     explain_suppression,
 )
-from utils.metrics import export_snapshot
+from app.runtime_metrics import export_merged_metrics
 from utils.prometheus_export import render_prometheus_metrics
 
 def ops_token_authorized(settings: Settings, query: dict[str, list[str]], headers: dict[str, str]) -> bool:
@@ -323,7 +323,7 @@ async def dispatch_ops_http(
     if p == "/metrics":
         if not ops_token_authorized(settings, query, headers):
             return 403, "text/plain", b"forbidden\n"
-        body = render_prometheus_metrics(export_snapshot()).encode("utf-8")
+        body = render_prometheus_metrics(export_merged_metrics()).encode("utf-8")
         return 200, "text/plain; charset=utf-8", body
 
     if p == "/ops" or p.startswith("/ops/"):

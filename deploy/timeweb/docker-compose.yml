@@ -8,6 +8,11 @@ services:
     build:
       context: ../..
       dockerfile: deploy/timeweb/Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
+        BUILD_TIMESTAMP: ${BUILD_TIMESTAMP:-unknown}
+        BUILD_BRANCH: ${BUILD_BRANCH:-unknown}
+        BUILD_VERSION: ${BUILD_VERSION:-unknown}
     image: telegram-newsroom:timeweb-production
     container_name: telegram-newsroom
     restart: unless-stopped

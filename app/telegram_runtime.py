@@ -14,7 +14,9 @@ from typing import Any
 
 from aiogram import Bot
 
+from app.build_provenance import load_build_provenance
 from app.config import Settings
+from app.runtime_metrics import inc_telegram_conflict
 from app.dependency_state import DependencyStatus, get_dependency_state
 from utils.structured_log import log_event
 
@@ -35,23 +37,14 @@ class RuntimeIdentity:
     hostname: str
     container_id: str
     git_sha: str
+    build_branch: str
+    build_timestamp: str
+    build_version: str
     runtime_mode: str
 
 
 def resolve_git_sha() -> str:
-    env_sha = os.getenv("GIT_SHA", "").strip() or os.getenv("NEWSROOM_GIT_SHA", "").strip()
-    if env_sha:
-        return env_sha[:40]
-    try:
-        out = subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"],
-            stderr=subprocess.DEVNULL,
-            timeout=2,
-            cwd=os.path.dirname(os.path.dirname(__file__)),
-        )
-        return out.decode().strip()[:40]
-    except Exception:
-        return "unknown"
+    return load_build_provenance().git_sha
 
 
 def resolve_container_id() -> str:
@@ -76,11 +69,15 @@ def build_runtime_identity(settings: Settings) -> RuntimeIdentity:
         mode = "safe_mode"
     if not settings.telegram_polling_enabled:
         mode = f"{mode}+polling_disabled"
+    prov = load_build_provenance()
     return RuntimeIdentity(
         polling_instance_id=POLLING_INSTANCE_ID,
         hostname=socket.gethostname(),
         container_id=resolve_container_id(),
-        git_sha=resolve_git_sha(),
+        git_sha=prov.git_sha,
+        build_branch=prov.build_branch,
+        build_timestamp=prov.build_timestamp,
+        build_version=prov.build_version,
         runtime_mode=mode,
     )
 
@@ -91,17 +88,24 @@ def identity_log_fields(identity: RuntimeIdentity) -> dict[str, Any]:
         "hostname": identity.hostname,
         "container_id": identity.container_id,
         "git_sha": identity.git_sha,
+        "build_branch": identity.build_branch,
+        "build_timestamp": identity.build_timestamp,
+        "build_version": identity.build_version,
         "runtime_mode": identity.runtime_mode,
     }
 
 
 def _identity_from_deps() -> RuntimeIdentity:
     deps = get_dependency_state()
+    prov = load_build_provenance()
     return RuntimeIdentity(
         polling_instance_id=deps.polling_instance_id or POLLING_INSTANCE_ID,
         hostname=socket.gethostname(),
         container_id=resolve_container_id(),
-        git_sha=resolve_git_sha(),
+        git_sha=prov.git_sha,
+        build_branch=prov.build_branch,
+        build_timestamp=prov.build_timestamp,
+        build_version=prov.build_version,
         runtime_mode="unknown",
     )
 
@@ -113,6 +117,9 @@ def identity_log_fields_from_state() -> dict[str, Any]:
         "hostname": ident.hostname,
         "container_id": ident.container_id,
         "git_sha": ident.git_sha,
+        "build_branch": ident.build_branch,
+        "build_timestamp": ident.build_timestamp,
+        "build_version": ident.build_version,
         "runtime_mode": ident.runtime_mode,
     }
 
@@ -203,12 +210,15 @@ async def log_runtime_startup_banner(bot: Bot, settings: Settings) -> None:
         deps.bot_username = bot_username
     except Exception as exc:
         log_event(logger, "telegram.runtime.banner_bot_probe_failed", error=repr(exc)[:300])
+    from app.build_provenance import RUNTIME_STARTED_AT_ISO
+
     log_event(
         logger,
         "telegram.runtime.startup_banner",
         bot_id=bot_id,
         bot_username=bot_username,
         telegram_polling_enabled=settings.telegram_polling_enabled,
+        runtime_started_at=RUNTIME_STARTED_AT_ISO,
         **identity_log_fields(identity),
     )
 
@@ -232,6 +242,7 @@ def record_polling_conflict(
     log_message: str = "",
 ) -> None:
     deps = get_dependency_state()
+    inc_telegram_conflict()
     deps.conflict_detected = True
     deps.polling_conflict_count += 1
     deps.set_dependency(

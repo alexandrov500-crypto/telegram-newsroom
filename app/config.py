@@ -54,6 +54,9 @@ class Settings:
     healthcheck_timeout_sec: float
     telegram_http_timeout_sec: float
     telegram_polling_enabled: bool
+    runtime_degraded_after_n_failures: int
+    runtime_unavailable_after_n_minutes: float
+    runtime_recovery_stability_window_sec: float
     # Optional shared secret for /ops* and /metrics when set (empty = no auth).
     ops_http_token: str
     pipeline_interval_minutes: int
@@ -387,6 +390,15 @@ def load_settings() -> Settings:
         healthcheck_timeout_sec=max(10.0, min(healthcheck_timeout, 300.0)),
         telegram_http_timeout_sec=max(10.0, min(telegram_http_timeout, 300.0)),
         telegram_polling_enabled=_env_bool("TELEGRAM_POLLING_ENABLED", "true"),
+        runtime_degraded_after_n_failures=max(
+            1, int(os.getenv("RUNTIME_DEGRADED_AFTER_N_FAILURES", "3"))
+        ),
+        runtime_unavailable_after_n_minutes=max(
+            1.0, float(os.getenv("RUNTIME_UNAVAILABLE_AFTER_N_MINUTES", "30"))
+        ),
+        runtime_recovery_stability_window_sec=max(
+            10.0, float(os.getenv("RUNTIME_RECOVERY_STABILITY_WINDOW_SEC", "120"))
+        ),
         ops_http_token=ops_http_token[:512],
         pipeline_interval_minutes=max(1, pipeline_interval),
         collect_messages_per_channel=max(1, min(collect_limit, 200)),

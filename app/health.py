@@ -287,7 +287,11 @@ async def run_startup_healthchecks(
     except Exception as exc:
         log_event(logger, "healthcheck.redis_check_failed", error=repr(exc), recovery="non_fatal")
 
+    from app.runtime_metrics import inc_openai_failure_total
+
     openai_status = await _check_openai(settings, openai)
+    if openai_status != DependencyStatus.HEALTHY:
+        inc_openai_failure_total()
     openai_detail = ""
     if openai_status != DependencyStatus.HEALTHY:
         openai_detail = "AI pipeline disabled at startup"

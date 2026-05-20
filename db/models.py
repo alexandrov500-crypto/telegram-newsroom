@@ -59,6 +59,20 @@ class Draft(Base):
     published: Mapped["PublishedPost | None"] = relationship(back_populates="draft", uselist=False)
 
 
+class RuntimeOpsState(Base):
+    """Singleton row persisted across restarts for ops continuity."""
+
+    __tablename__ = "runtime_ops_state"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    polling_instance_id: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    last_degraded_reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    last_recovery_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_transition_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    state_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+
+
 class PublishedPost(Base):
     __tablename__ = "published_posts"
 

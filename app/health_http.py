@@ -69,6 +69,16 @@ async def _handle_client(
         http_code = 503 if status == "unhealthy" else 200
         body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
         writer.write(_http_response(http_code, body))
+    elif path_only in ("/version", "/version.json"):
+        from app.build_provenance import version_payload
+        from app.dependency_state import get_dependency_state
+
+        deps = get_dependency_state()
+        body = json.dumps(
+            version_payload(polling_instance_id=deps.polling_instance_id or ""),
+            separators=(",", ":"),
+        ).encode("utf-8")
+        writer.write(_http_response(200, body))
     elif path_only in ("/ready", "/readiness"):
         from utils.runtime_health import gather_runtime_health
 

@@ -93,6 +93,7 @@ async def graceful_shutdown(
     scheduler: Any = None,
     openai: Any = None,
     bot: Any = None,
+    dispatcher: Any = None,
     settings: Any = None,
     shutdown_scheduler_timeout: float = 25.0,
     health_http_server: Any = None,
@@ -107,7 +108,15 @@ async def graceful_shutdown(
             return False
         _shutdown_done.set()
 
+    log_event(logger, "runtime.shutdown.started")
     try:
+        if dispatcher is not None:
+            try:
+                await dispatcher.stop_polling()
+                log_event(logger, "runtime.shutdown.polling_stopped")
+            except Exception as exc:
+                log_event(logger, "runtime.shutdown.polling_stop_failed", error=repr(exc))
+
         if scheduler is not None:
             try:
                 await asyncio.wait_for(
@@ -153,6 +162,14 @@ async def graceful_shutdown(
         await shutdown_collector_runtime()
 
         if settings is not None:
+            try:
+                from db.runtime_ops_repository import persist_runtime_ops_state
+
+                await persist_runtime_ops_state()
+            except Exception as exc:
+                log_event(logger, "runtime.shutdown.ops_persist_failed", error=repr(exc))
+
+        if settings is not None:
             from utils.runtime_state_store import try_save_runtime_snapshot
 
             try_save_runtime_snapshot(settings, "shutdown")
@@ -168,6 +185,7 @@ async def graceful_shutdown(
         except Exception as exc:
             log_event(logger, "lifecycle.task_sweep_failed", error=repr(exc))
 
+        log_event(logger, "runtime.shutdown.completed")
         log_event(logger, "lifecycle.shutdown_complete")
         return True
     except Exception as exc:

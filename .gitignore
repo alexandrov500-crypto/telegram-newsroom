@@ -28,6 +28,10 @@ build/
 *.db-shm
 *.session
 *.session-journal
+sessions/
+deploy/timeweb/.env.vps
+.env.tmp
+session_line.txt
 
 # --- Runtime / ops artifacts (local dev) ---
 var/

@@ -60,6 +60,10 @@ class RuntimeDependencyState:
     polling_instance_id: str = ""
     bot_id: int | None = None
     bot_username: str = ""
+    last_degraded_reason: str = ""
+    last_recovery_at_iso: str = ""
+    last_recovery_mono: float = 0.0
+    consecutive_failures: int = 0
 
     def set_dependency(
         self,
@@ -116,8 +120,19 @@ class RuntimeDependencyState:
             tg["bot_username"] = self.bot_username
         if self.polling_instance_id:
             tg["polling_instance_id"] = self.polling_instance_id
+        if self.last_degraded_reason:
+            tg["last_degraded_reason"] = self.last_degraded_reason
+        if self.last_recovery_at_iso:
+            tg["last_recovery_at"] = self.last_recovery_at_iso
+        tg["consecutive_failures"] = self.consecutive_failures
         deps = self.dependencies_dict()
         deps["telegram_api"] = tg
+        try:
+            from app.runtime_slo import slo_snapshot
+
+            slo = slo_snapshot()
+        except Exception:
+            slo = {}
         return {
             "status": self.aggregate_status().value,
             "service": "newsroom",
@@ -125,6 +140,7 @@ class RuntimeDependencyState:
             "ai_pipeline_enabled": self.ai_pipeline_enabled,
             "collector_enabled": self.collector_enabled,
             "dependencies": deps,
+            "runtime_slo": slo,
         }
 
 

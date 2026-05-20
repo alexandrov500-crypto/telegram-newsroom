@@ -1,3 +1,4 @@
 .env
+.env.vps
 *.session
 *.db

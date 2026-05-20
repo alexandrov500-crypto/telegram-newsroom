@@ -59,6 +59,13 @@ async def main() -> None:
     )
     lifecycle.log_startup_structured(settings, init_db_duration_sec=time.perf_counter() - t_db0)
 
+    try:
+        from db.runtime_ops_repository import apply_loaded_runtime_ops, load_runtime_ops_state
+
+        apply_loaded_runtime_ops(await load_runtime_ops_state())
+    except Exception as exc:
+        logger.warning("Runtime ops state load skipped: %s", exc)
+
     from utils.redis_client import init_redis_from_settings
     from worker.job_queue import init_job_queue
     from worker.reliable_transport import init_reliable_transport
@@ -193,6 +200,7 @@ async def main() -> None:
                 scheduler=scheduler,
                 openai=openai,
                 bot=bot,
+                dispatcher=dp,
                 settings=settings,
                 shutdown_scheduler_timeout=25.0,
                 health_http_server=health_http_server,
