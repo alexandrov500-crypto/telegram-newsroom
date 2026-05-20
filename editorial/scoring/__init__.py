@@ -4,9 +4,11 @@ from editorial.scoring.base import SCORING_VERSION, normalize_score, publish_pri
 from editorial.scoring.explainability import REASON_CATALOG, build_explainability, build_explainability_reasons
 from editorial.scoring.models import EditorialIntelligenceScores, ScoringInput
 from editorial.scoring.operator_feedback import apply_operator_feedback
+from editorial.scoring.score_card import compute_editorial_score_card
 from editorial.scoring.service import compute_editorial_intelligence, enrich_draft_editorial_intelligence
 
 __all__ = [
+    "compute_editorial_score_card",
     "SCORING_VERSION",
     "REASON_CATALOG",
     "EditorialIntelligenceScores",
