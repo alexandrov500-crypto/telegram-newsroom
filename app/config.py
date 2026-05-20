@@ -73,7 +73,10 @@ class Settings:
     dry_run: bool
     safe_mode: bool
     soak_test: bool
-    startup_telegram_notify: bool
+    send_startup_notification: bool
+    send_recovery_notification: bool
+    notification_rate_limit_minutes: float
+    startup_telegram_notify: bool  # deprecated alias → send_startup_notification
     diagnostics_interval_minutes: int
     metrics_summary_interval_minutes: int
     sqlite_analyze_interval_hours: int
@@ -306,7 +309,13 @@ def load_settings() -> Settings:
 
     soak = _env_bool("SOAK_TEST", "false")
     safe_mode = _env_bool("NEWSROOM_SAFE_MODE", "false")
-    startup_notify = _env_bool("TELEGRAM_STARTUP_NOTIFY", "false")
+    _startup_notify_raw = os.getenv("SEND_STARTUP_NOTIFICATION", "").strip()
+    if _startup_notify_raw:
+        send_startup_notification = _env_bool("SEND_STARTUP_NOTIFICATION", "true")
+    else:
+        send_startup_notification = _env_bool("TELEGRAM_STARTUP_NOTIFY", "false")
+    send_recovery_notification = _env_bool("SEND_RECOVERY_NOTIFICATION", "false")
+    notification_rate_limit_min = float(os.getenv("NOTIFICATION_RATE_LIMIT_MINUTES", "30"))
 
     if soak and diag_min == 0:
         diag_min = 30
@@ -414,7 +423,10 @@ def load_settings() -> Settings:
         dry_run=_env_bool("DRY_RUN", "false"),
         safe_mode=safe_mode,
         soak_test=soak,
-        startup_telegram_notify=startup_notify,
+        send_startup_notification=send_startup_notification,
+        send_recovery_notification=send_recovery_notification,
+        notification_rate_limit_minutes=max(1.0, min(notification_rate_limit_min, 24 * 60.0)),
+        startup_telegram_notify=send_startup_notification,
         diagnostics_interval_minutes=max(0, min(diag_min, 24 * 60)),
         metrics_summary_interval_minutes=max(0, min(metrics_sum_min, 24 * 60)),
         sqlite_analyze_interval_hours=max(0, min(sqlite_analyze_h, 24 * 30)),

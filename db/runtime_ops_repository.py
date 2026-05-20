@@ -24,7 +24,7 @@ def _utcnow() -> datetime:
 
 def _state_blob() -> dict[str, Any]:
     deps = get_dependency_state()
-    return {
+    blob: dict[str, Any] = {
         "telegram_mode": deps.telegram_mode,
         "conflict_detected": deps.conflict_detected,
         "polling_active": deps.polling_active,
@@ -33,6 +33,13 @@ def _state_blob() -> dict[str, Any]:
         "aggregate": deps.aggregate_status().value,
         "recorded_unix": time.time(),
     }
+    try:
+        from app.runtime_notifications import notification_state_for_persist
+
+        blob["notifications"] = notification_state_for_persist()
+    except Exception:
+        pass
+    return blob
 
 
 async def persist_runtime_ops_state() -> None:
@@ -87,6 +94,16 @@ def apply_loaded_runtime_ops(data: dict[str, Any] | None) -> None:
     deps.consecutive_failures = int(data.get("consecutive_failures") or 0)
     if data.get("last_recovery_at"):
         deps.last_recovery_at_iso = str(data["last_recovery_at"])
+    sj = data.get("state_json") if isinstance(data.get("state_json"), dict) else {}
+    notif = sj.get("notifications") if isinstance(sj.get("notifications"), dict) else {}
+    if not notif and isinstance(data.get("notifications"), dict):
+        notif = data["notifications"]
+    if notif:
+        from app.runtime_notifications import apply_persisted_notification_state
+
+        apply_persisted_notification_state(
+            last_startup_notification_at_unix=notif.get("last_startup_notification_at_unix"),
+        )
 
 
 def persist_runtime_ops_state_fire_and_forget() -> None:

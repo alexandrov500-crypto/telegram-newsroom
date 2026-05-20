@@ -30,6 +30,7 @@ from app.runtime_metrics import (
     inc_telegram_conflict,
     inc_telegram_network_failure,
 )
+from app.runtime_notifications import maybe_send_polling_recovery_notification
 from app.runtime_slo import record_dependency_transition
 from utils.structured_log import log_event
 
@@ -147,6 +148,12 @@ async def run_connectivity_probe(
                     duration_sec=duration_sec,
                     bot_id=me.id,
                     username=me.username or "",
+                )
+                await maybe_send_polling_recovery_notification(
+                    bot,
+                    settings,
+                    cause="connectivity_probe",
+                    retry_count=probe_retry,
                 )
             return DependencyStatus.HEALTHY
         except Exception as exc:
@@ -278,6 +285,12 @@ async def run_polling_supervisor(
                     retry_count=cycle_retry,
                     backoff_sec=0,
                     duration_sec=round(time.perf_counter() - t_poll0, 4),
+                )
+                await maybe_send_polling_recovery_notification(
+                    bot,
+                    settings,
+                    cause="polling_supervisor",
+                    retry_count=cycle_retry,
                 )
             was_ever_connected = True
             retry_count = 0

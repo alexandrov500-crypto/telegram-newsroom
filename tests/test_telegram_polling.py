@@ -48,6 +48,8 @@ def test_connectivity_probe_recovers_after_timeout() -> None:
     bot.get_me = get_me
     settings = MagicMock()
     settings.healthcheck_timeout_sec = 2.0
+    settings.send_recovery_notification = False
+    settings.notification_rate_limit_minutes = 30.0
 
     with patch("app.telegram_polling.asyncio.sleep", new_callable=AsyncMock):
         status = asyncio.run(run_connectivity_probe(bot, settings))
@@ -90,6 +92,10 @@ def test_supervisor_retries_on_network_error_without_exit() -> None:
     settings.soak_test = False
     settings.safe_mode = False
     settings.telegram_polling_enabled = True
+    settings.send_recovery_notification = False
+    settings.send_startup_notification = False
+    settings.notification_rate_limit_minutes = 30.0
+    settings.admin_user_id = 1
 
     with patch("app.telegram_polling.asyncio.sleep", new_callable=AsyncMock):
         with patch("app.telegram_polling.register_conflict_log_handler"):
