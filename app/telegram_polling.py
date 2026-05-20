@@ -4,16 +4,27 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+
 from aiohttp import ClientError
 from aiogram import Bot, Dispatcher
 from aiogram.exceptions import (
     TelegramBadRequest,
+    TelegramConflictError,
     TelegramNetworkError,
     TelegramUnauthorizedError,
 )
 
 from app.config import Settings
 from app.dependency_state import DependencyStatus, get_dependency_state
+from app.telegram_runtime import (
+    TelegramApiMode,
+    build_runtime_identity,
+    clear_polling_conflict_if_calm,
+    ensure_webhook_cleared_with_verify,
+    record_polling_conflict,
+    register_conflict_log_handler,
+    run_conflict_recovery_watcher,
+)
 from utils.structured_log import log_event
 
 logger = logging.getLogger(__name__)
@@ -33,9 +44,11 @@ def polling_backoff_sec(retry_count: int) -> float:
 
 
 def classify_telegram_failure(exc: BaseException) -> DependencyStatus:
-    """Only auth/config failures are unavailable; network is degraded."""
+    """Only auth/config failures are unavailable; network/conflict is degraded."""
     if isinstance(exc, _AUTH_FATAL_TYPES):
         return DependencyStatus.UNAVAILABLE
+    if isinstance(exc, TelegramConflictError):
+        return DependencyStatus.DEGRADED
     if isinstance(exc, TelegramBadRequest):
         msg = str(exc).lower()
         if "token" in msg or "unauthorized" in msg:
@@ -48,7 +61,7 @@ def is_retriable_telegram_error(exc: BaseException) -> bool:
         return False
     if isinstance(exc, _AUTH_FATAL_TYPES):
         return True
-    if isinstance(exc, (TelegramNetworkError, asyncio.TimeoutError, TimeoutError, ClientError)):
+    if isinstance(exc, (TelegramConflictError, TelegramNetworkError, asyncio.TimeoutError, TimeoutError, ClientError)):
         return True
     if isinstance(exc, TelegramBadRequest):
         return classify_telegram_failure(exc) == DependencyStatus.DEGRADED
@@ -68,25 +81,19 @@ def set_telegram_api_runtime(
     *,
     status: DependencyStatus,
     detail: str = "",
+    mode: TelegramApiMode | None = None,
     polling_active: bool = False,
     retry_count: int = 0,
+    conflict_detected: bool | None = None,
 ) -> None:
     deps = get_dependency_state()
     deps.set_dependency("telegram_api", status=status, detail=detail)
     deps.polling_active = polling_active
     deps.polling_retry_count = retry_count
-
-
-async def ensure_webhook_cleared(bot: Bot) -> None:
-    try:
-        await bot.delete_webhook(drop_pending_updates=True)
-    except Exception as exc:
-        log_event(
-            logger,
-            "telegram.webhook.delete_failed",
-            recovery="continue_polling",
-            **_exc_fields(exc),
-        )
+    if mode is not None:
+        deps.telegram_mode = mode.value
+    if conflict_detected is not None:
+        deps.conflict_detected = conflict_detected
 
 
 async def run_connectivity_probe(
@@ -95,9 +102,7 @@ async def run_connectivity_probe(
     *,
     retry_count_start: int = 0,
 ) -> DependencyStatus:
-    """
-    Lightweight ``get_me()`` probe with backoff; updates ``telegram_api`` dependency.
-    """
+    """Lightweight ``get_me()`` probe with backoff; updates ``telegram_api`` dependency."""
     timeout_sec = settings.healthcheck_timeout_sec
     attempt = 0
     probe_retry = retry_count_start
@@ -108,11 +113,16 @@ async def run_connectivity_probe(
         try:
             me = await asyncio.wait_for(bot.get_me(), timeout=timeout_sec)
             duration_sec = round(time.perf_counter() - t0, 4)
+            deps = get_dependency_state()
+            deps.bot_id = me.id
+            deps.bot_username = me.username or ""
             set_telegram_api_runtime(
                 status=DependencyStatus.HEALTHY,
                 detail=f"connected bot_id={me.id}",
+                mode=TelegramApiMode.POLLING,
                 polling_active=False,
                 retry_count=0,
+                conflict_detected=False,
             )
             if probe_retry > 0:
                 log_event(
@@ -180,10 +190,14 @@ async def run_polling_supervisor(
     shutdown_event: asyncio.Event | None = None,
 ) -> None:
     """
-    Infinite supervisor: probe → clear webhook → poll → backoff on failure.
-    Never raises retriable network errors to the caller.
+    Infinite supervisor: webhook diagnostics → probe → poll → backoff on failure.
+    Never raises retriable network/conflict errors to the caller.
     """
+    register_conflict_log_handler()
     shutdown = shutdown_event or asyncio.Event()
+    identity = build_runtime_identity(settings)
+    deps = get_dependency_state()
+    deps.polling_instance_id = identity.polling_instance_id
     allowed = dp.resolve_used_update_types()
     retry_count = 0
     was_ever_connected = False
@@ -196,9 +210,12 @@ async def run_polling_supervisor(
             "telegram.polling.start",
             retry_count=cycle_retry,
             backoff_sec=backoff,
+            polling_instance_id=identity.polling_instance_id,
+            hostname=identity.hostname,
+            container_id=identity.container_id,
         )
 
-        await ensure_webhook_cleared(bot)
+        await ensure_webhook_cleared_with_verify(bot, identity=identity)
         probe_status = await run_connectivity_probe(bot, settings, retry_count_start=cycle_retry)
 
         if probe_status == DependencyStatus.UNAVAILABLE:
@@ -223,14 +240,19 @@ async def run_polling_supervisor(
             set_telegram_api_runtime(
                 status=DependencyStatus.HEALTHY,
                 detail="polling",
+                mode=TelegramApiMode.POLLING,
                 polling_active=True,
                 retry_count=0,
+                conflict_detected=False,
             )
             log_event(
                 logger,
                 "telegram.polling.connected",
                 retry_count=cycle_retry,
                 duration_sec=round(time.perf_counter() - t_poll0, 4),
+                bot_id=deps.bot_id,
+                bot_username=deps.bot_username,
+                polling_instance_id=identity.polling_instance_id,
             )
             if was_ever_connected and cycle_retry > 0:
                 log_event(
@@ -247,14 +269,45 @@ async def run_polling_supervisor(
                 _run_one_polling_session(bot, dp, allowed_updates=allowed),
                 name="telegram_polling",
             )
+            conflict_watch = asyncio.create_task(
+                run_conflict_recovery_watcher(poll_task, shutdown=shutdown),
+                name="telegram_conflict_watch",
+            )
             stop_wait = asyncio.create_task(shutdown.wait(), name="polling_shutdown_wait")
             done, pending = await asyncio.wait(
                 {poll_task, stop_wait},
                 return_when=asyncio.FIRST_COMPLETED,
             )
+            conflict_watch.cancel()
             for t in pending:
                 t.cancel()
             if poll_task in done:
+                if poll_task.cancelled():
+                    retry_count = max(retry_count, get_dependency_state().polling_retry_count) + 1
+                    delay = polling_backoff_sec(retry_count)
+                    log_event(
+                        logger,
+                        "telegram.polling.retry",
+                        reason="poll_task_cancelled",
+                        retry_count=retry_count,
+                        backoff_sec=delay,
+                    )
+                    set_telegram_api_runtime(
+                        status=DependencyStatus.DEGRADED,
+                        detail="polling session cancelled for recovery",
+                        polling_active=False,
+                        retry_count=retry_count,
+                        conflict_detected=get_dependency_state().conflict_detected,
+                    )
+                    try:
+                        await dp.stop_polling()
+                    except Exception:
+                        pass
+                    try:
+                        await asyncio.wait_for(shutdown.wait(), timeout=delay)
+                        break
+                    except asyncio.TimeoutError:
+                        continue
                 exc = poll_task.exception()
                 if exc is not None:
                     raise exc
@@ -272,6 +325,8 @@ async def run_polling_supervisor(
             log_event(logger, "telegram.polling.cancelled")
             raise
         except Exception as exc:
+            if isinstance(exc, TelegramConflictError):
+                record_polling_conflict(retry_count=retry_count + 1, exc=exc)
             if not is_retriable_telegram_error(exc):
                 logger.exception("telegram.polling.fatal_unexpected")
                 raise
@@ -283,7 +338,12 @@ async def run_polling_supervisor(
             is_timeout = isinstance(exc, (asyncio.TimeoutError, TimeoutError)) or (
                 isinstance(exc, TelegramNetworkError) and "timeout" in str(exc).lower()
             )
-            event = "telegram.polling.network_timeout" if is_timeout else "telegram.polling.retry"
+            if isinstance(exc, TelegramConflictError):
+                event = "telegram.polling.conflict"
+            elif is_timeout:
+                event = "telegram.polling.network_timeout"
+            else:
+                event = "telegram.polling.retry"
             log_event(
                 logger,
                 event,
@@ -291,13 +351,20 @@ async def run_polling_supervisor(
                 backoff_sec=delay,
                 duration_sec=duration_sec,
                 dependency_status=status.value,
+                bot_id=deps.bot_id,
+                bot_username=deps.bot_username,
+                polling_instance_id=identity.polling_instance_id,
+                hostname=identity.hostname,
+                container_id=identity.container_id,
                 **_exc_fields(exc),
             )
             set_telegram_api_runtime(
                 status=status,
                 detail=repr(exc)[:300],
+                mode=TelegramApiMode.POLLING,
                 polling_active=False,
                 retry_count=retry_count,
+                conflict_detected=isinstance(exc, TelegramConflictError) or deps.conflict_detected,
             )
             try:
                 await dp.stop_polling()

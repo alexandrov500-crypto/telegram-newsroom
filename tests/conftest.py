@@ -60,6 +60,7 @@ def minimal_test_settings(**overrides: object) -> Settings:
         health_http_bind="127.0.0.1",
         healthcheck_timeout_sec=60.0,
         telegram_http_timeout_sec=60.0,
+        telegram_polling_enabled=True,
         ops_http_token="",
         worker_visibility_sec=120,
         worker_poll_interval_sec=0.5,

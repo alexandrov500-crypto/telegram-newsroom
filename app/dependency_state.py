@@ -54,6 +54,12 @@ class RuntimeDependencyState:
     startup_complete: bool = False
     polling_active: bool = False
     polling_retry_count: int = 0
+    polling_conflict_count: int = 0
+    conflict_detected: bool = False
+    telegram_mode: str = "polling"
+    polling_instance_id: str = ""
+    bot_id: int | None = None
+    bot_username: str = ""
 
     def set_dependency(
         self,
@@ -100,8 +106,16 @@ class RuntimeDependencyState:
 
     def health_payload(self) -> dict[str, Any]:
         tg = self.telegram_api.to_dict()
+        tg["mode"] = self.telegram_mode
+        tg["conflict_detected"] = self.conflict_detected
         tg["polling_active"] = self.polling_active
         tg["retry_count"] = self.polling_retry_count
+        if self.bot_id is not None:
+            tg["bot_id"] = self.bot_id
+        if self.bot_username:
+            tg["bot_username"] = self.bot_username
+        if self.polling_instance_id:
+            tg["polling_instance_id"] = self.polling_instance_id
         deps = self.dependencies_dict()
         deps["telegram_api"] = tg
         return {

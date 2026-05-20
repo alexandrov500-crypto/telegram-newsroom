@@ -53,6 +53,7 @@ class Settings:
     health_http_bind: str
     healthcheck_timeout_sec: float
     telegram_http_timeout_sec: float
+    telegram_polling_enabled: bool
     # Optional shared secret for /ops* and /metrics when set (empty = no auth).
     ops_http_token: str
     pipeline_interval_minutes: int
@@ -385,6 +386,7 @@ def load_settings() -> Settings:
         health_http_bind=health_http_bind,
         healthcheck_timeout_sec=max(10.0, min(healthcheck_timeout, 300.0)),
         telegram_http_timeout_sec=max(10.0, min(telegram_http_timeout, 300.0)),
+        telegram_polling_enabled=_env_bool("TELEGRAM_POLLING_ENABLED", "true"),
         ops_http_token=ops_http_token[:512],
         pipeline_interval_minutes=max(1, pipeline_interval),
         collect_messages_per_channel=max(1, min(collect_limit, 200)),

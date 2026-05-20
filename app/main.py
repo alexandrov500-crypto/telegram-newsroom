@@ -14,6 +14,12 @@ from app.config import Settings, load_settings
 from app.health import run_startup_healthchecks
 from app.telegram_bot import create_newsroom_bot
 from app.telegram_polling import run_polling_supervisor
+from app.telegram_runtime import (
+    log_runtime_startup_banner,
+    register_conflict_log_handler,
+    set_polling_disabled_mode,
+)
+from utils.structured_log import log_event
 from app.startup_notify import send_startup_banner
 from app.startup_validation import validate_settings_for_launch
 from bot.admin_handlers import register_handlers
@@ -67,6 +73,7 @@ async def main() -> None:
         health_http_server = await serve_health_http(settings)
 
     bot = create_newsroom_bot(settings)
+    await log_runtime_startup_banner(bot, settings)
     openai = create_openai_client(
         settings.openai_api_key,
         timeout=settings.openai_http_timeout_sec,
@@ -160,7 +167,17 @@ async def main() -> None:
         pass
 
     try:
-        await run_polling_supervisor(bot, dp, settings, shutdown_event=shutdown_event)
+        if settings.telegram_polling_enabled:
+            await run_polling_supervisor(bot, dp, settings, shutdown_event=shutdown_event)
+        else:
+            set_polling_disabled_mode()
+            log_event(
+                logger,
+                "telegram.polling.disabled",
+                reason="TELEGRAM_POLLING_ENABLED=false",
+                recovery="scheduler_and_health_http_continue",
+            )
+            await shutdown_event.wait()
     except asyncio.CancelledError:
         logger.info("Main polling cancelled")
         shutdown_event.set()

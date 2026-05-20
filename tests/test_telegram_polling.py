@@ -72,8 +72,10 @@ def test_supervisor_retries_on_network_error_without_exit() -> None:
             raise TelegramNetworkError(method=MagicMock(), message="Request timeout error")
         shutdown.set()
 
+    wh = MagicMock(url="", pending_update_count=0, last_error_date=None, last_error_message=None, max_connections=None)
     bot = MagicMock()
     bot.delete_webhook = AsyncMock()
+    bot.get_webhook_info = AsyncMock(return_value=wh)
     me = MagicMock(id=1, username="x")
     bot.get_me = AsyncMock(return_value=me)
 
@@ -84,9 +86,19 @@ def test_supervisor_retries_on_network_error_without_exit() -> None:
 
     settings = MagicMock()
     settings.healthcheck_timeout_sec = 5.0
+    settings.dry_run = False
+    settings.soak_test = False
+    settings.safe_mode = False
+    settings.telegram_polling_enabled = True
 
     with patch("app.telegram_polling.asyncio.sleep", new_callable=AsyncMock):
-        asyncio.run(run_polling_supervisor(bot, dp, settings, shutdown_event=shutdown))
+        with patch("app.telegram_polling.register_conflict_log_handler"):
+            with patch(
+                "app.telegram_polling.ensure_webhook_cleared_with_verify",
+                new_callable=AsyncMock,
+                return_value=True,
+            ):
+                asyncio.run(run_polling_supervisor(bot, dp, settings, shutdown_event=shutdown))
 
     assert poll_calls["n"] >= 2
     deps = __import__("app.dependency_state", fromlist=["get_dependency_state"]).get_dependency_state()
@@ -103,25 +115,35 @@ def test_health_degraded_during_retry() -> None:
         detail="Request timeout error",
         polling_active=False,
         retry_count=3,
+        conflict_detected=True,
     )
     from app.dependency_state import get_dependency_state
 
     payload = get_dependency_state().health_payload()
     assert payload["status"] == "degraded"
-    assert payload["dependencies"]["telegram_api"]["retry_count"] == 3
-    assert payload["dependencies"]["telegram_api"]["polling_active"] is False
+    tg = payload["dependencies"]["telegram_api"]
+    assert tg["retry_count"] == 3
+    assert tg["polling_active"] is False
+    assert tg["conflict_detected"] is True
+    assert tg["mode"] == "polling"
 
 
 def test_health_healthy_when_polling_active() -> None:
     reset_dependency_state()
+    from app.telegram_runtime import TelegramApiMode
+
     set_telegram_api_runtime(
         status=DependencyStatus.HEALTHY,
         detail="polling",
+        mode=TelegramApiMode.POLLING,
         polling_active=True,
         retry_count=0,
+        conflict_detected=False,
     )
     from app.dependency_state import get_dependency_state
 
     payload = get_dependency_state().health_payload()
-    assert payload["dependencies"]["telegram_api"]["polling_active"] is True
-    assert payload["dependencies"]["telegram_api"]["status"] == "healthy"
+    tg = payload["dependencies"]["telegram_api"]
+    assert tg["polling_active"] is True
+    assert tg["status"] == "healthy"
+    assert tg["conflict_detected"] is False
