@@ -42,7 +42,21 @@ def handle_set_mode(settings: Any, body: dict[str, Any], correlation_id: str) ->
         mode = OperationalMode(raw)
     except ValueError:
         return _err("mode.set", correlation_id, settings.runtime_state_dir, f"invalid mode: {raw}")
+    gate = __import__("ops.trust.evolution_gates", fromlist=["validate_evolution_change"]).validate_evolution_change(
+        settings, change_type="operational_mode", payload={"mode": mode.value}
+    )
+    if not gate.get("ok"):
+        return _err("mode.set", correlation_id, settings.runtime_state_dir, ";".join(gate.get("fatal") or []))
     set_operational_mode(settings.runtime_state_dir, mode, reason=reason)
+    from ops.trust.evolution_journal import append_evolution_event
+
+    append_evolution_event(
+        settings.runtime_state_dir,
+        event_type="operational_mode",
+        summary=f"mode={mode.value}",
+        detail={"mode": mode.value, "reason": reason},
+        correlation_id=correlation_id,
+    )
     from ops.operator_notifications import enqueue_operator_notification
 
     enqueue_operator_notification(
@@ -175,14 +189,36 @@ def handle_replay(settings: Any, body: dict[str, Any], correlation_id: str) -> d
 
 def handle_economic_mode(settings: Any, body: dict[str, Any], correlation_id: str) -> dict[str, Any]:
     from ops.economics.economic_mode import EconomicMode, set_economic_mode
+    from ops.trust.evolution_gates import validate_evolution_change
+    from ops.trust.evolution_journal import append_evolution_event
 
     raw = str(body.get("mode") or "balanced").strip().lower()
     try:
         mode = EconomicMode(raw)
     except ValueError:
         return _err("economic.mode", correlation_id, settings.runtime_state_dir, f"invalid: {raw}")
+    gate = validate_evolution_change(settings, change_type="economic_mode", payload={"mode": mode.value})
+    if not gate.get("ok"):
+        return _err("economic.mode", correlation_id, settings.runtime_state_dir, ";".join(gate.get("fatal") or []))
     set_economic_mode(settings.runtime_state_dir, mode, reason=str(body.get("reason") or "ops_control"))
+    append_evolution_event(
+        settings.runtime_state_dir,
+        event_type="economic_mode",
+        summary=f"mode={mode.value}",
+        detail={"mode": mode.value, "reason": str(body.get("reason") or "")},
+        correlation_id=correlation_id,
+    )
     return _ok("economic.mode", correlation_id, settings.runtime_state_dir, {"mode": mode.value})
+
+
+def handle_evolution_validate(settings: Any, body: dict[str, Any], correlation_id: str) -> dict[str, Any]:
+    from ops.trust.evolution_gates import validate_evolution_change
+
+    ct = str(body.get("change_type") or "config")
+    gate = validate_evolution_change(settings, change_type=ct, payload=body.get("payload") or body)
+    if not gate.get("ok"):
+        return _err("evolution.validate", correlation_id, settings.runtime_state_dir, ";".join(gate.get("fatal") or []))
+    return _ok("evolution.validate", correlation_id, settings.runtime_state_dir, gate)
 
 
 def dispatch_control_action(
@@ -219,6 +255,8 @@ def dispatch_control_action(
         return handle_replay(settings, body, correlation_id)
     if p in ("economic/mode", "economic"):
         return handle_economic_mode(settings, body, correlation_id)
+    if p in ("evolution/validate", "evolution"):
+        return handle_evolution_validate(settings, body, correlation_id)
     if p == "status":
         return {
             "ok": True,

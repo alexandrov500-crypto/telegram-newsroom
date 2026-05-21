@@ -98,8 +98,9 @@ def score_cluster_candidate(
     evolution_kind: str = "new",
     duplicate_similarity_pct: float = 0.0,
     entity_norms: Sequence[str] | None = None,
+    weights_override: dict[str, float] | None = None,
 ) -> RankingTrace:
-    weights = load_ranking_weights(runtime_dir)
+    weights = weights_override if weights_override is not None else load_ranking_weights(runtime_dir)
     rep_map = explainable_reputation(runtime_dir)
     chans = [str(p.channel_name or "").strip().lower() for p in posts if str(p.channel_name or "").strip()]
     rep_vals = [float(rep_map.get(c, {}).get("score") or 0.5) for c in chans] or [0.5]
@@ -155,6 +156,7 @@ def rank_clusters(
     candidates: list[dict[str, Any]],
     *,
     runtime_dir: str | None,
+    weights_override: dict[str, float] | None = None,
 ) -> list[dict[str, Any]]:
     """Rank cluster dicts with keys: posts, fingerprint, topic_hint, evolution_kind, duplicate_similarity_pct."""
     traces: list[tuple[RankingTrace, dict[str, Any]]] = []
@@ -170,6 +172,7 @@ def rank_clusters(
             evolution_kind=str(cand.get("evolution_kind") or "new"),
             duplicate_similarity_pct=float(cand.get("duplicate_similarity_pct") or 0.0),
             entity_norms=cand.get("entity_norms"),
+            weights_override=weights_override,
         )
         traces.append((tr, cand))
     traces.sort(key=lambda x: x[0].tie_break)

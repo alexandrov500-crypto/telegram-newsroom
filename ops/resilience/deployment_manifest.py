@@ -72,6 +72,17 @@ def write_deployment_manifest(settings: Any, *, operational_mode: str = "product
             fh.write(raw.replace("\n", "")[:4000] + "\n")
     except OSError:
         pass
+    try:
+        from ops.trust.evolution_journal import append_evolution_event
+
+        append_evolution_event(
+            settings.runtime_state_dir,
+            event_type="deployment",
+            summary=f"git={manifest.get('git_sha')}",
+            detail={"build_version": manifest.get("build_version"), "config_fingerprint": manifest.get("config_fingerprint")},
+        )
+    except Exception:
+        pass
     return path
 
 

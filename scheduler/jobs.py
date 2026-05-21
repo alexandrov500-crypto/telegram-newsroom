@@ -293,7 +293,7 @@ async def _summarize_step(ctx: PipelineContext) -> None:
         duplicate_similarity_pct=0.0,
         entity_norms=entity_norms,
     )
-    rank_clusters(
+    ranked = rank_clusters(
         [
             {
                 "posts": cluster,
@@ -305,6 +305,12 @@ async def _summarize_step(ctx: PipelineContext) -> None:
         ],
         runtime_dir=settings.runtime_state_dir,
     )
+    try:
+        from ops.trust.canary import record_shadow_comparison
+
+        record_shadow_comparison(settings.runtime_state_dir, live_ranked=ranked)
+    except Exception:
+        pass
     policy_matches, gov_suppress, gov_reason = evaluate_policies(
         cluster,
         runtime_dir=settings.runtime_state_dir,
@@ -896,6 +902,12 @@ async def run_operational_heartbeat(ctx: PipelineContext) -> None:
         run_economics_tick(ctx.settings, logger=logger)
     except Exception as exc:
         logger.warning("economics_tick skipped: %s", exc)
+    try:
+        from ops.trust.tick import run_trust_tick
+
+        run_trust_tick(ctx.settings, logger=logger)
+    except Exception as exc:
+        logger.warning("trust_tick skipped: %s", exc)
     log_pipeline_metrics(logger)
 
 

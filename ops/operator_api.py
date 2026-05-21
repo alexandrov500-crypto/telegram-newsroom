@@ -114,4 +114,10 @@ async def dispatch_operator_runtime_http(
 
         return _json(evaluate_load_shedding(settings, rd))
 
+    from ops.trust.certification_api import dispatch_trust_runtime_http
+
+    trust = await dispatch_trust_runtime_http(settings, path_only, query=q)
+    if trust is not None:
+        return trust
+
     return None
