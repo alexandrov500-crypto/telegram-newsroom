@@ -88,16 +88,29 @@ async def _handle_client(
         writer.write(_http_response(code, body))
     else:
         try:
-            ops = await dispatch_ops_http(settings, path_only=path_only, query=query, headers=headers)
+            if path_only.startswith("/runtime"):
+                from app.ops_http_routes import ops_token_authorized
+                from ops.runtime_api import dispatch_runtime_http
+
+                if not ops_token_authorized(settings, query, headers):
+                    writer.write(_http_response(403, b'{"error":"forbidden"}'))
+                else:
+                    rt = await dispatch_runtime_http(settings, path_only)
+                    if rt is None:
+                        writer.write(_http_response(404, b'{"error":"not_found"}'))
+                    else:
+                        code, ctype, body = rt
+                        writer.write(_http_response(code, body, content_type=ctype))
+            else:
+                ops = await dispatch_ops_http(settings, path_only=path_only, query=query, headers=headers)
+                if ops is None:
+                    writer.write(_http_response(404, b'{"error":"not_found"}'))
+                else:
+                    code, ctype, body = ops
+                    writer.write(_http_response(code, body, content_type=ctype))
         except Exception as exc:
             logger.exception("ops_http failed: %s", exc)
             writer.write(_http_response(500, _e_json(str(exc))))
-        else:
-            if ops is None:
-                writer.write(_http_response(404, b'{"error":"not_found"}'))
-            else:
-                code, ctype, body = ops
-                writer.write(_http_response(code, body, content_type=ctype))
 
     try:
         await writer.drain()

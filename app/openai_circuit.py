@@ -86,6 +86,7 @@ class OpenAICircuitBreaker:
     def _maybe_advance_half_open(self) -> None:
         now = time.monotonic()
         if self._state == CircuitState.OPEN and now >= self._open_until_mono:
+            prev = self._state.value
             self._state = CircuitState.HALF_OPEN
             inc(OPENAI_RECOVERY_ATTEMPTS)
             set_gauge(OPENAI_CIRCUIT_OPEN, 0.5)
@@ -93,8 +94,10 @@ class OpenAICircuitBreaker:
                 logger,
                 "openai.circuit.half_open",
                 recovery_probe_sec=self._recovery_probe_sec,
+                subsystem="openai",
             )
-            emit_lifecycle("runtime.recovered", circuit_state="half_open")
+            emit_lifecycle("runtime.recovery.probe", circuit_state="half_open")
+            self._telemetry_state(prev, "half_open")
 
     def record_success(self) -> None:
         with self._lock:
@@ -105,8 +108,15 @@ class OpenAICircuitBreaker:
             self._last_failure_reason = ""
         set_gauge(OPENAI_CIRCUIT_OPEN, 0.0)
         if prev != CircuitState.CLOSED:
-            emit_lifecycle("runtime.recovered", circuit_state="closed")
-            log_event(logger, "openai.circuit.closed")
+            self._telemetry_state(prev.value, "closed")
+            emit_lifecycle("runtime.recovered.full", circuit_state="closed")
+            log_event(logger, "openai.circuit.closed", subsystem="openai")
+            try:
+                from app.dependency_state import get_dependency_state
+
+                get_dependency_state().ai_pipeline_enabled = True
+            except Exception:
+                pass
 
     def record_failure(self, reason: str = "") -> None:
         inc_openai_failure_total()
@@ -146,9 +156,11 @@ class OpenAICircuitBreaker:
 
     def _open_circuit_locked(self, reason: str, *, duration_sec: float | None = None) -> None:
         dur = duration_sec if duration_sec is not None else self._open_sec
+        prev = self._state.value
         self._state = CircuitState.OPEN
         self._open_until_mono = time.monotonic() + max(self._recovery_probe_sec, dur)
         set_gauge(OPENAI_CIRCUIT_OPEN, 1.0)
+        self._telemetry_state(prev, "open")
         log_event(
             logger,
             "openai.circuit.open",
@@ -156,7 +168,21 @@ class OpenAICircuitBreaker:
             open_sec=round(dur, 1),
             consecutive_failures=self._consecutive_failures,
             recovery="OPENAI_DISABLED",
+            subsystem="openai",
         )
+
+    @staticmethod
+    def _telemetry_state(prev: str, new: str) -> None:
+        try:
+            from ops.recovery_telemetry import note_circuit_state, note_degradation_started, note_full_recovery
+
+            note_circuit_state(prev, new)
+            if new == "open":
+                note_degradation_started()
+            if new == "closed" and prev in {"open", "half_open"}:
+                note_full_recovery()
+        except Exception:
+            pass
 
     def backoff_delay_sec(self, attempt: int) -> float:
         """Exponential backoff with jitter (attempt is 1-based)."""

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 
 import pytest
@@ -38,8 +39,9 @@ def test_runtime_lifecycle_fields(caplog):
     emit_lifecycle("runtime.boot", phase="test")
     assert runtime_id()
     assert uptime_sec() >= 0.0
-    assert any("runtime.boot" in r.message for r in caplog.records)
-    assert any("runtime_id" in r.message for r in caplog.records)
+    payload = json.loads(caplog.records[-1].message)
+    assert payload["event"] == "runtime.boot"
+    assert payload.get("runtime_id")
 
 
 def test_openai_circuit_opens_and_recovers():

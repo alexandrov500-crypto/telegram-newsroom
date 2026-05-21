@@ -5,9 +5,12 @@ Baseline after Phase 2.1 + runtime hardening. Use this checklist while OpenAI re
 ## Daily checks (5 min)
 
 1. `curl -s http://127.0.0.1:8080/health | jq '.status, .runtime'`
-2. `docker inspect --format='{{.State.Health.Status}} restarts={{.RestartCount}}' telegram-newsroom`
-3. `curl -s http://127.0.0.1:8080/metrics | grep -E 'openai_circuit|queue_depth|collect_duration|scheduler_cycle'`
-4. `docker logs --since 24h telegram-newsroom 2>&1 | grep -E 'runtime\.(boot|ready|degraded|recovered)|watchdog\.|openai\.circuit' | tail -30`
+2. `curl -s http://127.0.0.1:8080/runtime/status | jq`
+3. `curl -s http://127.0.0.1:8080/runtime/timeline | jq '.entries[:8]'`
+4. `docker inspect --format='{{.State.Health.Status}} restarts={{.RestartCount}}' telegram-newsroom`
+5. `curl -s http://127.0.0.1:8080/metrics | grep -E 'openai_circuit|queue_depth|collect_duration|scheduler_cycle|recovery_duration'`
+6. `ls -lt /opt/newsroom/data/runtime/incidents/ 2>/dev/null | head -5`
+7. `docker logs --since 24h telegram-newsroom 2>&1 | jq -c 'select(.event!=null)' 2>/dev/null | tail -20` or grep `ops.soak.summary`
 
 ## Success signals
 

@@ -337,7 +337,14 @@ async def _summarize_step(ctx: PipelineContext) -> None:
         post_text, used_ids, headline = sc.post_text, sc.used_ids, sc.headline
         _ai_exec_patch = sc.execution.to_draft_extras_patch()
     except SummarizerError as exc:
-        get_openai_circuit().record_failure(str(exc))
+        circuit = get_openai_circuit()
+        circuit.record_failure(str(exc))
+        try:
+            from ops.incidents.triggers import note_openai_failure
+
+            note_openai_failure(settings, reason=str(exc))
+        except Exception:
+            pass
         log_event(logger, "openai.summarize_failed", error=str(exc), recovery="aborted_draft")
         ctx.tick_timings["openai_sec"] = time.perf_counter() - t_ai
         observe_histogram("summarize_duration_seconds", ctx.tick_timings["openai_sec"])
@@ -729,7 +736,10 @@ async def run_operational_heartbeat(ctx: PipelineContext) -> None:
 
 
 async def run_operational_report(ctx: PipelineContext) -> None:
+    from ops.soak_report import log_soak_operational_summary
+
     log_operational_summary(logger, ctx.settings)
+    log_soak_operational_summary(ctx.settings)
 
 
 async def run_pipeline_tick(ctx: PipelineContext, *, wall_clock_start: float) -> None:
@@ -745,7 +755,10 @@ async def run_pipeline_tick(ctx: PipelineContext, *, wall_clock_start: float) ->
     from app.runtime_activity import record_scheduler_tick
     from app.runtime_lifecycle import emit_lifecycle, lifecycle_span_ms
 
+    from ops.runtime_timeline import record_timeline
+
     record_scheduler_tick()
+    record_timeline("scheduler.tick.started", soak_test=settings.soak_test)
     tick_t0 = time.perf_counter()
     emit_lifecycle("scheduler.tick.started", soak_test=settings.soak_test)
     log_event(logger, "scheduler.pipeline_tick", phase="start", soak_test=settings.soak_test)
@@ -836,6 +849,11 @@ async def run_pipeline_tick(ctx: PipelineContext, *, wall_clock_start: float) ->
         wall_sec=ctx.last_scheduler_wall_sec,
     )
 
+    record_timeline(
+        "scheduler.tick.completed",
+        wall_sec=round(ctx.last_scheduler_wall_sec, 4),
+        soak_test=settings.soak_test,
+    )
     emit_lifecycle(
         "scheduler.tick.completed",
         wall_sec=round(ctx.last_scheduler_wall_sec, 4),

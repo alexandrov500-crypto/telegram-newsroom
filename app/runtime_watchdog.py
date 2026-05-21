@@ -58,53 +58,64 @@ async def run_watchdog_checks(settings: Any, *, collector_enabled: bool) -> None
 
     stall_sec = interval_min * 60.0 * stall_mult
     since_tick = seconds_since_scheduler_tick()
+    from ops.incidents.triggers import note_watchdog_alert
+
     if since_tick is not None and since_tick > stall_sec:
-        emit_lifecycle(
-            "watchdog.scheduler.stalled",
-            since_last_tick_sec=round(since_tick, 1),
-            threshold_sec=stall_sec,
-        )
+        fields = {
+            "since_last_tick_sec": round(since_tick, 1),
+            "threshold_sec": stall_sec,
+        }
+        emit_lifecycle("watchdog.scheduler.stalled", **fields)
         log_event(
             logger,
             "watchdog.scheduler.stalled",
-            since_last_tick_sec=round(since_tick, 1),
-            threshold_sec=stall_sec,
             recovery="check_apscheduler_and_pipeline_lock",
+            subsystem="watchdog",
+            **fields,
         )
+        note_watchdog_alert(settings, "scheduler.stalled", fields=fields)
 
     if collector_enabled:
         collect_stall = interval_min * 60.0 * collector_mult
         since_collect = seconds_since_collect()
         if since_collect is not None and since_collect > collect_stall:
+            fields = {
+                "since_last_collect_sec": round(since_collect, 1),
+                "threshold_sec": collect_stall,
+            }
             log_event(
                 logger,
                 "watchdog.collector.stalled",
-                since_last_collect_sec=round(since_collect, 1),
-                threshold_sec=collect_stall,
                 recovery="check_telethon_session_and_channels",
+                subsystem="watchdog",
+                **fields,
             )
+            note_watchdog_alert(settings, "collector.stalled", fields=fields)
 
     burst = exception_count_in_window(burst_window)
     if burst >= burst_n:
+        fields = {"count": burst, "window_sec": burst_window, "threshold": burst_n}
         log_event(
             logger,
             "watchdog.exception_burst",
-            count=burst,
-            window_sec=burst_window,
-            threshold=burst_n,
             recovery="inspect_recent_pipeline_inner_failed_logs",
+            subsystem="watchdog",
+            **fields,
         )
+        note_watchdog_alert(settings, "exception_burst", fields=fields)
 
     try:
         lag = await measure_event_loop_lag_sec()
         if lag >= lag_warn and (time.monotonic() - _last_loop_lag_mono) > 60.0:
             _last_loop_lag_mono = time.monotonic()
+            fields = {"lag_sec": round(lag, 4), "threshold_sec": lag_warn}
             log_event(
                 logger,
                 "watchdog.event_loop.lag",
-                lag_sec=round(lag, 4),
-                threshold_sec=lag_warn,
                 recovery="reduce_tick_work_or_scale_host",
+                subsystem="watchdog",
+                **fields,
             )
+            note_watchdog_alert(settings, "event_loop.lag", fields=fields)
     except Exception as exc:
-        log_event(logger, "watchdog.event_loop.probe_failed", error=repr(exc))
+        log_event(logger, "watchdog.event_loop.probe_failed", error=repr(exc), subsystem="watchdog")

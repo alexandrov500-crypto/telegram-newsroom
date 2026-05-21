@@ -46,6 +46,24 @@ def record_dependency_transition(
 
         inc_degraded_transition()
         emit_lifecycle("runtime.degraded", dependency=dependency, reason=reason[:200])
+        try:
+            from scheduler.runtime_context import get_pipeline_context
+
+            ctx = get_pipeline_context()
+            if ctx is not None:
+                from ops.incidents.triggers import note_degradation_transition
+
+                note_degradation_transition(ctx.settings, dependency=dependency, reason=reason)
+            from ops.runtime_timeline import record_timeline
+
+            record_timeline(
+                "runtime.degraded",
+                summary=dependency,
+                dependency=dependency,
+                reason=reason[:200],
+            )
+        except Exception:
+            pass
         deps.consecutive_failures += 1
         deps.last_degraded_reason = reason[:500]
         if _first_degraded_mono is None:
@@ -85,6 +103,16 @@ def record_dependency_transition(
                 dependency=dependency,
                 previous_failures=deps.consecutive_failures,
             )
+            try:
+                from ops.runtime_timeline import record_timeline
+
+                record_timeline(
+                    "runtime.recovered",
+                    summary=dependency,
+                    dependency=dependency,
+                )
+            except Exception:
+                pass
             log_event(
                 logger,
                 "runtime.slo.recovered",

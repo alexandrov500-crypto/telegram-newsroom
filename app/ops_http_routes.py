@@ -36,7 +36,9 @@ def _nav() -> str:
     return (
         "<nav style=\"margin:8px 0;font-size:14px\">"
         "<a href=\"/ops\">overview</a> · <a href=\"/ops/search\">search</a> · "
-        "<a href=\"/ops/dlq\">dlq</a> · <a href=\"/ops.json\">bundle.json</a> · "
+        "<a href=\"/ops/dlq\">dlq</a> · <a href=\"/runtime/status\">runtime</a> · "
+        "<a href=\"/runtime/timeline\">timeline</a> · "
+        "<a href=\"/ops.json\">bundle.json</a> · "
         "<a href=\"/metrics\">metrics</a></nav>"
     )
 

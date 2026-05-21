@@ -96,6 +96,16 @@ class InMemoryJobQueue:
                 q.qsize(),
                 self._max_size,
             )
+            try:
+                from scheduler.runtime_context import get_pipeline_context
+
+                ctx = get_pipeline_context()
+                if ctx is not None:
+                    from ops.incidents.triggers import note_queue_overflow
+
+                    note_queue_overflow(ctx.settings, kind=job.kind.value, depth=q.qsize())
+            except Exception:
+                pass
             raise QueueOverflowError(f"queue full for {job.kind.value}")
         await q.put(job)
         await self._update_depth_gauge()
@@ -151,6 +161,16 @@ class RedisJobQueue:
                 depth,
                 self._max_size,
             )
+            try:
+                from scheduler.runtime_context import get_pipeline_context
+
+                ctx = get_pipeline_context()
+                if ctx is not None:
+                    from ops.incidents.triggers import note_queue_overflow
+
+                    note_queue_overflow(ctx.settings, kind=job.kind.value, depth=depth)
+            except Exception:
+                pass
             raise QueueOverflowError(f"redis queue full for {job.kind.value}")
         await self._r.lpush(key, job.to_json())
         from utils.metrics import set_gauge
