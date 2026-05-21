@@ -20,10 +20,10 @@ def _json_response(obj: Any) -> tuple[int, str, bytes]:
     return 200, "application/json", json.dumps(obj, separators=(",", ":"), default=str).encode("utf-8")
 
 
-async def runtime_status_payload() -> dict[str, Any]:
+async def runtime_status_payload(settings: Any | None = None) -> dict[str, Any]:
     prov = load_build_provenance()
     deps = get_dependency_state()
-    return {
+    payload: dict[str, Any] = {
         "service": "newsroom",
         "runtime_id": runtime_id(),
         "uptime_sec": round(uptime_sec(), 2),
@@ -37,6 +37,16 @@ async def runtime_status_payload() -> dict[str, Any]:
         "polling_active": deps.polling_active,
         "activity": activity_snapshot(),
     }
+    if settings is not None:
+        from app.operational_mode import operational_mode_payload
+        from ops.resilience.deployment_manifest import load_deployment_manifest
+        from ops.resilience.leadership import get_leadership
+
+        rd = str(getattr(settings, "runtime_state_dir", "var/runtime"))
+        payload["operational_mode"] = operational_mode_payload(rd, settings)
+        payload["leadership"] = get_leadership(rd).snapshot()
+        payload["deployment_manifest"] = load_deployment_manifest(rd)
+    return payload
 
 
 async def runtime_watchdog_payload() -> dict[str, Any]:
@@ -114,7 +124,19 @@ async def dispatch_runtime_http(
 ) -> tuple[int, str, bytes] | None:
     p = path_only.rstrip("/")
     if p == "/runtime/status":
-        return _json_response(await runtime_status_payload())
+        return _json_response(await runtime_status_payload(settings))
+    if p == "/runtime/migrations":
+        from ops.resilience.migrations import migrations_payload
+
+        return _json_response(migrations_payload(str(getattr(settings, "runtime_state_dir", "var/runtime"))))
+    if p == "/runtime/publish_journal":
+        from ops.resilience.publish_journal import journal_tail
+
+        return _json_response({"entries": journal_tail(str(getattr(settings, "runtime_state_dir", "var/runtime")), limit=80)})
+    if p == "/runtime/snapshots":
+        from ops.resilience.snapshot import list_snapshots
+
+        return _json_response({"snapshots": list_snapshots(str(getattr(settings, "runtime_state_dir", "var/runtime")))})
     if p == "/runtime/watchdog":
         return _json_response(await runtime_watchdog_payload())
     if p == "/runtime/queues":

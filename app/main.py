@@ -52,6 +52,18 @@ async def main() -> None:
     validate_settings_for_launch(settings)
     setup_logging(settings.log_level, soak_test=settings.soak_test)
     emit_lifecycle("runtime.boot", dry_run=settings.dry_run, soak_test=settings.soak_test)
+
+    from app.operational_mode import OperationalMode, load_operational_mode, set_operational_mode
+    from app.runtime_lifecycle import runtime_id
+    from ops.resilience.deployment_manifest import write_deployment_manifest
+    from ops.resilience.leadership import get_leadership
+
+    op_mode = load_operational_mode(settings.runtime_state_dir, settings)
+    leadership = get_leadership(settings.runtime_state_dir)
+    lock_result = leadership.acquire_all(runtime_id=runtime_id())
+    if not all(lock_result.values()):
+        raise RuntimeError(f"Runtime leadership acquire failed: {lock_result}")
+    write_deployment_manifest(settings, operational_mode=op_mode.value)
     log_startup_recovery_hints_if_any(settings)
     health_http_server = None
     t_db0 = time.perf_counter()
@@ -93,6 +105,7 @@ async def main() -> None:
 
     startup = await run_startup_healthchecks(settings, bot, openai)
     if startup.aggregate == AggregateStatus.DEGRADED:
+        set_operational_mode(settings.runtime_state_dir, OperationalMode.DEGRADED, reason="startup_health_degraded")
         logger.warning(
             "Starting in degraded mode (ai_pipeline=%s collector=%s)",
             startup.ai_pipeline_enabled,
@@ -203,6 +216,10 @@ async def main() -> None:
         shutdown_event.set()
         try:
             await dp.stop_polling()
+        except Exception:
+            pass
+        try:
+            get_leadership(settings.runtime_state_dir).release_all()
         except Exception:
             pass
         try:

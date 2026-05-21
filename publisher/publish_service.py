@@ -107,12 +107,80 @@ async def execute_admin_publication_flow(
     """
     Worker-ready publication: state transitions, optional idempotency, publish lock, Telegram send.
     """
+    from app.operational_mode import load_operational_mode, publish_allowed
+    from ops.resilience.leadership import require_publish_leadership
+    from ops.resilience.publish_journal import (
+        append_journal,
+        find_by_idempotency_key,
+        find_finalized_for_draft,
+        new_publish_tx_id,
+    )
+
+    mode = load_operational_mode(settings.runtime_state_dir, settings)
+    if not publish_allowed(mode, settings):
+        log_event(logger, "publish.blocked_operational_mode", draft_id=draft_id, mode=mode.value)
+        return AdminPublishDraftResult(
+            PublishFlowOutcome.APPROVE_DENIED,
+            error=f"operational_mode={mode.value}",
+        )
+    if not require_publish_leadership(settings.runtime_state_dir):
+        log_event(logger, "publish.blocked_no_leadership", draft_id=draft_id)
+        return AdminPublishDraftResult(
+            PublishFlowOutcome.ALREADY_HANDLED,
+            error="publish_leader_not_held",
+        )
+
+    tx_id = new_publish_tx_id()
+    idem_key = idempotency_key or f"draft:{draft_id}"
+
     async with session_scope() as session:
         draft = await get_draft_by_id(session, draft_id)
         if draft is None:
             return AdminPublishDraftResult(PublishFlowOutcome.MISSING)
         content = draft.content or ""
         sources = draft.sources or ""
+
+    finalized = find_finalized_for_draft(settings.runtime_state_dir, draft_id)
+    if finalized and int(finalized.get("channel_message_id") or 0):
+        append_journal(
+            settings.runtime_state_dir,
+            tx_id=tx_id,
+            draft_id=draft_id,
+            state="idempotent_replay",
+            idempotency_key=idem_key,
+            channel_message_id=int(finalized["channel_message_id"]),
+        )
+        return AdminPublishDraftResult(
+            PublishFlowOutcome.ALREADY_HANDLED,
+            draft_content=content,
+            draft_sources=sources,
+            channel_message_id=int(finalized["channel_message_id"]),
+        )
+
+    journal_idem = find_by_idempotency_key(settings.runtime_state_dir, idem_key)
+    if journal_idem and int(journal_idem.get("channel_message_id") or 0):
+        append_journal(
+            settings.runtime_state_dir,
+            tx_id=tx_id,
+            draft_id=draft_id,
+            state="idempotent_replay",
+            idempotency_key=idem_key,
+            channel_message_id=int(journal_idem["channel_message_id"]),
+        )
+        return AdminPublishDraftResult(
+            PublishFlowOutcome.ALREADY_HANDLED,
+            draft_content=content,
+            draft_sources=sources,
+            channel_message_id=int(journal_idem["channel_message_id"]),
+        )
+
+    append_journal(
+        settings.runtime_state_dir,
+        tx_id=tx_id,
+        draft_id=draft_id,
+        state="initiated",
+        idempotency_key=idem_key,
+    )
 
     if settings.dry_run:
         log_event(logger, "publish.dry_run_skipped", draft_id=draft_id, recovery="dry_run_bypass")
@@ -122,16 +190,23 @@ async def execute_admin_publication_flow(
             draft_sources=sources,
         )
 
-    if idempotency_key:
-        prior_mid = await _idem_get_message_id(settings, idempotency_key)
-        if prior_mid is not None:
-            log_event(logger, "publish.idempotent_skip", draft_id=draft_id, idempotency_key=idempotency_key)
-            return AdminPublishDraftResult(
-                PublishFlowOutcome.ALREADY_HANDLED,
-                draft_content=content,
-                draft_sources=sources,
-                channel_message_id=prior_mid,
-            )
+    prior_mid = await _idem_get_message_id(settings, idem_key)
+    if prior_mid is not None:
+        append_journal(
+            settings.runtime_state_dir,
+            tx_id=tx_id,
+            draft_id=draft_id,
+            state="idempotent_replay",
+            idempotency_key=idem_key,
+            channel_message_id=prior_mid,
+        )
+        log_event(logger, "publish.idempotent_skip", draft_id=draft_id, idempotency_key=idem_key)
+        return AdminPublishDraftResult(
+            PublishFlowOutcome.ALREADY_HANDLED,
+            draft_content=content,
+            draft_sources=sources,
+            channel_message_id=prior_mid,
+        )
 
     async with publish_draft_lock(settings, draft_id) as lock_acquired:
         if not lock_acquired:
@@ -140,6 +215,13 @@ async def execute_admin_publication_flow(
                 draft_content=content,
                 draft_sources=sources,
             )
+        append_journal(
+            settings.runtime_state_dir,
+            tx_id=tx_id,
+            draft_id=draft_id,
+            state="lock_acquired",
+            idempotency_key=idem_key,
+        )
 
         async with session_scope() as session:
             d = await get_draft_by_id(session, draft_id)
@@ -175,6 +257,14 @@ async def execute_admin_publication_flow(
             )
             if block:
                 inc("cadence_blocked_publish")
+                append_journal(
+                    settings.runtime_state_dir,
+                    tx_id=tx_id,
+                    draft_id=draft_id,
+                    state="cadence_blocked",
+                    idempotency_key=idem_key,
+                    extra={"reasons": list(reasons)[:16]},
+                )
                 log_event(
                     logger,
                     "publish.cadence_blocked",
@@ -223,7 +313,21 @@ async def execute_admin_publication_flow(
             sources = draft.sources or ""
             extras_json = draft.draft_extras or "{}"
 
+        append_journal(
+            settings.runtime_state_dir,
+            tx_id=tx_id,
+            draft_id=draft_id,
+            state="approved",
+            idempotency_key=idem_key,
+        )
         t_chunks = time.perf_counter()
+        append_journal(
+            settings.runtime_state_dir,
+            tx_id=tx_id,
+            draft_id=draft_id,
+            state="sending",
+            idempotency_key=idem_key,
+        )
         try:
             first_id = await publish_draft_to_channel(
                 bot,
@@ -235,10 +339,27 @@ async def execute_admin_publication_flow(
             )
         except BaseException as exc:
             logger.exception("Failed to publish draft %s: %s", draft_id, exc)
+            append_journal(
+                settings.runtime_state_dir,
+                tx_id=tx_id,
+                draft_id=draft_id,
+                state="failed",
+                idempotency_key=idem_key,
+                error=repr(exc),
+            )
             log_event(logger, "publish.channel_send_failed", draft_id=draft_id, error=repr(exc))
             async with session_scope() as session:
                 await mark_draft_failed(session, draft_id, reason=repr(exc))
             return AdminPublishDraftResult(PublishFlowOutcome.SEND_FAILED, error=repr(exc))
+
+        append_journal(
+            settings.runtime_state_dir,
+            tx_id=tx_id,
+            draft_id=draft_id,
+            state="sent",
+            idempotency_key=idem_key,
+            channel_message_id=int(first_id),
+        )
 
         chunks_duration = time.perf_counter() - t_chunks
         log_event(
@@ -252,6 +373,15 @@ async def execute_admin_publication_flow(
         async with session_scope() as session:
             finalized = await mark_draft_published(session, draft_id, telegram_post_id=first_id)
             if not finalized:
+                append_journal(
+                    settings.runtime_state_dir,
+                    tx_id=tx_id,
+                    draft_id=draft_id,
+                    state="failed",
+                    idempotency_key=idem_key,
+                    error="finalize_state_mismatch",
+                    channel_message_id=int(first_id),
+                )
                 log_event(logger, "publish.finalize_state_mismatch", draft_id=draft_id)
                 return AdminPublishDraftResult(
                     PublishFlowOutcome.FINALIZE_MISMATCH,
@@ -259,6 +389,15 @@ async def execute_admin_publication_flow(
                     draft_sources=sources,
                     channel_message_id=first_id,
                 )
+
+        append_journal(
+            settings.runtime_state_dir,
+            tx_id=tx_id,
+            draft_id=draft_id,
+            state="finalized",
+            idempotency_key=idem_key,
+            channel_message_id=int(first_id),
+        )
 
         db_finalize_sec = time.perf_counter() - t_db
         log_event(
@@ -294,8 +433,7 @@ async def execute_admin_publication_flow(
 
         record_publish(settings.runtime_state_dir, topic_key=topic_dedupe_key(th))
 
-        if idempotency_key:
-            await _idem_record_success(settings, idempotency_key, draft_id, first_id)
+        await _idem_record_success(settings, idem_key, draft_id, first_id)
 
         return AdminPublishDraftResult(
             PublishFlowOutcome.OK,

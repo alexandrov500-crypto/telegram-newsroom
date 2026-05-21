@@ -166,4 +166,8 @@ def validate_settings_for_launch(settings: Settings) -> None:
             "(review DRY_RUN and channel sends; see docs/SELF_HOSTING.md)."
         )
 
+    from ops.resilience.startup_checks import emit_validation_result, run_startup_integrity_checks
+
+    emit_validation_result(run_startup_integrity_checks(settings))
+
     logger.info("Startup validation passed (env, Telegram ids, OpenAI model, retention, intervals)")

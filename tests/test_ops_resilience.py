@@ -1,86 +1,85 @@
+"""Operational resilience: snapshot, journal, migrations, modes, leadership."""
+
 from __future__ import annotations
 
+import json
+import tarfile
 from pathlib import Path
 
-from bot.ops_resilience.backpressure import apply_backpressure
-from bot.ops_resilience.context import get_resilience_context, should_defer_analytics
-from bot.ops_resilience.coordinator import evaluate_resilience_tick
-from bot.ops_resilience.dependencies import classify_dependencies
-from bot.ops_resilience.failure_budget import compute_failure_budgets
-from bot.ops_resilience.recovery_quality import evaluate_recovery_quality
-from bot.ops_resilience.state_machine import resolve_posture
-from bot.ops_resilience.types import OperationalPosture
-from bot.storage.db import init_database
+import pytest
+
+from app.operational_mode import OperationalMode, load_operational_mode, publish_allowed, set_operational_mode
+from ops.resilience.leadership import LeadershipCoordinator
+from ops.resilience.migrations import apply_runtime_migrations, migrations_payload
+from ops.resilience.publish_journal import (
+    append_journal,
+    find_finalized_for_draft,
+    new_publish_tx_id,
+    reset_journal_for_tests,
+)
+from ops.resilience.snapshot import create_snapshot, restore_snapshot
 
 
-def test_dependency_classification() -> None:
-    pulse = {
-        "event_loop_lag_max": 0.8,
-        "recovery_attempt_count": 7,
-        "stalled_loops": ["rss"],
-        "loop_health": {"rss_loop_duration_avg": 50},
-        "http": {},
-        "anomalies": [{"level": "warning"}],
-    }
-    deps = classify_dependencies(pulse=pulse)
-    assert deps["rss_ingestion"]["band"] in ("degraded", "unstable")
-    assert deps["background_maintenance"]["band"] in ("degraded", "unstable")
-
-
-def test_posture_observation_only() -> None:
-    deps = {"sqlite": {"band": "critical"}}
-    posture, _ = resolve_posture(
-        dependencies=deps,
-        failure_budgets={"instability_ratio": 0.95, "recovery_storm": False},
-        recovery_quality={},
-        soft_degraded=False,
+def test_publish_journal_idempotency_record(ephemeral_newsroom_settings) -> None:
+    rd = ephemeral_newsroom_settings.runtime_state_dir
+    reset_journal_for_tests(rd)
+    tx = new_publish_tx_id()
+    append_journal(rd, tx_id=tx, draft_id=42, state="initiated", idempotency_key="draft:42")
+    append_journal(
+        rd,
+        tx_id=tx,
+        draft_id=42,
+        state="finalized",
+        idempotency_key="draft:42",
+        channel_message_id=999,
     )
-    assert posture == OperationalPosture.OBSERVATION_ONLY.value
+    row = find_finalized_for_draft(rd, 42)
+    assert row is not None
+    assert row["channel_message_id"] == 999
 
 
-def test_backpressure_defers_analytics() -> None:
-    apply_backpressure(
-        [{"condition": "lag", "response": "pause_background_analytics"}],
-        posture="protected",
+def test_snapshot_create_restore_roundtrip(ephemeral_newsroom_settings, tmp_path: Path) -> None:
+    rd = Path(ephemeral_newsroom_settings.runtime_state_dir)
+    (rd / "editorial").mkdir(parents=True, exist_ok=True)
+    (rd / "editorial" / "governance_rules.json").write_text('{"version":1,"rules":[]}', encoding="utf-8")
+    archive = create_snapshot(
+        runtime_dir=str(rd),
+        database_url=ephemeral_newsroom_settings.database_url,
     )
-    assert should_defer_analytics()
-    ctx = get_resilience_context()
-    assert ctx.pause_background_analytics
+    assert archive.is_file()
+    with tarfile.open(archive, "r:gz") as tar:
+        names = tar.getnames()
+    assert "MANIFEST.json" in names
 
-
-def test_failure_budget_recovery_storm() -> None:
-    budgets = compute_failure_budgets(
-        pulse={"event_loop_lag_max": 1.0, "recovery_attempt_count": 8, "anomalies": []},
-        events=[],
-        recovery_log=[],
+    target = tmp_path / "restored_runtime"
+    target.mkdir()
+    report = restore_snapshot(
+        archive,
+        runtime_dir=str(target),
+        database_url="sqlite:///:memory:",
+        dry_run=True,
     )
-    assert budgets["recovery_storm"] is True
+    assert report["restored_files"] >= 1
 
 
-def test_recovery_quality_storm() -> None:
-    log = [
-        {"subsystem": "runtime", "outcome": "repeated"},
-        {"subsystem": "runtime", "outcome": "repeated"},
-        {"subsystem": "runtime", "outcome": "repeated"},
-        {"subsystem": "runtime", "outcome": "repeated"},
-    ]
-    q = evaluate_recovery_quality(log)
-    assert q["recovery_storm"] is True
+def test_migrations_idempotent(ephemeral_newsroom_settings) -> None:
+    rd = ephemeral_newsroom_settings.runtime_state_dir
+    a = apply_runtime_migrations(rd)
+    b = apply_runtime_migrations(rd)
+    assert b["applied_now"] == []
+    payload = migrations_payload(rd)
+    assert "registered" in payload
 
 
-def test_evaluate_resilience_tick(tmp_path: Path) -> None:
-    db = init_database(tmp_path / "resilience.db")
-    snap = evaluate_resilience_tick(
-        db_path=db,
-        pulse={
-            "event_loop_lag_max": 0.05,
-            "recovery_attempt_count": 0,
-            "stalled_loops": [],
-            "anomalies": [],
-            "http": {},
-            "loop_health": {},
-        },
-        persist=True,
-    )
-    assert snap["posture"] in {p.value for p in OperationalPosture}
-    assert "guidance" in snap
+def test_operational_mode_publish_blocked(ephemeral_newsroom_settings) -> None:
+    rd = ephemeral_newsroom_settings.runtime_state_dir
+    set_operational_mode(rd, OperationalMode.READ_ONLY, reason="test")
+    mode = load_operational_mode(rd)
+    assert not publish_allowed(mode, ephemeral_newsroom_settings)
+    set_operational_mode(rd, OperationalMode.PRODUCTION, reason="test_reset")
+
+
+def test_leadership_acquire_release(ephemeral_newsroom_settings) -> None:
+    coord = LeadershipCoordinator(ephemeral_newsroom_settings.runtime_state_dir)
+    assert coord.runtime.acquire(runtime_id="test-runtime")
+    coord.runtime.release()

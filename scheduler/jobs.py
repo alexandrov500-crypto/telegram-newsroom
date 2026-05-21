@@ -854,6 +854,12 @@ async def run_operational_heartbeat(ctx: PipelineContext) -> None:
     await log_runtime_diagnostics(logger, ctx.settings)
     await run_watchdog_checks(ctx.settings, collector_enabled=ctx.collector_enabled)
     check_editorial_drift(ctx.settings.runtime_state_dir, logger=logger)
+    try:
+        from ops.resilience.lifecycle_retention import run_lifecycle_retention
+
+        run_lifecycle_retention(ctx.settings.runtime_state_dir)
+    except Exception as exc:
+        logger.warning("lifecycle_retention skipped: %s", exc)
     log_pipeline_metrics(logger)
 
 
@@ -878,6 +884,14 @@ async def run_pipeline_tick(ctx: PipelineContext, *, wall_clock_start: float) ->
     from app.runtime_lifecycle import emit_lifecycle, lifecycle_span_ms
 
     from ops.runtime_timeline import record_timeline
+
+    from app.operational_mode import load_operational_mode, scheduler_allowed
+
+    op_mode = load_operational_mode(settings.runtime_state_dir, settings)
+    if not scheduler_allowed(op_mode):
+        log_event(logger, "scheduler.tick.skipped", reason="operational_mode", mode=op_mode.value)
+        record_timeline("scheduler.tick.skipped", mode=op_mode.value)
+        return
 
     record_scheduler_tick()
     record_timeline("scheduler.tick.started", soak_test=settings.soak_test)
