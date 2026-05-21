@@ -173,6 +173,18 @@ def handle_replay(settings: Any, body: dict[str, Any], correlation_id: str) -> d
     )
 
 
+def handle_economic_mode(settings: Any, body: dict[str, Any], correlation_id: str) -> dict[str, Any]:
+    from ops.economics.economic_mode import EconomicMode, set_economic_mode
+
+    raw = str(body.get("mode") or "balanced").strip().lower()
+    try:
+        mode = EconomicMode(raw)
+    except ValueError:
+        return _err("economic.mode", correlation_id, settings.runtime_state_dir, f"invalid: {raw}")
+    set_economic_mode(settings.runtime_state_dir, mode, reason=str(body.get("reason") or "ops_control"))
+    return _ok("economic.mode", correlation_id, settings.runtime_state_dir, {"mode": mode.value})
+
+
 def dispatch_control_action(
     settings: Any,
     subpath: str,
@@ -205,6 +217,8 @@ def dispatch_control_action(
         return handle_leadership_rotate(settings, body, correlation_id)
     if p in ("replay", "replay/trigger"):
         return handle_replay(settings, body, correlation_id)
+    if p in ("economic/mode", "economic"):
+        return handle_economic_mode(settings, body, correlation_id)
     if p == "status":
         return {
             "ok": True,

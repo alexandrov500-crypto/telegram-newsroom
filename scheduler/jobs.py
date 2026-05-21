@@ -194,6 +194,21 @@ async def _retention_step(settings: Settings) -> tuple[float, int, int]:
 
 async def _summarize_step(ctx: PipelineContext) -> None:
     from app.openai_circuit import get_openai_circuit
+    from ops.economics.budgets import allow_ai_request
+    from ops.economics.economic_mode import load_economic_mode
+    from ops.economics.load_shedding import should_skip_summarize_for_pressure
+
+    settings = ctx.settings
+    rd = settings.runtime_state_dir
+    econ = load_economic_mode(rd).value
+    shed_skip, shed_reason = should_skip_summarize_for_pressure(settings, rd, priority_level="medium")
+    if shed_skip:
+        log_event(logger, "scheduler.summarize_skipped", reason=shed_reason, stage="load_shedding")
+        return
+    ai_ok, ai_reason = allow_ai_request(rd, priority_level="medium", economic_mode=econ)
+    if not ai_ok:
+        log_event(logger, "scheduler.summarize_skipped", reason=ai_reason, stage="ai_budget")
+        return
 
     if not ctx.ai_pipeline_enabled or not get_openai_circuit().allow_request():
         log_event(
@@ -768,7 +783,14 @@ async def _summarize_step(ctx: PipelineContext) -> None:
                 enabled=True,
             )
             scoring_sec = time.perf_counter() - t_score
+            ctx.tick_timings["scoring_sec"] = scoring_sec
             observe_histogram("scoring_duration_seconds", scoring_sec)
+            try:
+                from ops.economics.resource_accounting import record_resource
+
+                record_resource(settings.runtime_state_dir, stage="scoring", duration_sec=scoring_sec, count=1)
+            except Exception:
+                pass
             if editorial_intel:
                 await merge_draft_extras(
                     session,
@@ -868,6 +890,12 @@ async def run_operational_heartbeat(ctx: PipelineContext) -> None:
         await flush_pending_notifications(ctx.bot, ctx.settings)
     except Exception as exc:
         logger.warning("operator_ops_heartbeat skipped: %s", exc)
+    try:
+        from ops.economics.tick import run_economics_tick
+
+        run_economics_tick(ctx.settings, logger=logger)
+    except Exception as exc:
+        logger.warning("economics_tick skipped: %s", exc)
     log_pipeline_metrics(logger)
 
 
@@ -961,6 +989,22 @@ async def run_pipeline_tick(ctx: PipelineContext, *, wall_clock_start: float) ->
         record_collect_duration(c)
     if (o := ctx.tick_timings.get("openai_sec")) is not None:
         record_openai_duration(o)
+
+    try:
+        from ops.economics.resource_accounting import record_resource
+
+        record_resource(
+            settings.runtime_state_dir,
+            stage="scheduler",
+            duration_sec=ctx.last_scheduler_wall_sec,
+            count=1,
+        )
+        if (sc := ctx.tick_timings.get("scoring_sec")) is not None:
+            record_resource(settings.runtime_state_dir, stage="scoring", duration_sec=sc, count=1)
+        if (pub := ctx.tick_timings.get("scheduled_publish_sec")) is not None:
+            record_resource(settings.runtime_state_dir, stage="publish", duration_sec=pub, count=1)
+    except Exception:
+        pass
 
     log_event(
         logger,

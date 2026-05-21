@@ -320,6 +320,22 @@ async def summarize_cluster(
         if cost is not None and cost > 0:
             inc("ai_cost_micro_usd", int(cost * 1_000_000))
         set_gauge("ai_last_cluster_latency_sec", float(api_sec))
+        try:
+            from ops.economics.budgets import record_ai_usage
+            from ops.economics.resource_accounting import record_resource
+
+            rd = getattr(settings, "runtime_state_dir", None) or __import__("os").getenv("RUNTIME_STATE_DIR", "var/runtime")
+            record_ai_usage(rd, tokens=tot_tok or 0, requests=1, cost_usd=float(cost or 0))
+            record_resource(
+                rd,
+                stage="summarize",
+                duration_sec=float(api_sec),
+                tokens=tot_tok or 0,
+                cost_usd=float(cost or 0),
+                count=1,
+            )
+        except Exception:
+            pass
         circuit.record_success()
         return SummarizeClusterResult(post_text=post_text, used_ids=used_ids, headline=headline, execution=exec_meta)
 

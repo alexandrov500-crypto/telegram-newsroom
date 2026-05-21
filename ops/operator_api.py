@@ -74,4 +74,44 @@ async def dispatch_operator_runtime_http(
         hours = float(_q("hours", "24") or "24")
         return _json(build_transparency_bundle(settings, hours=hours))
 
+    if p == "/runtime/economics/resources":
+        from ops.economics.resource_accounting import resources_payload
+
+        return _json(resources_payload(rd, hours=int(_q("hours", "48") or "48")))
+
+    if p == "/runtime/economics/budgets":
+        from ops.economics.budgets import budgets_payload
+
+        return _json(budgets_payload(rd))
+
+    if p == "/runtime/economics/mode":
+        from ops.economics.economic_mode import economic_mode_payload
+
+        return _json(economic_mode_payload(rd))
+
+    if p == "/runtime/economics/throughput":
+        from ops.economics.throughput import throughput_payload
+
+        return _json(throughput_payload(settings, rd))
+
+    if p == "/runtime/economics/storage":
+        from ops.economics.storage import storage_payload
+
+        return _json(storage_payload(rd))
+
+    if p == "/runtime/economics/roi":
+        from ops.economics.roi import roi_payload
+
+        return _json(roi_payload(rd))
+
+    if p == "/runtime/economics/slo":
+        from ops.economics.slo import slo_payload
+
+        return _json(slo_payload(rd))
+
+    if p == "/runtime/economics/load_shedding":
+        from ops.economics.load_shedding import evaluate_load_shedding
+
+        return _json(evaluate_load_shedding(settings, rd))
+
     return None
