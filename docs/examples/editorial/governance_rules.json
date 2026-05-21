@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "suppress_repeated_topics",
+      "enabled": true,
+      "type": "topic_repeat_cooldown",
+      "min_interval_sec": 1800,
+      "description": "Defer clusters on topics recently selected"
+    },
+    {
+      "id": "block_low_trust_sources",
+      "enabled": true,
+      "type": "min_source_trust",
+      "threshold": 0.35,
+      "description": "Suppress when dominant source trust is below threshold"
+    }
+  ]
+}

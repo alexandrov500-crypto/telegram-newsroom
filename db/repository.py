@@ -353,6 +353,20 @@ async def reject_draft(session: AsyncSession, draft_id: int, *, reason: str = ""
                 record_reject_for_channels(reject_channels)
             except Exception:
                 pass
+            try:
+                from editorial.governance.ledger import append_decision
+
+                append_decision(
+                    runtime_dir=None,
+                    decision_type="operator_reject",
+                    outcome="rejected",
+                    subject_type="draft",
+                    subject_id=str(draft_id),
+                    reason_codes=[reason[:80]] if reason else [],
+                    operator_override={"channels": reject_channels[:12]},
+                )
+            except Exception:
+                pass
             return True
     d = await get_draft_by_id(session, draft_id)
     if d is not None and d.status == DraftStatus.REJECTED.value:
@@ -400,6 +414,19 @@ async def mark_draft_published(session: AsyncSession, draft_id: int, *, telegram
 
         chans = _channels_from_sources_json(d.sources if d else None)
         record_publish_for_channels(chans)
+    except Exception:
+        pass
+    try:
+        from editorial.governance.ledger import append_decision
+
+        append_decision(
+            runtime_dir=None,
+            decision_type="publish",
+            outcome="published",
+            subject_type="draft",
+            subject_id=str(draft_id),
+            publish={"telegram_post_id": telegram_post_id, "channels": chans[:12]},
+        )
     except Exception:
         pass
     return True

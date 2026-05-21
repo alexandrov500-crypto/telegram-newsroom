@@ -125,4 +125,9 @@ async def dispatch_runtime_http(
         return _json_response(runtime_timeline_payload())
     if p == "/runtime/incidents":
         return _json_response({"bundles": list_recent_incidents(settings)})
+    from ops.editorial_runtime_api import dispatch_editorial_runtime_http
+
+    ed = await dispatch_editorial_runtime_http(settings, path_only)
+    if ed is not None:
+        return ed
     return None

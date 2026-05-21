@@ -256,6 +256,71 @@ async def _summarize_step(ctx: PipelineContext) -> None:
 
     channel_scores = export_channel_scores_for_priority(settings.runtime_state_dir)
     entity_norms = tuple(e.normalized for e in ents)
+    from editorial.governance.diversity_controls import (
+        apply_cooldowns,
+        record_selection,
+        record_suppression_metric,
+    )
+    from editorial.governance.explainability import build_draft_governance_metadata
+    from editorial.governance.ledger import append_decision
+    from editorial.governance.policies_engine import evaluate_policies, record_topic_selected
+    from editorial.governance.ranking import rank_clusters, score_cluster_candidate
+    from editorial.policy import dominant_channel_key
+    from editorial.suppression_memory import record_suppression_ttl
+
+    dom_ch = dominant_channel_key(cluster)
+    ranking_trace = score_cluster_candidate(
+        cluster,
+        runtime_dir=settings.runtime_state_dir,
+        fingerprint=fp,
+        topic_hint=identity.topic_hint,
+        evolution_kind=str(evo.kind),
+        duplicate_similarity_pct=0.0,
+        entity_norms=entity_norms,
+    )
+    rank_clusters(
+        [
+            {
+                "posts": cluster,
+                "fingerprint": fp,
+                "topic_hint": identity.topic_hint,
+                "evolution_kind": str(evo.kind),
+                "entity_norms": entity_norms,
+            }
+        ],
+        runtime_dir=settings.runtime_state_dir,
+    )
+    policy_matches, gov_suppress, gov_reason = evaluate_policies(
+        cluster,
+        runtime_dir=settings.runtime_state_dir,
+        topic_key=identity.topic_hint,
+        dominant_channel=dom_ch,
+        fingerprint=fp,
+    )
+    div_blocked, div_codes = apply_cooldowns(
+        settings.runtime_state_dir,
+        topic_key=identity.topic_hint,
+        channels=[str(p.channel_name or "") for p in cluster],
+    )
+    if ranking_trace.hard_block or gov_suppress or div_blocked:
+        reasons = list(ranking_trace.reason_codes) + div_codes
+        if gov_reason:
+            reasons.append(gov_reason)
+        append_decision(
+            runtime_dir=settings.runtime_state_dir,
+            decision_type="cluster_governance_suppress",
+            outcome="suppressed",
+            subject_id=fp,
+            reason_codes=reasons[:24],
+            ranking_trace=ranking_trace.to_dict(),
+            policy_matches=policy_matches,
+        )
+        record_suppression_ttl(settings.runtime_state_dir, fp, 1800.0, reason=gov_reason or reasons[0] if reasons else "")
+        record_suppression_metric(settings.runtime_state_dir, gov_reason or "governance")
+        inc("skipped_intelligence_suppress")
+        log_event(logger, "scheduler.cluster_suppressed", reasons=reasons, stage="governance")
+        ctx.tick_timings["cluster_sec"] = time.perf_counter() - t_cl
+        return
     pipeline_decision = evaluate_cluster_for_pipeline(
         cluster,
         settings=settings,
@@ -271,6 +336,16 @@ async def _summarize_step(ctx: PipelineContext) -> None:
     )
     if pipeline_decision.defer_to_next_tick:
         inc("cadence_deferred_cluster")
+        append_decision(
+            runtime_dir=settings.runtime_state_dir,
+            decision_type="cluster_defer",
+            outcome="deferred",
+            subject_id=fp,
+            reason_codes=list(pipeline_decision.suppression_reasons)[:24],
+            ranking_trace=ranking_trace.to_dict(),
+            policy_matches=policy_matches,
+            scoring_components={"relevance_total": pipeline_decision.relevance.total},
+        )
         log_event(
             logger,
             "scheduler.cluster_deferred_cadence",
@@ -292,6 +367,26 @@ async def _summarize_step(ctx: PipelineContext) -> None:
         ctx.tick_timings["cluster_sec"] = time.perf_counter() - t_cl
         return
     if pipeline_decision.suppress:
+        append_decision(
+            runtime_dir=settings.runtime_state_dir,
+            decision_type="cluster_suppress",
+            outcome="suppressed",
+            subject_id=fp,
+            reason_codes=list(pipeline_decision.suppression_reasons)[:24],
+            ranking_trace=ranking_trace.to_dict(),
+            policy_matches=policy_matches,
+            scoring_components={"relevance_total": pipeline_decision.relevance.total},
+        )
+        record_suppression_ttl(
+            settings.runtime_state_dir,
+            fp,
+            3600.0,
+            reason=(pipeline_decision.suppression_reasons[0] if pipeline_decision.suppression_reasons else "pipeline"),
+        )
+        record_suppression_metric(
+            settings.runtime_state_dir,
+            pipeline_decision.suppression_reasons[0] if pipeline_decision.suppression_reasons else "pipeline",
+        )
         inc("skipped_intelligence_suppress")
         log_event(
             logger,
@@ -313,6 +408,21 @@ async def _summarize_step(ctx: PipelineContext) -> None:
         )
         ctx.tick_timings["cluster_sec"] = time.perf_counter() - t_cl
         return
+    append_decision(
+        runtime_dir=settings.runtime_state_dir,
+        decision_type="cluster_selected",
+        outcome="proceed",
+        subject_id=fp,
+        reason_codes=list(ranking_trace.reason_codes)[:24],
+        ranking_trace=ranking_trace.to_dict(),
+        policy_matches=policy_matches,
+    )
+    record_topic_selected(settings.runtime_state_dir, identity.topic_hint)
+    record_selection(
+        settings.runtime_state_dir,
+        topic_key=identity.topic_hint,
+        channels=[str(p.channel_name or "") for p in cluster],
+    )
 
     inc("clusters_created")
 
@@ -518,6 +628,16 @@ async def _summarize_step(ctx: PipelineContext) -> None:
                 },
                 "editorial_confidence": ed_conf.to_dict(),
                 "headline_quality": hq_eval,
+                "editorial_governance": build_draft_governance_metadata(
+                    runtime_dir=settings.runtime_state_dir,
+                    posts=used_posts,
+                    topic_hint=identity.topic_hint,
+                    fingerprint=fp,
+                    ranking_trace=ranking_trace,
+                    pipeline_decision=pipeline_decision.to_dict(),
+                    policy_matches=policy_matches,
+                    selection_reasons=list(ranking_trace.reason_codes),
+                ),
             },
         )
         append_event_history(
@@ -729,9 +849,11 @@ async def _scheduled_publish_step(ctx: PipelineContext) -> None:
 
 async def run_operational_heartbeat(ctx: PipelineContext) -> None:
     from app.runtime_watchdog import run_watchdog_checks
+    from editorial.governance.drift import check_editorial_drift
 
     await log_runtime_diagnostics(logger, ctx.settings)
     await run_watchdog_checks(ctx.settings, collector_enabled=ctx.collector_enabled)
+    check_editorial_drift(ctx.settings.runtime_state_dir, logger=logger)
     log_pipeline_metrics(logger)
 
 

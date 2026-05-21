@@ -51,11 +51,22 @@ def _row_score(row: dict[str, Any]) -> float:
     pub = int(row.get("publishes") or 0)
     rej = int(row.get("rejects") or 0)
     dup = int(row.get("duplicate_signals") or 0)
+    stale = int(row.get("stale_signals") or 0)
+    corr = int(row.get("corrections") or 0)
     denom = max(1, pub + rej)
     approval_rate = pub / denom
     rejection_rate = rej / denom
     dup_rate = dup / max(1, pub + dup)
-    score = 0.48 + 0.34 * approval_rate - 0.28 * rejection_rate - 0.18 * min(1.0, dup_rate)
+    stale_rate = stale / max(1, pub)
+    corr_rate = corr / max(1, pub)
+    score = (
+        0.48
+        + 0.34 * approval_rate
+        - 0.28 * rejection_rate
+        - 0.18 * min(1.0, dup_rate)
+        - 0.08 * min(1.0, stale_rate)
+        - 0.10 * min(1.0, corr_rate)
+    )
     return round(max(0.06, min(0.97, score)), 3)
 
 
@@ -112,6 +123,40 @@ def record_reject_for_channels(channels: list[str], *, runtime_dir: str | None =
                 continue
             row = dict(chmap.get(key) or {})
             row["rejects"] = int(row.get("rejects") or 0) + 1
+            chmap[key] = row
+        _save(runtime_dir, data)
+
+
+def record_stale_for_channels(channels: list[str], *, runtime_dir: str | None = None) -> None:
+    if not channels:
+        return
+    with _lock:
+        data = _load(runtime_dir)
+        chmap = data.setdefault("channels", {})
+        assert isinstance(chmap, dict)
+        for ch in channels:
+            key = _norm_channel(ch)
+            if not key:
+                continue
+            row = dict(chmap.get(key) or {})
+            row["stale_signals"] = int(row.get("stale_signals") or 0) + 1
+            chmap[key] = row
+        _save(runtime_dir, data)
+
+
+def record_correction_for_channels(channels: list[str], *, runtime_dir: str | None = None) -> None:
+    if not channels:
+        return
+    with _lock:
+        data = _load(runtime_dir)
+        chmap = data.setdefault("channels", {})
+        assert isinstance(chmap, dict)
+        for ch in channels:
+            key = _norm_channel(ch)
+            if not key:
+                continue
+            row = dict(chmap.get(key) or {})
+            row["corrections"] = int(row.get("corrections") or 0) + 1
             chmap[key] = row
         _save(runtime_dir, data)
 

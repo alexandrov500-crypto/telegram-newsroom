@@ -1109,6 +1109,52 @@ async def notify_admin_new_draft(
     log_event(logger, "draft.admin_notified", draft_id=draft_id, parts=len(parts))
 
 
+@router.message(Command("editorial_freeze"))
+async def cmd_editorial_freeze(message: Message, settings: Settings) -> None:
+    if not _admin_private_message(message, settings):
+        await message.answer("Access denied.")
+        return
+    from editorial.governance.operator_controls import set_emergency_freeze
+
+    parts = (message.text or "").split(maxsplit=1)
+    on = len(parts) < 2 or parts[1].strip().lower() in ("on", "1", "true", "yes")
+    reason = parts[1] if len(parts) > 1 and parts[1].strip().lower() not in ("on", "off", "0", "false") else ""
+    set_emergency_freeze(settings.runtime_state_dir, enabled=on, reason=reason)
+    await message.answer(f"Emergency editorial freeze: {'ON' if on else 'OFF'}")
+
+
+@router.message(Command("mute_source"))
+async def cmd_mute_source(message: Message, settings: Settings) -> None:
+    if not _admin_private_message(message, settings):
+        await message.answer("Access denied.")
+        return
+    parts = (message.text or "").split(maxsplit=2)
+    if len(parts) < 2:
+        await message.answer("Usage: /mute_source <channel> [minutes]")
+        return
+    from editorial.governance.operator_controls import mute_source
+
+    mins = float(parts[2]) if len(parts) > 2 else 60.0
+    mute_source(settings.runtime_state_dir, parts[1], ttl_sec=mins * 60.0, reason="operator_command")
+    await message.answer(f"Muted source {parts[1]} for {mins:.0f} min.")
+
+
+@router.message(Command("boost_source"))
+async def cmd_boost_source(message: Message, settings: Settings) -> None:
+    if not _admin_private_message(message, settings):
+        await message.answer("Access denied.")
+        return
+    parts = (message.text or "").split(maxsplit=2)
+    if len(parts) < 2:
+        await message.answer("Usage: /boost_source <channel> [boost 0.05-0.2]")
+        return
+    from editorial.governance.operator_controls import boost_source
+
+    boost = float(parts[2]) if len(parts) > 2 else 0.08
+    boost_source(settings.runtime_state_dir, parts[1], boost=boost, reason="operator_command")
+    await message.answer(f"Boosted source {parts[1]} by {boost:.3f}.")
+
+
 def register_handlers(dp: Dispatcher, settings: Settings) -> None:
     router.message.middleware(SettingsMiddleware(settings))
     router.callback_query.middleware(SettingsMiddleware(settings))

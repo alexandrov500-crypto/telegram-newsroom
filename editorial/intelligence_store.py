@@ -70,6 +70,17 @@ def save_json(path: Path, data: dict[str, Any]) -> None:
 
 
 def reset_intelligence_files_for_tests(runtime_dir: str) -> None:
+    from editorial.governance.ledger import reset_ledger_for_tests
+    from editorial.governance.paths import (
+        decision_ledger_path,
+        governance_rules_path,
+        governance_state_path,
+        operator_controls_path,
+        ranking_snapshot_path,
+        ranking_weights_path,
+    )
+
+    reset_ledger_for_tests(runtime_dir)
     for p in (
         topic_memory_path(runtime_dir),
         event_history_path(runtime_dir),
@@ -79,6 +90,12 @@ def reset_intelligence_files_for_tests(runtime_dir: str) -> None:
         suppression_state_path(runtime_dir),
         drift_snapshots_path(runtime_dir),
         operational_timeline_path(runtime_dir),
+        decision_ledger_path(runtime_dir),
+        governance_rules_path(runtime_dir),
+        governance_state_path(runtime_dir),
+        operator_controls_path(runtime_dir),
+        ranking_snapshot_path(runtime_dir),
+        ranking_weights_path(runtime_dir),
     ):
         if p.is_file():
             try:
