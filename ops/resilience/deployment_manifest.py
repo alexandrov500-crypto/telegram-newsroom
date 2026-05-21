@@ -66,6 +66,12 @@ def write_deployment_manifest(settings: Any, *, operational_mode: str = "product
     path.write_text(raw, encoding="utf-8")
     sidecar = path.with_suffix(".json.sha256")
     sidecar.write_text(hashlib.sha256(raw.encode()).hexdigest(), encoding="utf-8")
+    hist_path = path.parent / "deployment_manifest_history.jsonl"
+    try:
+        with hist_path.open("a", encoding="utf-8") as fh:
+            fh.write(raw.replace("\n", "")[:4000] + "\n")
+    except OSError:
+        pass
     return path
 
 

@@ -69,13 +69,20 @@ def compute_drift_signals(runtime_dir: str | None) -> dict[str, Any]:
 def check_editorial_drift(runtime_dir: str | None, *, logger: Any = None) -> dict[str, Any]:
     snap = compute_drift_signals(runtime_dir)
     if snap.get("alert") and logger is not None:
+        warnings = list(snap.get("warnings") or [])
         log_event(
             logger,
             "editorial.drift.warning",
-            warnings=list(snap.get("warnings") or []),
+            warnings=warnings,
             topic_entropy=snap.get("topic_entropy"),
             source_entropy=snap.get("source_entropy"),
             top_topic_share=snap.get("top_topic_share"),
             top_source_share=snap.get("top_source_share"),
         )
+        try:
+            from ops.operator_notifications import notify_drift_warning
+
+            notify_drift_warning(runtime_dir or "", warnings)
+        except Exception:
+            pass
     return snap

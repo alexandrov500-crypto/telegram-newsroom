@@ -59,7 +59,26 @@ async def _handle_client(
         return
     method, path_only, query, headers = _parse_http(raw)
 
-    if method != "GET":
+    body_raw = b""
+    if "\r\n\r\n" in raw.decode("utf-8", errors="ignore"):
+        body_raw = raw.split(b"\r\n\r\n", 1)[-1]
+
+    if method == "POST" and path_only.startswith("/ops/control"):
+        try:
+            from app.ops_http_routes import ops_token_authorized
+            from ops.control.api import dispatch_control_http
+
+            if not ops_token_authorized(settings, query, headers):
+                writer.write(_http_response(403, b'{"error":"forbidden"}'))
+            else:
+                code, ctype, resp_body = await dispatch_control_http(
+                    settings, path_only, body_raw=body_raw, headers=headers
+                )
+                writer.write(_http_response(code, resp_body, content_type=ctype))
+        except Exception as exc:
+            logger.exception("ops_control failed: %s", exc)
+            writer.write(_http_response(500, _e_json(str(exc))))
+    elif method != "GET":
         writer.write(_http_response(405, b'{"error":"method_not_allowed"}'))
     elif path_only in ("/health", "/healthz"):
         from app.dependency_state import get_dependency_state
@@ -95,7 +114,7 @@ async def _handle_client(
                 if not ops_token_authorized(settings, query, headers):
                     writer.write(_http_response(403, b'{"error":"forbidden"}'))
                 else:
-                    rt = await dispatch_runtime_http(settings, path_only)
+                    rt = await dispatch_runtime_http(settings, path_only, query=query)
                     if rt is None:
                         writer.write(_http_response(404, b'{"error":"not_found"}'))
                     else:

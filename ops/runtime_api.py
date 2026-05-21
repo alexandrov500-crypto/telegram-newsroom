@@ -121,6 +121,8 @@ def list_recent_incidents(settings: Any, *, limit: int = 10) -> list[dict[str, A
 async def dispatch_runtime_http(
     settings: Any,
     path_only: str,
+    *,
+    query: dict[str, list[str]] | None = None,
 ) -> tuple[int, str, bytes] | None:
     p = path_only.rstrip("/")
     if p == "/runtime/status":
@@ -152,4 +154,9 @@ async def dispatch_runtime_http(
     ed = await dispatch_editorial_runtime_http(settings, path_only)
     if ed is not None:
         return ed
+    from ops.operator_api import dispatch_operator_runtime_http
+
+    op = await dispatch_operator_runtime_http(settings, path_only, query=query)
+    if op is not None:
+        return op
     return None

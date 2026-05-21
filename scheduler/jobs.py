@@ -860,6 +860,14 @@ async def run_operational_heartbeat(ctx: PipelineContext) -> None:
         run_lifecycle_retention(ctx.settings.runtime_state_dir)
     except Exception as exc:
         logger.warning("lifecycle_retention skipped: %s", exc)
+    try:
+        from ops.analytics.publication import update_rollup_from_runtime
+        from ops.operator_notifications import flush_pending_notifications
+
+        update_rollup_from_runtime(ctx.settings.runtime_state_dir)
+        await flush_pending_notifications(ctx.bot, ctx.settings)
+    except Exception as exc:
+        logger.warning("operator_ops_heartbeat skipped: %s", exc)
     log_pipeline_metrics(logger)
 
 
