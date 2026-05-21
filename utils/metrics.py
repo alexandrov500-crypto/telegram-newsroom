@@ -44,12 +44,40 @@ _counts: dict[str, int] = {
     "degraded_state_transitions_total": 0,
     "scored_articles_total": 0,
     "scoring_failures_total": 0,
+    "queue_overflow_total": 0,
 }
 
 _gauges: dict[str, float] = {}
 
 _pipeline_sec_sum = 0.0
 _pipeline_sec_count = 0
+
+# Prometheus-style histogram buckets (seconds).
+_HISTOGRAM_BUCKET_UPPER = (
+    0.01,
+    0.05,
+    0.1,
+    0.25,
+    0.5,
+    1.0,
+    2.5,
+    5.0,
+    10.0,
+    30.0,
+    60.0,
+    float("inf"),
+)
+_histograms: dict[str, list[int]] = {}
+_histogram_sums: dict[str, float] = {}
+_histogram_counts: dict[str, int] = {}
+
+PIPELINE_HISTOGRAMS = (
+    "collect_duration_seconds",
+    "summarize_duration_seconds",
+    "scoring_duration_seconds",
+    "publish_duration_seconds",
+    "scheduler_cycle_duration_seconds",
+)
 
 
 def inc(metric: str, delta: int = 1) -> None:
@@ -69,6 +97,43 @@ def snapshot() -> dict[str, int]:
         return dict(_counts)
 
 
+def _histogram_bucket_index(value: float) -> int:
+    v = max(0.0, float(value))
+    for i, upper in enumerate(_HISTOGRAM_BUCKET_UPPER):
+        if v <= upper:
+            return i
+    return len(_HISTOGRAM_BUCKET_UPPER) - 1
+
+
+def observe_histogram(name: str, value_sec: float) -> None:
+    """Record one observation into an in-process histogram (seconds)."""
+    if value_sec < 0:
+        return
+    key = str(name)
+    with _lock:
+        if key not in _histograms:
+            _histograms[key] = [0] * len(_HISTOGRAM_BUCKET_UPPER)
+        idx = _histogram_bucket_index(value_sec)
+        _histograms[key][idx] += 1
+        _histogram_sums[key] = _histogram_sums.get(key, 0.0) + float(value_sec)
+        _histogram_counts[key] = _histogram_counts.get(key, 0) + 1
+
+
+def histogram_snapshot() -> dict[str, dict[str, Any]]:
+    with _lock:
+        out: dict[str, dict[str, Any]] = {}
+        labels = [
+            "inf" if b == float("inf") else str(b) for b in _HISTOGRAM_BUCKET_UPPER
+        ]
+        for name, buckets in _histograms.items():
+            out[name] = {
+                "buckets": dict(zip(labels, buckets)),
+                "sum": round(_histogram_sums.get(name, 0.0), 6),
+                "count": int(_histogram_counts.get(name, 0)),
+            }
+        return out
+
+
 def reset_metrics() -> None:
     """Reset counters, gauges, and pipeline duration aggregates (tests / admin)."""
     global _pipeline_sec_sum, _pipeline_sec_count
@@ -78,6 +143,9 @@ def reset_metrics() -> None:
         _gauges.clear()
         _pipeline_sec_sum = 0.0
         _pipeline_sec_count = 0
+        _histograms.clear()
+        _histogram_sums.clear()
+        _histogram_counts.clear()
 
 
 def export_snapshot() -> dict[str, Any]:
@@ -89,6 +157,7 @@ def export_snapshot() -> dict[str, Any]:
         return {
             "counters": dict(_counts),
             "gauges": dict(_gauges),
+            "histograms": histogram_snapshot(),
             "pipeline_duration_sum_sec": round(_pipeline_sec_sum, 6),
             "pipeline_duration_sample_count": int(_pipeline_sec_count),
             "pipeline_duration_avg_sec": round(avg, 6) if avg is not None else None,

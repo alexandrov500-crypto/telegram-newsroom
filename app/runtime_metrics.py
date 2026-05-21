@@ -40,6 +40,9 @@ def export_merged_metrics() -> dict:
         TELEGRAM_NETWORK_FAILURES,
         OPENAI_FAILURES_TOTAL,
         DEGRADED_TRANSITIONS,
+        "openai_circuit_open",
+        "openai_recovery_attempts_total",
+        "queue_overflow_total",
         "scored_articles_total",
         "scoring_failures_total",
     ):

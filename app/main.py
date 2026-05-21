@@ -46,9 +46,12 @@ def _heartbeat_interval_minutes(settings: Settings) -> int:
 
 
 async def main() -> None:
+    from app.runtime_lifecycle import emit_lifecycle
+
     settings = load_settings()
     validate_settings_for_launch(settings)
     setup_logging(settings.log_level, soak_test=settings.soak_test)
+    emit_lifecycle("runtime.boot", dry_run=settings.dry_run, soak_test=settings.soak_test)
     log_startup_recovery_hints_if_any(settings)
     health_http_server = None
     t_db0 = time.perf_counter()
@@ -157,6 +160,13 @@ async def main() -> None:
 
     scheduler.start()
     logger.info("Scheduler started (pipeline every %s minutes)", settings.pipeline_interval_minutes)
+    get_dependency_state().startup_complete = True
+    emit_lifecycle(
+        "runtime.ready",
+        ai_pipeline_enabled=deps.ai_pipeline_enabled,
+        collector_enabled=deps.collector_enabled,
+        aggregate_status=get_dependency_state().aggregate_status().value,
+    )
 
     shutdown_event = asyncio.Event()
 

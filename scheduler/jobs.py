@@ -55,7 +55,12 @@ from scheduler.precluster import avg_pairwise_lexical_cohesion, select_cluster_f
 from scheduler.runtime_context import PipelineContext, set_pipeline_context
 from utils.diagnostics import db_file_size_bytes, log_runtime_diagnostics, rss_bytes_best_effort
 from utils.error_classifier import classify_runtime_error
-from utils.metrics import inc, log_pipeline_metrics, record_pipeline_duration
+from utils.metrics import (
+    inc,
+    log_pipeline_metrics,
+    observe_histogram,
+    record_pipeline_duration,
+)
 from utils.observability import (
     check_phase_trends_after_tick,
     check_tick_anomalies,
@@ -107,22 +112,23 @@ async def _collect_step(ctx: PipelineContext) -> None:
     if not ctx.collector_enabled:
         log_event(logger, "collector.skipped", reason="telethon_degraded")
         return
+    from app.runtime_lifecycle import emit_lifecycle, lifecycle_span_ms
+
     settings = ctx.settings
+    inserted_total = 0
     t0 = time.perf_counter()
+    emit_lifecycle("collector.batch.started", channel_count=len(settings.source_channels))
     client = build_telethon_client(
         api_id=settings.telegram_api_id,
         api_hash=settings.telegram_api_hash,
         session_string=settings.telethon_session_string,
         session_path=settings.telethon_session_path,
     )
-    await client.connect()
-    if not await client.is_user_authorized():
-        log_event(logger, "collector.telethon_unauthorized")
-        await client.disconnect()
-        ctx.tick_timings["collect_sec"] = time.perf_counter() - t0
-        return
-
     try:
+        await client.connect()
+        if not await client.is_user_authorized():
+            log_event(logger, "collector.telethon_unauthorized")
+            return
         async with session_scope() as session:
             inserted_total = await collect_all_channels(
                 client,
@@ -133,6 +139,10 @@ async def _collect_step(ctx: PipelineContext) -> None:
                 channel_delay_seconds=settings.channel_collect_delay_seconds,
             )
         inc("posts_collected", inserted_total)
+        if inserted_total > 0:
+            from app.runtime_activity import record_collect_success
+
+            record_collect_success(new_rows=inserted_total)
         log_event(
             logger,
             "collector.pipeline_inserted_total",
@@ -146,6 +156,12 @@ async def _collect_step(ctx: PipelineContext) -> None:
         if client.is_connected():
             await client.disconnect()
         ctx.tick_timings["collect_sec"] = time.perf_counter() - t0
+        observe_histogram("collect_duration_seconds", ctx.tick_timings["collect_sec"])
+        emit_lifecycle(
+            "collector.batch.completed",
+            new_rows=inserted_total,
+            event_duration_ms=lifecycle_span_ms(t0),
+        )
 
 
 async def _retention_step(settings: Settings) -> tuple[float, int, int]:
@@ -177,8 +193,16 @@ async def _retention_step(settings: Settings) -> tuple[float, int, int]:
 
 
 async def _summarize_step(ctx: PipelineContext) -> None:
-    if not ctx.ai_pipeline_enabled:
-        log_event(logger, "scheduler.summarize_skipped", reason="openai_degraded", stage="startup")
+    from app.openai_circuit import get_openai_circuit
+
+    if not ctx.ai_pipeline_enabled or not get_openai_circuit().allow_request():
+        log_event(
+            logger,
+            "scheduler.summarize_skipped",
+            reason="openai_degraded",
+            stage="startup",
+            circuit_state=get_openai_circuit().state().value,
+        )
         return
     openai = ctx.openai
     settings = ctx.settings
@@ -313,10 +337,16 @@ async def _summarize_step(ctx: PipelineContext) -> None:
         post_text, used_ids, headline = sc.post_text, sc.used_ids, sc.headline
         _ai_exec_patch = sc.execution.to_draft_extras_patch()
     except SummarizerError as exc:
+        get_openai_circuit().record_failure(str(exc))
         log_event(logger, "openai.summarize_failed", error=str(exc), recovery="aborted_draft")
         ctx.tick_timings["openai_sec"] = time.perf_counter() - t_ai
+        observe_histogram("summarize_duration_seconds", ctx.tick_timings["openai_sec"])
         return
     ctx.tick_timings["openai_sec"] = time.perf_counter() - t_ai
+    observe_histogram("summarize_duration_seconds", ctx.tick_timings["openai_sec"])
+    from app.runtime_activity import record_ai_success
+
+    record_ai_success()
 
     if not used_ids or not post_text:
         log_event(logger, "scheduler.summarize_skipped", reason="model_empty_or_no_ids", stage="post_openai")
@@ -592,6 +622,7 @@ async def _summarize_step(ctx: PipelineContext) -> None:
         if settings.quality_scoring_enabled:
             from editorial.scoring.service import enrich_draft_editorial_intelligence
 
+            t_score = time.perf_counter()
             editorial_intel = await enrich_draft_editorial_intelligence(
                 session,
                 draft_id=draft_id,
@@ -609,6 +640,8 @@ async def _summarize_step(ctx: PipelineContext) -> None:
                 timeout_sec=settings.editorial_scoring_timeout_sec,
                 enabled=True,
             )
+            scoring_sec = time.perf_counter() - t_score
+            observe_histogram("scoring_duration_seconds", scoring_sec)
             if editorial_intel:
                 await merge_draft_extras(
                     session,
@@ -684,10 +717,14 @@ async def _scheduled_publish_step(ctx: PipelineContext) -> None:
                 draft_id=did,
             )
     ctx.tick_timings["scheduled_publish_sec"] = time.perf_counter() - t0
+    observe_histogram("publish_duration_seconds", ctx.tick_timings["scheduled_publish_sec"])
 
 
 async def run_operational_heartbeat(ctx: PipelineContext) -> None:
+    from app.runtime_watchdog import run_watchdog_checks
+
     await log_runtime_diagnostics(logger, ctx.settings)
+    await run_watchdog_checks(ctx.settings, collector_enabled=ctx.collector_enabled)
     log_pipeline_metrics(logger)
 
 
@@ -705,6 +742,12 @@ async def run_pipeline_tick(ctx: PipelineContext, *, wall_clock_start: float) ->
     ctx.tick_in_progress = True
     ctx.tick_timings.clear()
     ctx.duplicate_skipped_this_tick = False
+    from app.runtime_activity import record_scheduler_tick
+    from app.runtime_lifecycle import emit_lifecycle, lifecycle_span_ms
+
+    record_scheduler_tick()
+    tick_t0 = time.perf_counter()
+    emit_lifecycle("scheduler.tick.started", soak_test=settings.soak_test)
     log_event(logger, "scheduler.pipeline_tick", phase="start", soak_test=settings.soak_test)
     try:
         await _collect_step(ctx)
@@ -728,6 +771,9 @@ async def run_pipeline_tick(ctx: PipelineContext, *, wall_clock_start: float) ->
         log_event(logger, "scheduler.pipeline_cancelled", recovery="re_raise")
         raise
     except Exception as exc:
+        from app.runtime_watchdog import note_pipeline_exception
+
+        note_pipeline_exception()
         logger.exception("Pipeline inner tick failed: %s", exc)
         ce = classify_runtime_error(exc)
         log_event(
@@ -752,6 +798,7 @@ async def run_pipeline_tick(ctx: PipelineContext, *, wall_clock_start: float) ->
 
     ctx.last_scheduler_wall_sec = time.perf_counter() - wall_clock_start
     record_pipeline_duration(ctx.last_scheduler_wall_sec)
+    observe_histogram("scheduler_cycle_duration_seconds", ctx.last_scheduler_wall_sec)
     record_pipeline_wall_sample(ctx.last_scheduler_wall_sec)
     if (c := ctx.tick_timings.get("collect_sec")) is not None:
         record_collect_duration(c)
@@ -789,6 +836,12 @@ async def run_pipeline_tick(ctx: PipelineContext, *, wall_clock_start: float) ->
         wall_sec=ctx.last_scheduler_wall_sec,
     )
 
+    emit_lifecycle(
+        "scheduler.tick.completed",
+        wall_sec=round(ctx.last_scheduler_wall_sec, 4),
+        event_duration_ms=lifecycle_span_ms(tick_t0),
+        soak_test=settings.soak_test,
+    )
     log_event(
         logger,
         "scheduler.pipeline_tick",

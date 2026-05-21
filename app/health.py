@@ -149,6 +149,11 @@ async def _check_openai(settings: Settings, openai: AsyncOpenAI) -> DependencySt
         return DependencyStatus.HEALTHY
     except Exception as exc:
         if _is_openai_region_blocked(exc):
+            from app.openai_circuit import get_openai_circuit
+
+            get_openai_circuit().force_open(
+                "unsupported_country_region_territory",
+            )
             log_event(
                 logger,
                 "openai.availability.degraded",
@@ -321,7 +326,12 @@ async def run_startup_healthchecks(
         telethon_detail = get_dependency_state().telethon.detail
         telethon_hint = get_dependency_state().telethon.recovery_hint
 
-    ai_pipeline_enabled = openai_status == DependencyStatus.HEALTHY
+    from app.openai_circuit import get_openai_circuit
+
+    if openai_status != DependencyStatus.HEALTHY and not get_openai_circuit().is_openai_disabled():
+        get_openai_circuit().force_open(openai_detail or "startup_openai_degraded")
+
+    ai_pipeline_enabled = openai_status == DependencyStatus.HEALTHY and get_openai_circuit().allow_request()
     collector_enabled = telethon_status == DependencyStatus.HEALTHY
 
     if fatal_errors:

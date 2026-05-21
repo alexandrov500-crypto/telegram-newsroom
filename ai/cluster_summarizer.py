@@ -104,6 +104,13 @@ def _dedupe_used_ids(used: list[int], valid_ids: set[int]) -> list[int]:
     return out
 
 
+async def _retry_backoff_sleep(attempt: int) -> None:
+    from app.openai_circuit import get_openai_circuit
+
+    delay = get_openai_circuit().backoff_delay_sec(attempt)
+    await asyncio.sleep(delay)
+
+
 async def summarize_cluster(
     client: AsyncOpenAI,
     *,
@@ -114,6 +121,13 @@ async def summarize_cluster(
     request_timeout_sec: float = 90.0,
     log_chat_latency: bool = True,
 ) -> SummarizeClusterResult:
+    from app.openai_circuit import get_openai_circuit
+
+    circuit = get_openai_circuit()
+    if not circuit.allow_request():
+        inc("openai_failures")
+        raise SummarizerError("OpenAI circuit open (OPENAI_DISABLED)")
+
     if not posts:
         raise SummarizerError("No posts to summarize")
 
@@ -189,26 +203,31 @@ async def summarize_cluster(
                     log_event(logger, "openai.request_timeout", attempt=attempt, phase="json_object_fallback")
                     last_err = "timeout"
                     _maybe_count_retry(attempt, max_json_retries)
+                    await _retry_backoff_sleep(attempt)
                     continue
                 except Exception as exc2:
                     log_event(logger, "openai.request_failed", attempt=attempt, error=repr(exc2))
                     last_err = repr(exc2)
                     _maybe_count_retry(attempt, max_json_retries)
+                    await _retry_backoff_sleep(attempt)
                     continue
             else:
                 log_event(logger, "openai.request_failed", attempt=attempt, error=repr(exc))
                 last_err = repr(exc)
                 _maybe_count_retry(attempt, max_json_retries)
+                await _retry_backoff_sleep(attempt)
                 continue
         except asyncio.TimeoutError:
             log_event(logger, "openai.request_timeout", attempt=attempt, phase="primary")
             last_err = "timeout"
             _maybe_count_retry(attempt, max_json_retries)
+            await _retry_backoff_sleep(attempt)
             continue
         except Exception as exc:
             log_event(logger, "openai.request_failed", attempt=attempt, error=repr(exc))
             last_err = repr(exc)
             _maybe_count_retry(attempt, max_json_retries)
+            await _retry_backoff_sleep(attempt)
             continue
 
         choice = completion.choices[0].message.content
@@ -301,8 +320,10 @@ async def summarize_cluster(
         if cost is not None and cost > 0:
             inc("ai_cost_micro_usd", int(cost * 1_000_000))
         set_gauge("ai_last_cluster_latency_sec", float(api_sec))
+        circuit.record_success()
         return SummarizeClusterResult(post_text=post_text, used_ids=used_ids, headline=headline, execution=exec_meta)
 
     inc("openai_failures")
     inc("ai_cluster_failures")
+    circuit.record_failure(last_err or "summarize_exhausted")
     raise SummarizerError(f"OpenAI summarization failed after retries: {last_err}")

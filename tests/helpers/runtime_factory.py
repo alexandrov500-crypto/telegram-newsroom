@@ -36,6 +36,7 @@ def build_ephemeral_settings(base: Settings, tmp_path: Path, **kwargs: object) -
         database_url=db_url,
         runtime_state_dir=str(rt),
         job_queue_prefix=ephemeral_queue_prefix(),
+        job_queue_max_size=100,
         redis_enabled=False,
     )
     if not kwargs:

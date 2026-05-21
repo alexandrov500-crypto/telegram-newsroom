@@ -70,23 +70,54 @@ class JobQueue(Protocol):
     async def aclose(self) -> None: ...
 
 
+class QueueOverflowError(Exception):
+    """Raised when bounded queue refuses a new job (caller should skip gracefully)."""
+
+
 class InMemoryJobQueue:
     """Per-process FIFO queues (development / degraded mode)."""
 
-    def __init__(self) -> None:
-        self._queues: dict[JobKind, asyncio.Queue[JobEnvelope]] = {k: asyncio.Queue() for k in JobKind}
+    def __init__(self, *, max_size: int = 500) -> None:
+        self._max_size = max(1, int(max_size))
+        self._queues: dict[JobKind, asyncio.Queue[JobEnvelope]] = {
+            k: asyncio.Queue(maxsize=self._max_size) for k in JobKind
+        }
 
     async def enqueue(self, job: JobEnvelope) -> None:
-        await self._queues[job.kind].put(job)
+        q = self._queues[job.kind]
+        if q.full():
+            from utils.metrics import inc, set_gauge
+
+            inc("queue_overflow_total")
+            await self._update_depth_gauge()
+            logger.warning(
+                "job_queue.overflow kind=%s depth=%s max=%s",
+                job.kind.value,
+                q.qsize(),
+                self._max_size,
+            )
+            raise QueueOverflowError(f"queue full for {job.kind.value}")
+        await q.put(job)
+        await self._update_depth_gauge()
+
+    async def _update_depth_gauge(self) -> None:
+        from utils.metrics import set_gauge
+
+        set_gauge("queue_depth", float(await self.total_depth()))
 
     async def dequeue(self, kind: JobKind, *, timeout_sec: float) -> JobEnvelope | None:
         try:
-            return await asyncio.wait_for(self._queues[kind].get(), timeout=max(0.001, timeout_sec))
+            job = await asyncio.wait_for(self._queues[kind].get(), timeout=max(0.001, timeout_sec))
+            await self._update_depth_gauge()
+            return job
         except asyncio.TimeoutError:
             return None
 
     async def depth(self, kind: JobKind) -> int:
         return self._queues[kind].qsize()
+
+    async def total_depth(self) -> int:
+        return sum(self._queues[k].qsize() for k in JobKind)
 
     async def ack(self, job: JobEnvelope) -> None:
         return None
@@ -98,15 +129,43 @@ class InMemoryJobQueue:
 class RedisJobQueue:
     """LPUSH / BRPOP lists under NEWSROOM_QUEUE_PREFIX."""
 
-    def __init__(self, redis_client: Any, *, prefix: str) -> None:
+    def __init__(self, redis_client: Any, *, prefix: str, max_size: int = 500) -> None:
         self._r = redis_client
         self._prefix = prefix.rstrip(":")
+        self._max_size = max(1, int(max_size))
 
     def _key(self, kind: JobKind) -> str:
         return f"{self._prefix}:jobq:{kind.value}"
 
     async def enqueue(self, job: JobEnvelope) -> None:
-        await self._r.lpush(self._key(job.kind), job.to_json())
+        key = self._key(job.kind)
+        depth = int(await self._r.llen(key) or 0)
+        if depth >= self._max_size:
+            from utils.metrics import inc, set_gauge
+
+            inc("queue_overflow_total")
+            set_gauge("queue_depth", float(await self.total_depth()))
+            logger.warning(
+                "job_queue.overflow kind=%s depth=%s max=%s backend=redis",
+                job.kind.value,
+                depth,
+                self._max_size,
+            )
+            raise QueueOverflowError(f"redis queue full for {job.kind.value}")
+        await self._r.lpush(key, job.to_json())
+        from utils.metrics import set_gauge
+
+        set_gauge("queue_depth", float(await self.total_depth()))
+
+    async def total_depth(self) -> int:
+        total = 0
+        for kind in JobKind:
+            total += int(await self._r.llen(self._key(kind)) or 0)
+        return total
+
+    async def depth(self, kind: JobKind) -> int:
+        n = await self._r.llen(self._key(kind))
+        return int(n or 0)
 
     async def dequeue(self, kind: JobKind, *, timeout_sec: float) -> JobEnvelope | None:
         t = max(0, int(math.ceil(timeout_sec)))
@@ -116,11 +175,10 @@ class RedisJobQueue:
         if res is None:
             return None
         _, raw = res
-        return JobEnvelope.from_json(raw)
+        from utils.metrics import set_gauge
 
-    async def depth(self, kind: JobKind) -> int:
-        n = await self._r.llen(self._key(kind))
-        return int(n or 0)
+        set_gauge("queue_depth", float(await self.total_depth()))
+        return JobEnvelope.from_json(raw)
 
     async def ack(self, job: JobEnvelope) -> None:
         return None
@@ -139,9 +197,22 @@ def reset_job_queue_for_tests() -> None:
 
 def build_job_queue(settings: Any, redis_client: Any | None) -> JobQueue:
     prefix = str(getattr(settings, "job_queue_prefix", "newsroom") or "newsroom")
+    max_size = max(10, int(getattr(settings, "job_queue_max_size", 500) or 500))
     if bool(getattr(settings, "redis_enabled", False)) and redis_client is not None:
-        return RedisJobQueue(redis_client, prefix=prefix)
-    return InMemoryJobQueue()
+        return RedisJobQueue(redis_client, prefix=prefix, max_size=max_size)
+    return InMemoryJobQueue(max_size=max_size)
+
+
+async def queue_depth_total() -> int:
+    """Best-effort total queue depth for /health (0 if queue not initialized)."""
+    if _queue is None:
+        return 0
+    try:
+        if hasattr(_queue, "total_depth"):
+            return int(await _queue.total_depth())  # type: ignore[attr-defined]
+        return sum(int(await _queue.depth(k)) for k in JobKind)
+    except Exception:
+        return 0
 
 
 def get_job_queue() -> JobQueue:

@@ -42,7 +42,10 @@ def record_dependency_transition(
     now = time.monotonic()
 
     if new_status == DependencyStatus.DEGRADED:
+        from app.runtime_lifecycle import emit_lifecycle
+
         inc_degraded_transition()
+        emit_lifecycle("runtime.degraded", dependency=dependency, reason=reason[:200])
         deps.consecutive_failures += 1
         deps.last_degraded_reason = reason[:500]
         if _first_degraded_mono is None:
@@ -75,6 +78,13 @@ def record_dependency_transition(
         deps.last_recovery_mono = now
         deps.last_recovery_at_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         if deps.consecutive_failures > 0 or deps.last_degraded_reason:
+            from app.runtime_lifecycle import emit_lifecycle
+
+            emit_lifecycle(
+                "runtime.recovered",
+                dependency=dependency,
+                previous_failures=deps.consecutive_failures,
+            )
             log_event(
                 logger,
                 "runtime.slo.recovered",

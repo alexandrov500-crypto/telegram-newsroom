@@ -48,6 +48,7 @@ class Settings:
     redis_enabled: bool
     redis_url: str
     job_queue_prefix: str
+    job_queue_max_size: int
     worker_heartbeat_ttl_sec: int
     health_http_port: int
     health_http_bind: str
@@ -211,6 +212,7 @@ def load_settings() -> Settings:
     redis_enabled = _env_bool("REDIS_ENABLED", "false")
     redis_url = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0").strip()
     job_queue_prefix = os.getenv("NEWSROOM_QUEUE_PREFIX", "newsroom").strip() or "newsroom"
+    job_queue_max_size = max(10, int(os.getenv("JOB_QUEUE_MAX_SIZE", "500")))
     worker_hb_ttl = int(os.getenv("WORKER_HEARTBEAT_TTL_SEC", "90"))
     health_http_port = int(os.getenv("HEALTH_HTTP_PORT", "0"))
     health_http_bind = os.getenv("HEALTH_HTTP_BIND", "0.0.0.0").strip() or "0.0.0.0"
@@ -394,6 +396,7 @@ def load_settings() -> Settings:
         redis_enabled=redis_enabled,
         redis_url=redis_url,
         job_queue_prefix=job_queue_prefix[:120],
+        job_queue_max_size=job_queue_max_size,
         worker_heartbeat_ttl_sec=max(15, min(worker_hb_ttl, 3600)),
         health_http_port=max(0, min(health_http_port, 65535)),
         health_http_bind=health_http_bind,

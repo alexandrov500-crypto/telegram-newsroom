@@ -108,6 +108,9 @@ async def graceful_shutdown(
             return False
         _shutdown_done.set()
 
+    from app.runtime_lifecycle import emit_lifecycle
+
+    emit_lifecycle("runtime.shutdown.started")
     log_event(logger, "runtime.shutdown.started")
     try:
         if dispatcher is not None:
@@ -185,6 +188,7 @@ async def graceful_shutdown(
         except Exception as exc:
             log_event(logger, "lifecycle.task_sweep_failed", error=repr(exc))
 
+        emit_lifecycle("runtime.shutdown.completed")
         log_event(logger, "runtime.shutdown.completed")
         log_event(logger, "lifecycle.shutdown_complete")
         return True

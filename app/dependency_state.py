@@ -109,6 +109,11 @@ class RuntimeDependencyState:
         }
 
     def health_payload(self) -> dict[str, Any]:
+        from app.build_provenance import load_build_provenance
+        from app.openai_circuit import get_openai_circuit
+        from app.runtime_activity import activity_snapshot
+        from app.runtime_lifecycle import runtime_id, uptime_sec
+
         tg = self.telegram_api.to_dict()
         tg["mode"] = self.telegram_mode
         tg["conflict_detected"] = self.conflict_detected
@@ -133,6 +138,23 @@ class RuntimeDependencyState:
             slo = slo_snapshot()
         except Exception:
             slo = {}
+        prov = load_build_provenance()
+        circuit = get_openai_circuit().snapshot()
+        activity = activity_snapshot()
+        polling_status = {
+            "active": self.polling_active,
+            "mode": self.telegram_mode,
+            "instance_id": self.polling_instance_id or None,
+            "retry_count": self.polling_retry_count,
+            "conflict_detected": self.conflict_detected,
+        }
+        try:
+            from utils.metrics import export_snapshot
+
+            queue_depth = int((export_snapshot().get("gauges") or {}).get("queue_depth", 0))
+        except Exception:
+            queue_depth = 0
+
         return {
             "status": self.aggregate_status().value,
             "service": "newsroom",
@@ -141,6 +163,18 @@ class RuntimeDependencyState:
             "collector_enabled": self.collector_enabled,
             "dependencies": deps,
             "runtime_slo": slo,
+            "runtime": {
+                "runtime_id": runtime_id(),
+                "uptime_sec": round(uptime_sec(), 2),
+                "git_sha": prov.git_sha,
+                "build_version": prov.build_version,
+                "queue_depth": queue_depth,
+                "last_successful_collect_at": activity.get("last_successful_collect_at"),
+                "last_successful_ai_at": activity.get("last_successful_ai_at"),
+                "openai_circuit_state": circuit.get("state"),
+                "openai_disabled": circuit.get("openai_disabled"),
+                "polling_status": polling_status,
+            },
         }
 
 

@@ -55,6 +55,7 @@ def minimal_test_settings(**overrides: object) -> Settings:
         redis_enabled=False,
         redis_url="redis://127.0.0.1:6379/0",
         job_queue_prefix="newsroom_test",
+        job_queue_max_size=100,
         worker_heartbeat_ttl_sec=90,
         health_http_port=0,
         health_http_bind="127.0.0.1",
