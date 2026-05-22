@@ -25,15 +25,15 @@ PUBLISH_OK=0
 MODE_BLOCK=0
 STALLED=1
 
-$has 'Scheduler started' && SCHED_STARTED=1
-$has 'job registered: newsroom_pipeline' && JOB_REG=1
-$has 'scheduler job executed: newsroom_pipeline' && JOB_EXEC=1
-$has 'pipeline execution started' && PIPE_START=1
-$has 'pipeline tick completed:' && TICK_DONE=1
-$has 'collector running|collector finished:' && COLLECT=1
-$has 'draft generated:' && DRAFT=1
-$has 'publish succeeded:' && PUBLISH_OK=1
-$has 'scheduler tick skipped: operational_mode=' && MODE_BLOCK=1
+has 'Scheduler started' && SCHED_STARTED=1
+has 'job registered: newsroom_pipeline' && JOB_REG=1
+has 'scheduler job executed: newsroom_pipeline' && JOB_EXEC=1
+has 'pipeline execution started' && PIPE_START=1
+has 'pipeline tick completed:' && TICK_DONE=1
+has 'collector running|collector finished:' && COLLECT=1
+has 'draft generated:' && DRAFT=1
+has 'publish succeeded:' && PUBLISH_OK=1
+has 'scheduler tick skipped: operational_mode=' && MODE_BLOCK=1
 
 STATUS_JSON=""
 if curl -sf "http://127.0.0.1:${PORT}/runtime/status" -o /tmp/newsroom_golive_status.json 2>/dev/null; then

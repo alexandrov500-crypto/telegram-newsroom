@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -26,7 +27,12 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
-_TELEGRAM_HEALTH_RETRIES = 2
+def _telegram_startup_health_retries() -> int:
+    raw = os.getenv("TELEGRAM_STARTUP_HEALTH_MAX_RETRIES", "2").strip()
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return 2
 
 
 @dataclass(slots=True)
@@ -112,7 +118,7 @@ async def _check_telegram_bot(settings: Settings, bot: Bot) -> None:
     me = await _run_with_timeout_retries(
         label="telegram_bot_get_me",
         timeout_sec=timeout_sec,
-        max_retries=_TELEGRAM_HEALTH_RETRIES,
+        max_retries=_telegram_startup_health_retries(),
         run=_get_me,
         log_prefix="telegram.healthcheck",
     )
@@ -184,7 +190,7 @@ async def _check_telethon(settings: Settings) -> DependencyStatus:
         await _run_with_timeout_retries(
             label="telethon_connect",
             timeout_sec=hc_timeout,
-            max_retries=_TELEGRAM_HEALTH_RETRIES,
+            max_retries=_telegram_startup_health_retries(),
             run=_telethon,
             log_prefix="healthcheck.telethon",
         )
@@ -301,30 +307,32 @@ async def run_startup_healthchecks(
     if openai_status != DependencyStatus.HEALTHY:
         openai_detail = "AI pipeline disabled at startup"
 
-    telegram_status = DependencyStatus.HEALTHY
-    telegram_detail = ""
-    try:
-        await _check_telegram_bot(settings, bot)
-    except Exception as exc:
-        telegram_status = DependencyStatus.DEGRADED
-        telegram_detail = repr(exc)
-        logger.warning("Healthcheck: Telegram bot degraded: %s", exc)
+    async def _probe_telegram_bot() -> tuple[DependencyStatus, str]:
+        try:
+            await _check_telegram_bot(settings, bot)
+            return DependencyStatus.HEALTHY, ""
+        except Exception as exc:
+            logger.warning("Healthcheck: Telegram bot degraded: %s", exc)
+            return DependencyStatus.DEGRADED, repr(exc)
 
-    telethon_hint = ""
-    if not telethon_session_configured(settings):
-        telethon_status = DependencyStatus.DEGRADED
-        telethon_detail = telethon_missing_detail(settings)
-        telethon_hint = TELETHON_RECOVERY_CLI
-        log_event(
-            logger,
-            "telethon.session.missing",
-            detail=telethon_detail,
-            recovery_cli=TELETHON_RECOVERY_CLI.splitlines()[0],
-        )
-    else:
-        telethon_status = await _check_telethon(settings)
-        telethon_detail = get_dependency_state().telethon.detail
-        telethon_hint = get_dependency_state().telethon.recovery_hint
+    async def _probe_telethon() -> tuple[DependencyStatus, str, str]:
+        if not telethon_session_configured(settings):
+            detail = telethon_missing_detail(settings)
+            log_event(
+                logger,
+                "telethon.session.missing",
+                detail=detail,
+                recovery_cli=TELETHON_RECOVERY_CLI.splitlines()[0],
+            )
+            return DependencyStatus.DEGRADED, detail, TELETHON_RECOVERY_CLI
+        status = await _check_telethon(settings)
+        dep = get_dependency_state().telethon
+        return status, dep.detail, dep.recovery_hint
+
+    (telegram_status, telegram_detail), (telethon_status, telethon_detail, telethon_hint) = await asyncio.gather(
+        _probe_telegram_bot(),
+        _probe_telethon(),
+    )
 
     from app.openai_circuit import get_openai_circuit
 

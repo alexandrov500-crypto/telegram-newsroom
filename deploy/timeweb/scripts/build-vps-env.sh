@@ -64,6 +64,8 @@ set_kv TELEGRAM_POLLING_ENABLED "${TELEGRAM_POLLING_ENABLED:-true}"
 set_kv LOG_LEVEL "${LOG_LEVEL:-INFO}"
 set_kv DATABASE_URL "sqlite+aiosqlite:////data/newsroom.db"
 set_kv RUNTIME_STATE_DIR "/data/runtime"
+set_kv HEALTHCHECK_TIMEOUT_SEC "${HEALTHCHECK_TIMEOUT_SEC:-20}"
+set_kv TELEGRAM_STARTUP_HEALTH_MAX_RETRIES "${TELEGRAM_STARTUP_HEALTH_MAX_RETRIES:-1}"
 set_kv TELETHON_SESSION_PATH "/data/sessions/telethon.session"
 
 rm -f "${OUT}.bak"
