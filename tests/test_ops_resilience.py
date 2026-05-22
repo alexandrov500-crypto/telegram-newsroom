@@ -8,7 +8,13 @@ from pathlib import Path
 
 import pytest
 
-from app.operational_mode import OperationalMode, load_operational_mode, publish_allowed, set_operational_mode
+from app.operational_mode import (
+    OperationalMode,
+    load_operational_mode,
+    publish_allowed,
+    set_operational_mode,
+    sync_operational_mode_from_env,
+)
 from ops.resilience.leadership import LeadershipCoordinator
 from ops.resilience.migrations import apply_runtime_migrations, migrations_payload
 from ops.resilience.publish_journal import (
@@ -69,6 +75,27 @@ def test_migrations_idempotent(ephemeral_newsroom_settings) -> None:
     assert b["applied_now"] == []
     payload = migrations_payload(rd)
     assert "registered" in payload
+
+
+def test_runtime_operational_mode_env_overrides_file(
+    ephemeral_newsroom_settings, monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    rd = str(tmp_path / "runtime")
+    set_operational_mode(rd, OperationalMode.RECOVERY, reason="test_persisted")
+    monkeypatch.setenv("RUNTIME_OPERATIONAL_MODE", "production")
+    assert load_operational_mode(rd).value == "production"
+
+
+def test_sync_operational_mode_from_env_persists_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    rd = str(tmp_path / "runtime")
+    set_operational_mode(rd, OperationalMode.RECOVERY, reason="test")
+    monkeypatch.setenv("RUNTIME_OPERATIONAL_MODE", "production")
+    sync_operational_mode_from_env(rd)
+    assert load_operational_mode(rd).value == "production"
+    data = json.loads((tmp_path / "runtime" / "operational_mode.json").read_text())
+    assert data["mode"] == "production"
 
 
 def test_operational_mode_publish_blocked(ephemeral_newsroom_settings) -> None:

@@ -22,7 +22,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends tini \
+    && apt-get install -y --no-install-recommends tini gosu \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /app/requirements.txt
@@ -46,12 +46,16 @@ COPY worker /app/worker
 COPY workers /app/workers
 COPY docker /app/docker
 COPY tools /app/tools
+COPY gen_session.py /app/gen_session.py
 
 RUN mkdir -p /data /data/runtime /data/backups /data/logs /data/sessions /app/var/runtime \
     && useradd --create-home --uid 1000 --shell /usr/sbin/nologin appuser \
     && chown -R appuser:appuser /data /app/var /app/tools /app/alembic
 
-USER appuser
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod 755 /entrypoint.sh
+
+USER root
 
 EXPOSE 8080
 
@@ -60,5 +64,4 @@ STOPSIGNAL SIGTERM
 HEALTHCHECK --interval=60s --timeout=20s --start-period=120s --retries=3 \
   CMD ["python", "/app/docker/healthcheck.py"]
 
-ENTRYPOINT ["/usr/bin/tini", "-s", "--"]
-CMD ["python", "-m", "app.main"]
+ENTRYPOINT ["/usr/bin/tini", "-s", "--", "/entrypoint.sh"]

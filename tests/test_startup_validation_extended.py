@@ -29,12 +29,29 @@ def test_channel_collect_delay_cap():
 
 
 def test_telethon_session_parent_must_exist(tmp_path: Path):
-    s = minimal_test_settings(telethon_session_path=str(tmp_path / "no_parent_dir" / "s.session"))
+    s = minimal_test_settings(
+        telethon_session_string=None,
+        telethon_session_path=str(tmp_path / "no_parent_dir" / "s.session"),
+    )
     with pytest.raises(RuntimeError, match="TELETHON_SESSION_PATH parent"):
         validate_settings_for_launch(s)
+
+
+def test_telethon_string_session_skips_path_parent_check(tmp_path: Path):
+    s = minimal_test_settings(
+        telethon_session_string="test-session-string",
+        telethon_session_path=str(tmp_path / "no_parent_dir" / "s.session"),
+    )
+    validate_settings_for_launch(s)
 
 
 def test_invalid_database_url_rejected():
     s = minimal_test_settings(database_url="%%%not_a_sqlalchemy_url%%%")
     with pytest.raises(RuntimeError, match="DATABASE_URL"):
+        validate_settings_for_launch(s)
+
+
+def test_telethon_neither_string_nor_path_rejected():
+    s = minimal_test_settings(telethon_session_string=None, telethon_session_path="")
+    with pytest.raises(RuntimeError, match="TELETHON_SESSION_STRING or TELETHON_SESSION_PATH"):
         validate_settings_for_launch(s)

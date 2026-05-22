@@ -89,9 +89,13 @@ def seconds_since_scheduler_tick() -> float | None:
 
 
 def activity_snapshot() -> dict[str, Any]:
+    since_tick = seconds_since_scheduler_tick()
+    since_collect = seconds_since_collect()
     with _lock:
         return {
             "last_successful_collect_at": _last_collect_iso,
             "last_successful_ai_at": _last_ai_iso,
             "last_scheduler_tick_mono": _last_scheduler_tick_mono,
+            "seconds_since_scheduler_tick": round(since_tick, 2) if since_tick is not None else None,
+            "seconds_since_collect": round(since_collect, 2) if since_collect is not None else None,
         }

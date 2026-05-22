@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import threading
 import time
 from enum import Enum
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 _lock = threading.RLock()
 _mode_cache: tuple[str, float] | None = None
@@ -22,6 +25,7 @@ class OperationalMode(str, Enum):
     MAINTENANCE = "maintenance"
     RECOVERY = "recovery"
     READ_ONLY = "read_only"
+    FIRST_POST_DEBUG = "first_post_debug"
 
 
 _PUBLISH_BLOCKED = frozenset({
@@ -56,19 +60,65 @@ def _infer_from_settings(settings: Any) -> OperationalMode:
     return OperationalMode.PRODUCTION
 
 
+def _mode_from_env() -> OperationalMode | None:
+    raw = os.getenv("RUNTIME_OPERATIONAL_MODE", "").strip().lower()
+    if not raw:
+        return None
+    try:
+        return OperationalMode(raw)
+    except ValueError:
+        logger.warning("RUNTIME_OPERATIONAL_MODE=%r is invalid; ignoring env override", raw)
+        return None
+
+
+def _mode_from_file(runtime_dir: str) -> OperationalMode | None:
+    path = _mode_path(runtime_dir)
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        m = str(data.get("mode") or "").strip().lower()
+        if m:
+            return OperationalMode(m)
+    except (OSError, json.JSONDecodeError, ValueError):
+        pass
+    return None
+
+
+def sync_operational_mode_from_env(runtime_dir: str) -> OperationalMode | None:
+    """Persist explicit RUNTIME_OPERATIONAL_MODE from .env so volume JSON matches operator intent."""
+    env_mode = _mode_from_env()
+    if env_mode is None:
+        return None
+    persist_operational_mode(runtime_dir, env_mode, reason="env_sync_at_boot")
+    logger.info("operational_mode synced from RUNTIME_OPERATIONAL_MODE=%s", env_mode.value)
+    return env_mode
+
+
 def load_operational_mode(runtime_dir: str, settings: Any | None = None) -> OperationalMode:
+    """
+    Resolve operational mode.
+
+    Explicit ``RUNTIME_OPERATIONAL_MODE`` in the process environment wins over a stale
+    ``operational_mode.json`` left by rollback/recovery tooling (otherwise the scheduler
+    can stay disabled while .env says production).
+    """
     global _mode_cache
     with _lock:
-        path = _mode_path(runtime_dir)
-        if path.is_file():
-            try:
-                data = json.loads(path.read_text(encoding="utf-8"))
-                m = str(data.get("mode") or "").strip().lower()
-                if m:
-                    _mode_cache = (m, time.time())
-                    return OperationalMode(m)
-            except (OSError, json.JSONDecodeError, ValueError):
-                pass
+        env_mode = _mode_from_env()
+        file_mode = _mode_from_file(runtime_dir)
+        if env_mode is not None:
+            if file_mode is not None and file_mode != env_mode:
+                logger.warning(
+                    "RUNTIME_OPERATIONAL_MODE=%s overrides persisted operational_mode.json mode=%s",
+                    env_mode.value,
+                    file_mode.value,
+                )
+            _mode_cache = (env_mode.value, time.time())
+            return env_mode
+        if file_mode is not None:
+            _mode_cache = (file_mode.value, time.time())
+            return file_mode
         if settings is not None:
             mode = _infer_from_settings(settings)
             persist_operational_mode(runtime_dir, mode, reason="inferred_at_load")

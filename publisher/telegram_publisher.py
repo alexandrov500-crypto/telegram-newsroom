@@ -105,7 +105,23 @@ async def publish_draft_to_channel(
             mid = await async_retry(_send, attempts=3, delay_sec=0.6, label=f"publish_chunk_{draft_id}_{idx}")
         except BaseException as exc:
             inc("telegram_api_failures")
+            log_event(
+                logger,
+                "publish.telegram_api_error",
+                draft_id=draft_id,
+                chunk_index=idx,
+                channel_id=chat_id,
+                error=repr(exc)[:500],
+            )
             raise exc
+        log_event(
+            logger,
+            "publish.telegram_message_sent",
+            draft_id=draft_id,
+            chunk_index=idx,
+            channel_id=chat_id,
+            message_id=mid,
+        )
         sent_ids.append(mid)
         if idx < len(chunks) - 1 and settings.telegram_inter_chunk_delay_sec > 0:
             await asyncio.sleep(settings.telegram_inter_chunk_delay_sec)

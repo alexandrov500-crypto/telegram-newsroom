@@ -1,8 +1,8 @@
-# Production Compose — infra init in /entrypoint.sh only; app rules in Python (startup_validation).
+# Production Compose (repo root). Uses deploy/timeweb/.env — NOT repo-root .env.
 #
-#   docker compose up -d --build --force-recreate
+#   docker compose -f docker-compose.production.yml up -d --build --force-recreate
 
-name: telegram-newsroom
+name: telegram-newsroom-production
 
 services:
   newsroom:

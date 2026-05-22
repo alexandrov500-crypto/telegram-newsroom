@@ -11,12 +11,14 @@ services:
     image: telegram-newsroom:local
     container_name: telegram-newsroom-example
     restart: unless-stopped
+    working_dir: /app
     env_file:
       - .env
     environment:
       DATABASE_URL: sqlite+aiosqlite:////data/newsroom.db
     volumes:
       - newsroom_data:/data
+      - .:/app
     healthcheck:
       test: ["CMD", "python", "/app/docker/healthcheck.py"]
       interval: 60s

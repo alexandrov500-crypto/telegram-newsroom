@@ -60,16 +60,36 @@ def _append_runtime_environment_checks(settings: Settings, errors: list[str]) ->
     except OSError as exc:
         errors.append(f"System temp directory is not usable: {exc}")
 
-    if settings.telethon_session_path:
-        try:
-            parent = Path(settings.telethon_session_path).expanduser().resolve().parent
-            if not parent.exists():
-                errors.append(f"TELETHON_SESSION_PATH parent directory must exist ({parent})")
-        except OSError as exc:
-            errors.append(f"TELETHON_SESSION_PATH invalid: {exc}")
+    _append_telethon_session_checks(settings, errors)
 
     if settings.channel_collect_delay_seconds > 120:
         errors.append("CHANNEL_COLLECT_DELAY_SECONDS must be at most 120 for launch validation")
+
+
+def _append_telethon_session_checks(settings: Settings, errors: list[str]) -> None:
+    """
+    Telethon credentials (single source of truth — not checked in shell entrypoint).
+
+    - STRING set → file path parent is not required (string wins if both set).
+    - PATH only → parent directory must exist (created by entrypoint under /data).
+    - Neither → fatal.
+    """
+    has_string = bool((settings.telethon_session_string or "").strip())
+    has_path = bool((settings.telethon_session_path or "").strip())
+
+    if not has_string and not has_path:
+        errors.append("At least one of TELETHON_SESSION_STRING or TELETHON_SESSION_PATH is required")
+        return
+
+    if has_string:
+        return
+
+    try:
+        parent = Path(settings.telethon_session_path or "").expanduser().resolve().parent
+        if not parent.exists():
+            errors.append(f"TELETHON_SESSION_PATH parent directory must exist ({parent})")
+    except OSError as exc:
+        errors.append(f"TELETHON_SESSION_PATH invalid: {exc}")
 
 
 def validate_settings_for_launch(settings: Settings) -> None:

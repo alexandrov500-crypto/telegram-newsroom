@@ -158,6 +158,7 @@ class Settings:
     runtime_drift_monitor_enabled: bool
     scheduler_diagnostics_enabled: bool
     security_redaction_enabled: bool
+    force_single_publish: bool
 
 
 def load_settings() -> Settings:
@@ -243,6 +244,7 @@ def load_settings() -> Settings:
     runtime_drift_monitor_enabled = _env_bool("RUNTIME_DRIFT_MONITOR", "false")
     scheduler_diagnostics_enabled = _env_bool("SCHEDULER_DIAGNOSTICS", "false")
     security_redaction_enabled = _env_bool("SECURITY_REDACTION", "false")
+    force_single_publish = _env_bool("FORCE_SINGLE_PUBLISH", "false")
 
     pipeline_interval = int(os.getenv("PIPELINE_INTERVAL_MINUTES", "30"))
     collect_limit = int(os.getenv("COLLECT_MESSAGES_PER_CHANNEL", "40"))
@@ -505,4 +507,5 @@ def load_settings() -> Settings:
         runtime_drift_monitor_enabled=runtime_drift_monitor_enabled,
         scheduler_diagnostics_enabled=scheduler_diagnostics_enabled,
         security_redaction_enabled=security_redaction_enabled,
+        force_single_publish=force_single_publish,
     )

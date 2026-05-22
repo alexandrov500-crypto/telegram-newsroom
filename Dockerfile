@@ -3,7 +3,8 @@ FROM python:3.12-slim AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PYTHONPATH=/app
+    PYTHONPATH=/app \
+    NEWSROOM_APP_USER=appuser
 
 WORKDIR /app
 
@@ -20,6 +21,8 @@ COPY dashboard /app/dashboard
 COPY db /app/db
 COPY editorial /app/editorial
 COPY observability /app/observability
+COPY ops /app/ops
+COPY gen_session.py /app/gen_session.py
 COPY publisher /app/publisher
 COPY scheduler /app/scheduler
 COPY utils /app/utils
@@ -28,14 +31,19 @@ COPY workers /app/workers
 COPY docker /app/docker
 COPY tools /app/tools
 
-RUN mkdir -p /app/var/runtime \
-    && useradd --create-home --shell /usr/sbin/nologin appuser \
-    && mkdir -p /data \
-    && chown -R appuser:appuser /data /app/var /app/tools /app/alembic
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gosu \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --uid 1000 --shell /usr/sbin/nologin appuser \
+    && mkdir -p /app/var/runtime \
+    && chown -R appuser:appuser /app/var /app/tools /app/alembic
 
-USER appuser
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod 755 /entrypoint.sh
 
-HEALTHCHECK --interval=60s --timeout=15s --start-period=45s --retries=3 \
+USER root
+
+HEALTHCHECK --interval=60s --timeout=20s --start-period=120s --retries=3 \
   CMD ["python", "/app/docker/healthcheck.py"]
 
-CMD ["python", "-m", "app.main"]
+ENTRYPOINT ["/entrypoint.sh"]

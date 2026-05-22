@@ -20,6 +20,11 @@ class PipelineContext:
     tick_in_progress: bool = False
     last_cluster_size: int = 0
     duplicate_skipped_this_tick: bool = False
+    debug_trace_cluster_id: str | None = None
+    tick_collect_rows: int = 0
+    tick_summarize_idle_reason: str = ""
+    tick_draft_id: int | None = None
+    tick_publish_outcome: str = "not_reached"
 
 
 _ACTIVE: PipelineContext | None = None

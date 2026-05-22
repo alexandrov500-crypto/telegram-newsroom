@@ -16,7 +16,12 @@ pytest_plugins = ("tests.runtime_fixtures",)
 @pytest.fixture(autouse=True)
 def _isolate_ci_regression_env() -> None:
     """Prevent host/CI NEWSROOM_* skip lists from affecting deterministic unit tests."""
-    keys = ("NEWSROOM_REGRESSION_SKIP_METRICS", "NEWSROOM_QUALIFICATION_SKIP_RUNTIME_KEYS")
+    keys = (
+        "NEWSROOM_REGRESSION_SKIP_METRICS",
+        "NEWSROOM_QUALIFICATION_SKIP_RUNTIME_KEYS",
+        # Root .env often sets production; tests that need a specific mode use monkeypatch.setenv.
+        "RUNTIME_OPERATIONAL_MODE",
+    )
     saved = {k: os.environ.pop(k, None) for k in keys}
     yield
     for k, v in saved.items():
@@ -155,6 +160,7 @@ def minimal_test_settings(**overrides: object) -> Settings:
         runtime_drift_monitor_enabled=False,
         scheduler_diagnostics_enabled=False,
         security_redaction_enabled=False,
+        force_single_publish=False,
     )
     if not overrides:
         return base

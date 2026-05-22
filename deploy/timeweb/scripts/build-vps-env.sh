@@ -57,10 +57,21 @@ set_kv APP_DEPLOYMENT_PROFILE production-lite
 set_kv NEWSROOM_PROFILE production-lite
 set_kv DRY_RUN false
 set_kv ENV production
+set_kv RUNTIME_OPERATIONAL_MODE "${RUNTIME_OPERATIONAL_MODE:-production}"
+set_kv PIPELINE_BOOTSTRAP_ON_START "${PIPELINE_BOOTSTRAP_ON_START:-true}"
+set_kv PIPELINE_INTERVAL_MINUTES "${PIPELINE_INTERVAL_MINUTES:-15}"
+set_kv TELEGRAM_POLLING_ENABLED "${TELEGRAM_POLLING_ENABLED:-true}"
+set_kv LOG_LEVEL "${LOG_LEVEL:-INFO}"
+set_kv DATABASE_URL "sqlite+aiosqlite:////data/newsroom.db"
+set_kv RUNTIME_STATE_DIR "/data/runtime"
+set_kv TELETHON_SESSION_PATH "/data/sessions/telethon.session"
 
 rm -f "${OUT}.bak"
 chmod 600 "${OUT}"
 
-echo "Wrote ${OUT}"
+cp "${OUT}" "${ROOT}/deploy/timeweb/.env"
+chmod 600 "${ROOT}/deploy/timeweb/.env"
+
+echo "Wrote ${OUT} and deploy/timeweb/.env (local compose + VPS template)"
 echo "Copy to VPS:"
-echo "  scp ${OUT} newsroom@213.171.3.133:/opt/newsroom/deploy/timeweb/.env"
+echo "  scp ${OUT} newsroom@YOUR_VPS:/opt/newsroom/deploy/timeweb/.env"

@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 from aiogram import Dispatcher
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from ai.openai_client import create_openai_client
@@ -36,6 +38,30 @@ from utils.startup_recovery_hints import log_startup_recovery_hints_if_any
 logger = logging.getLogger(__name__)
 
 
+def _log_scheduler_jobs(scheduler: AsyncIOScheduler, *, phase: str) -> None:
+    for job in scheduler.get_jobs():
+        logger.info(
+            "job registered: %s next_run_time=%s trigger=%s (%s)",
+            job.id,
+            job.next_run_time,
+            job.trigger,
+            phase,
+        )
+
+
+def _scheduler_job_executed(event: object) -> None:
+    job_id = getattr(event, "job_id", "?")
+    logger.info("scheduler job executed: %s", job_id)
+    log_event(logger, "scheduler.job.executed", job_id=str(job_id))
+
+
+def _scheduler_job_error(event: object) -> None:
+    job_id = getattr(event, "job_id", "?")
+    exc = getattr(event, "exception", None)
+    logger.error("scheduler job error: id=%s exception=%s", job_id, exc, exc_info=exc)
+    log_event(logger, "scheduler.job.error", job_id=str(job_id), error=repr(exc)[:500])
+
+
 def _heartbeat_interval_minutes(settings: Settings) -> int:
     cands = [
         settings.diagnostics_interval_minutes,
@@ -50,6 +76,9 @@ async def main() -> None:
 
     settings = load_settings()
     validate_settings_for_launch(settings)
+    from app.startup_lock import acquire_runtime_startup_lock
+
+    acquire_runtime_startup_lock(settings)
     setup_logging(settings.log_level, soak_test=settings.soak_test)
     emit_lifecycle("runtime.boot", dry_run=settings.dry_run, soak_test=settings.soak_test)
 
@@ -58,6 +87,9 @@ async def main() -> None:
     from ops.resilience.deployment_manifest import write_deployment_manifest
     from ops.resilience.leadership import get_leadership
 
+    from app.operational_mode import sync_operational_mode_from_env
+
+    sync_operational_mode_from_env(settings.runtime_state_dir)
     op_mode = load_operational_mode(settings.runtime_state_dir, settings)
     leadership = get_leadership(settings.runtime_state_dir)
     lock_result = leadership.acquire_all(runtime_id=runtime_id())
@@ -106,6 +138,7 @@ async def main() -> None:
     startup = await run_startup_healthchecks(settings, bot, openai)
     if startup.aggregate == AggregateStatus.DEGRADED:
         set_operational_mode(settings.runtime_state_dir, OperationalMode.DEGRADED, reason="startup_health_degraded")
+        op_mode = OperationalMode.DEGRADED
         logger.warning(
             "Starting in degraded mode (ai_pipeline=%s collector=%s)",
             startup.ai_pipeline_enabled,
@@ -128,21 +161,54 @@ async def main() -> None:
         collector_enabled=deps.collector_enabled,
     )
 
+    from app.operational_mode import load_operational_mode, publish_allowed, scheduler_allowed
+
+    op_mode = load_operational_mode(settings.runtime_state_dir, settings)
+    sched_ok = scheduler_allowed(op_mode)
+    logger.info(
+        "operational_mode=%s scheduler_allowed=%s publish_allowed=%s "
+        "collector_enabled=%s ai_pipeline_enabled=%s",
+        op_mode.value,
+        sched_ok,
+        publish_allowed(op_mode, settings),
+        deps.collector_enabled,
+        deps.ai_pipeline_enabled,
+    )
+    if not sched_ok:
+        logger.warning(
+            "Pipeline scheduler ticks are DISABLED until operational_mode leaves "
+            "%s (check %s/operational_mode.json)",
+            op_mode.value,
+            settings.runtime_state_dir,
+        )
+
+    loop = asyncio.get_running_loop()
     scheduler = AsyncIOScheduler(
+        event_loop=loop,
+        timezone="UTC",
         job_defaults={
             "coalesce": True,
             "max_instances": 1,
-            "misfire_grace_time": 30,
+            "misfire_grace_time": 120,
         },
     )
-    scheduler.add_job(
+    scheduler.add_listener(_scheduler_job_executed, EVENT_JOB_EXECUTED)
+    scheduler.add_listener(_scheduler_job_error, EVENT_JOB_ERROR)
+
+    pipeline_job = scheduler.add_job(
         run_pipeline_wrapped,
         "interval",
         minutes=settings.pipeline_interval_minutes,
         args=[ctx],
         id="newsroom_pipeline",
         replace_existing=True,
-        next_run_time=datetime.now(),
+        next_run_time=datetime.now(timezone.utc),
+    )
+    _log_scheduler_jobs(scheduler, phase="after_add_pipeline")
+    logger.info(
+        "job registered: newsroom_pipeline interval_min=%s next_run_time=%s",
+        settings.pipeline_interval_minutes,
+        pipeline_job.next_run_time,
     )
 
     hb = _heartbeat_interval_minutes(settings)
@@ -172,8 +238,29 @@ async def main() -> None:
         )
 
     scheduler.start()
+    scheduler.wakeup()
     logger.info("Scheduler started (pipeline every %s minutes)", settings.pipeline_interval_minutes)
+    _log_scheduler_jobs(scheduler, phase="after_start")
     get_dependency_state().startup_complete = True
+
+    bootstrap_on_start = os.getenv("PIPELINE_BOOTSTRAP_ON_START", "true").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if bootstrap_on_start and sched_ok:
+
+        async def _bootstrap_pipeline_tick() -> None:
+            """One-shot first tick on the polling event loop (same loop as AsyncIOScheduler)."""
+            await asyncio.sleep(1.0)
+            logger.info("pipeline execution started (bootstrap tick)")
+            log_event(logger, "scheduler.bootstrap_tick", job_id="newsroom_pipeline")
+            await run_pipeline_wrapped(ctx)
+
+        asyncio.create_task(_bootstrap_pipeline_tick(), name="newsroom_pipeline_bootstrap")
+    elif not sched_ok:
+        logger.warning("pipeline bootstrap tick skipped: scheduler_allowed=False")
     emit_lifecycle(
         "runtime.ready",
         ai_pipeline_enabled=deps.ai_pipeline_enabled,

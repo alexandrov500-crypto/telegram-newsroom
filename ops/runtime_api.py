@@ -46,6 +46,22 @@ async def runtime_status_payload(settings: Any | None = None) -> dict[str, Any]:
         payload["operational_mode"] = operational_mode_payload(rd, settings)
         payload["leadership"] = get_leadership(rd).snapshot()
         payload["deployment_manifest"] = load_deployment_manifest(rd)
+        from app.pipeline_debug import ai_gating_snapshot
+
+        payload["ai_gating"] = ai_gating_snapshot(ctx=None)
+        payload["ai_gating"]["dry_run"] = bool(getattr(settings, "dry_run", False))
+        interval_sec = max(60, int(getattr(settings, "pipeline_interval_minutes", 15)) * 60)
+        act = payload.get("activity") or {}
+        since_tick = act.get("seconds_since_scheduler_tick")
+        payload["pipeline"] = {
+            "interval_minutes": int(getattr(settings, "pipeline_interval_minutes", 15)),
+            "scheduler_allowed": bool((payload.get("operational_mode") or {}).get("scheduler_allowed")),
+            "seconds_since_tick": since_tick,
+            "likely_stalled": (
+                since_tick is None
+                or float(since_tick) > float(interval_sec) * 2.5
+            ),
+        }
     return payload
 
 

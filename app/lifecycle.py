@@ -166,6 +166,14 @@ async def graceful_shutdown(
 
         if settings is not None:
             try:
+                from app.startup_lock import release_runtime_startup_lock
+
+                release_runtime_startup_lock(settings)
+            except Exception as exc:
+                log_event(logger, "runtime.shutdown.startup_lock_failed", error=repr(exc))
+
+        if settings is not None:
+            try:
                 from db.runtime_ops_repository import persist_runtime_ops_state
 
                 await persist_runtime_ops_state()

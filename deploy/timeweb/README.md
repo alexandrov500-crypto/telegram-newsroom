@@ -73,7 +73,31 @@ make -C deploy/timeweb logs
 | `make rebuild` | no-cache build + up |
 | `make restart` | restart newsroom service |
 | `make shell` | `exec` shell in container |
+| `make gen-session` | interactive Telethon login → updates `deploy/timeweb/.env` |
 | `make health` | run `docker/healthcheck.py` (+ readiness) |
+
+### Verify pipeline is alive (30 seconds)
+
+```bash
+bash deploy/timeweb/scripts/verify-pipeline-alive.sh
+```
+
+Expect `Scheduler started`, `pipeline execution started`, and `/runtime/status` → `pipeline.likely_stalled: false`.
+
+Production `.env` must include `RUNTIME_OPERATIONAL_MODE=production` (overrides stale `recovery` in `/data/runtime/operational_mode.json`).
+
+### Telethon session inside Docker
+
+`gen_session.py` is baked into the image at `/app/gen_session.py`. Compose mounts `deploy/timeweb/.env` → `/app/.env` so `--write-env` persists on the host.
+
+```bash
+cd /opt/newsroom/deploy/timeweb
+cp .env.example .env   # once
+make gen-session
+# or: docker compose run --rm -it newsroom python gen_session.py --write-env
+docker compose run --rm -it newsroom python gen_session.py --verify
+make rebuild   # pick up new TELETHON_SESSION_* in running service
+```
 
 ## Production logging
 

@@ -108,10 +108,28 @@ def _round_timings(d: dict[str, float]) -> dict[str, float]:
     return {k: round(v, 4) for k, v in d.items()}
 
 
+def _log_pipeline_idle(stage: str, reason: str, **extra: object) -> None:
+    """Explicit INFO when a tick step exits without downstream work (go-live visibility)."""
+    logger.info("pipeline idle at %s: %s", stage, reason)
+    log_event(logger, "pipeline.idle", stage=stage, reason=reason, **extra)
+
+
 async def _collect_step(ctx: PipelineContext) -> None:
+    from app.dependency_state import get_dependency_state
+    from app.telethon_bootstrap import telethon_session_configured
+
+    deps = get_dependency_state()
+    if telethon_session_configured(ctx.settings) and deps.collector_enabled:
+        ctx.collector_enabled = True
+    elif not ctx.collector_enabled and telethon_session_configured(ctx.settings):
+        logger.info("collector re-enabled: telethon session present (startup flag was degraded)")
+        ctx.collector_enabled = True
+
     if not ctx.collector_enabled:
         log_event(logger, "collector.skipped", reason="telethon_degraded")
+        logger.warning("collector skipped: telethon_degraded (no ingest this tick)")
         return
+    logger.info("collector running")
     from app.runtime_lifecycle import emit_lifecycle, lifecycle_span_ms
 
     settings = ctx.settings
@@ -128,6 +146,7 @@ async def _collect_step(ctx: PipelineContext) -> None:
         await client.connect()
         if not await client.is_user_authorized():
             log_event(logger, "collector.telethon_unauthorized")
+            _log_pipeline_idle("collector", "telethon_unauthorized")
             return
         async with session_scope() as session:
             inserted_total = await collect_all_channels(
@@ -143,12 +162,28 @@ async def _collect_step(ctx: PipelineContext) -> None:
             from app.runtime_activity import record_collect_success
 
             record_collect_success(new_rows=inserted_total)
+        ctx.tick_collect_rows = inserted_total
         log_event(
             logger,
             "collector.pipeline_inserted_total",
             new_rows=inserted_total,
             channel_count=len(settings.source_channels),
         )
+        logger.info(
+            "collector finished: new_rows=%s channels=%s",
+            inserted_total,
+            len(settings.source_channels),
+        )
+        from app.pipeline_debug import pipeline_debug_active
+        from scheduler.pipeline_trace import log_pipeline_trace
+
+        if pipeline_debug_active(settings):
+            log_pipeline_trace(
+                logger,
+                stage="collector",
+                decision="proceed" if inserted_total >= 0 else "suppress",
+                reason=f"inserted_total={inserted_total}",
+            )
     except Exception as exc:
         logger.exception("Collection failed: %s", exc)
         log_event(logger, "collector.pipeline_failed", error=repr(exc))
@@ -194,29 +229,59 @@ async def _retention_step(settings: Settings) -> tuple[float, int, int]:
 
 async def _summarize_step(ctx: PipelineContext) -> None:
     from app.openai_circuit import get_openai_circuit
+    from app.pipeline_debug import (
+        ai_gating_snapshot,
+        debug_bypass_suppressions,
+        pipeline_debug_active,
+    )
     from ops.economics.budgets import allow_ai_request
     from ops.economics.economic_mode import load_economic_mode
     from ops.economics.load_shedding import should_skip_summarize_for_pressure
+    from scheduler.pipeline_trace import log_pipeline_trace
 
     settings = ctx.settings
     rd = settings.runtime_state_dir
+    debug = pipeline_debug_active(settings)
+    bypass = debug_bypass_suppressions(settings)
+    if debug:
+        log_event(logger, "pipeline.debug_mode_active", ai_gating=ai_gating_snapshot(ctx=ctx))
+
     econ = load_economic_mode(rd).value
-    shed_skip, shed_reason = should_skip_summarize_for_pressure(settings, rd, priority_level="medium")
-    if shed_skip:
+    shed_skip, shed_reason = should_skip_summarize_for_pressure(
+        settings, rd, priority_level="high" if debug else "medium"
+    )
+    if shed_skip and not bypass:
         log_event(logger, "scheduler.summarize_skipped", reason=shed_reason, stage="load_shedding")
+        ctx.tick_summarize_idle_reason = f"load_shedding:{shed_reason}"
+        _log_pipeline_idle("summarize", ctx.tick_summarize_idle_reason)
+        log_pipeline_trace(logger, stage="scoring", decision="suppress", reason=shed_reason)
         return
-    ai_ok, ai_reason = allow_ai_request(rd, priority_level="medium", economic_mode=econ)
-    if not ai_ok:
+    ai_ok, ai_reason = allow_ai_request(rd, priority_level="high" if debug else "medium", economic_mode=econ)
+    if not ai_ok and not bypass:
         log_event(logger, "scheduler.summarize_skipped", reason=ai_reason, stage="ai_budget")
+        ctx.tick_summarize_idle_reason = f"ai_budget:{ai_reason}"
+        _log_pipeline_idle("summarize", ctx.tick_summarize_idle_reason)
+        log_pipeline_trace(logger, stage="scoring", decision="suppress", reason=ai_reason)
         return
 
-    if not ctx.ai_pipeline_enabled or not get_openai_circuit().allow_request():
+    circuit = get_openai_circuit()
+    ai_gate_open = ctx.ai_pipeline_enabled and circuit.allow_request()
+    if not ai_gate_open and not bypass:
         log_event(
             logger,
             "scheduler.summarize_skipped",
             reason="openai_degraded",
             stage="startup",
-            circuit_state=get_openai_circuit().state().value,
+            circuit_state=circuit.state().value,
+        )
+        ctx.tick_summarize_idle_reason = f"openai_degraded:{circuit.state().value}"
+        _log_pipeline_idle("summarize", ctx.tick_summarize_idle_reason)
+        log_pipeline_trace(
+            logger,
+            stage="ai_summarization",
+            decision="suppress",
+            reason="openai_degraded",
+            ai_status="skipped",
         )
         return
     openai = ctx.openai
@@ -234,6 +299,9 @@ async def _summarize_step(ctx: PipelineContext) -> None:
 
     if not posts:
         log_event(logger, "scheduler.summarize_skipped", reason="no_unprocessed_posts", stage="fetch_posts")
+        ctx.tick_summarize_idle_reason = "no_unprocessed_posts"
+        _log_pipeline_idle("summarize", ctx.tick_summarize_idle_reason)
+        log_pipeline_trace(logger, stage="clustering", decision="suppress", reason="no_unprocessed_posts")
         ctx.last_cluster_size = 0
         return
 
@@ -248,21 +316,40 @@ async def _summarize_step(ctx: PipelineContext) -> None:
         trim_bucket_multiplier=settings.precluster_trim_bucket_multiplier,
     )
     ctx.last_cluster_size = len(cluster)
+    min_posts_required = 1 if debug else settings.min_raw_posts_for_ai
 
-    if len(cluster) < settings.min_raw_posts_for_ai:
+    if len(cluster) < min_posts_required:
         log_event(
             logger,
             "scheduler.summarize_skipped",
             reason="cluster_below_min_posts",
             cluster_size=len(cluster),
-            min_required=settings.min_raw_posts_for_ai,
+            min_required=min_posts_required,
             stage="precluster",
         )
+        log_pipeline_trace(
+            logger,
+            stage="clustering",
+            decision="suppress",
+            reason="cluster_below_min_posts",
+            extra={"cluster_size": len(cluster)},
+        )
+        ctx.tick_summarize_idle_reason = f"cluster_below_min_posts:{len(cluster)}"
+        _log_pipeline_idle("clustering", ctx.tick_summarize_idle_reason)
         ctx.tick_timings["cluster_sec"] = time.perf_counter() - t_cl
         return
 
+    logger.info("cluster created: size=%s fingerprint_pending=true", len(cluster))
     combined_text = "\n".join((p.text or "")[:2000] for p in cluster)
     fp = compute_event_fingerprint(cluster)
+    ctx.debug_trace_cluster_id = fp
+    log_pipeline_trace(
+        logger,
+        stage="clustering",
+        cluster_id=fp,
+        decision="proceed",
+        reason=f"cluster_size={len(cluster)}",
+    )
     history = load_event_history(settings.runtime_state_dir)
     evo = classify_event_evolution(fp, combined_text=combined_text, history=history)
     identity = build_event_identity(cluster)
@@ -327,21 +414,45 @@ async def _summarize_step(ctx: PipelineContext) -> None:
         reasons = list(ranking_trace.reason_codes) + div_codes
         if gov_reason:
             reasons.append(gov_reason)
-        append_decision(
-            runtime_dir=settings.runtime_state_dir,
-            decision_type="cluster_governance_suppress",
-            outcome="suppressed",
-            subject_id=fp,
-            reason_codes=reasons[:24],
-            ranking_trace=ranking_trace.to_dict(),
-            policy_matches=policy_matches,
-        )
-        record_suppression_ttl(settings.runtime_state_dir, fp, 1800.0, reason=gov_reason or reasons[0] if reasons else "")
-        record_suppression_metric(settings.runtime_state_dir, gov_reason or "governance")
-        inc("skipped_intelligence_suppress")
-        log_event(logger, "scheduler.cluster_suppressed", reasons=reasons, stage="governance")
-        ctx.tick_timings["cluster_sec"] = time.perf_counter() - t_cl
-        return
+        if bypass:
+            log_event(
+                logger,
+                "scheduler.governance_bypass_debug",
+                reasons=reasons,
+                cluster_id=fp,
+            )
+            log_pipeline_trace(
+                logger,
+                stage="scoring",
+                cluster_id=fp,
+                decision="proceed",
+                reason="debug_bypass_governance",
+                policy_matches=[str(p) for p in policy_matches][:16],
+            )
+        else:
+            append_decision(
+                runtime_dir=settings.runtime_state_dir,
+                decision_type="cluster_governance_suppress",
+                outcome="suppressed",
+                subject_id=fp,
+                reason_codes=reasons[:24],
+                ranking_trace=ranking_trace.to_dict(),
+                policy_matches=policy_matches,
+            )
+            record_suppression_ttl(settings.runtime_state_dir, fp, 1800.0, reason=gov_reason or reasons[0] if reasons else "")
+            record_suppression_metric(settings.runtime_state_dir, gov_reason or "governance")
+            inc("skipped_intelligence_suppress")
+            log_event(logger, "scheduler.cluster_suppressed", reasons=reasons, stage="governance")
+            log_pipeline_trace(
+                logger,
+                stage="scoring",
+                cluster_id=fp,
+                decision="suppress",
+                reason="governance",
+                policy_matches=[str(p) for p in policy_matches][:16],
+            )
+            ctx.tick_timings["cluster_sec"] = time.perf_counter() - t_cl
+            return
     pipeline_decision = evaluate_cluster_for_pipeline(
         cluster,
         settings=settings,
@@ -355,7 +466,7 @@ async def _summarize_step(ctx: PipelineContext) -> None:
         entity_hits=len(ents),
         entity_norms=entity_norms,
     )
-    if pipeline_decision.defer_to_next_tick:
+    if pipeline_decision.defer_to_next_tick and not bypass:
         inc("cadence_deferred_cluster")
         append_decision(
             runtime_dir=settings.runtime_state_dir,
@@ -385,9 +496,16 @@ async def _summarize_step(ctx: PipelineContext) -> None:
                 "event_kind": str(evo.kind),
             },
         )
+        log_pipeline_trace(
+            logger,
+            stage="scoring",
+            cluster_id=fp,
+            decision="suppress",
+            reason="defer_cadence",
+        )
         ctx.tick_timings["cluster_sec"] = time.perf_counter() - t_cl
         return
-    if pipeline_decision.suppress:
+    if pipeline_decision.suppress and not bypass:
         append_decision(
             runtime_dir=settings.runtime_state_dir,
             decision_type="cluster_suppress",
@@ -427,8 +545,31 @@ async def _summarize_step(ctx: PipelineContext) -> None:
                 "event_kind": str(evo.kind),
             },
         )
+        log_pipeline_trace(
+            logger,
+            stage="scoring",
+            cluster_id=fp,
+            decision="suppress",
+            reason="pipeline_decision",
+            extra={"reasons": list(pipeline_decision.suppression_reasons)[:12]},
+        )
         ctx.tick_timings["cluster_sec"] = time.perf_counter() - t_cl
         return
+    if pipeline_decision.suppress and bypass:
+        log_event(
+            logger,
+            "scheduler.pipeline_suppress_bypass_debug",
+            reasons=list(pipeline_decision.suppression_reasons)[:16],
+            cluster_id=fp,
+        )
+    log_pipeline_trace(
+        logger,
+        stage="scoring",
+        cluster_id=fp,
+        decision="proceed",
+        reason=f"relevance_total={pipeline_decision.relevance.total}",
+        policy_matches=[str(p) for p in policy_matches][:16],
+    )
     append_decision(
         runtime_dir=settings.runtime_state_dir,
         decision_type="cluster_selected",
@@ -455,18 +596,24 @@ async def _summarize_step(ctx: PipelineContext) -> None:
     ctx.tick_timings["cluster_sec"] = time.perf_counter() - t_cl
 
     t_ai = time.perf_counter()
+    from ai.fallback_summarizer import fallback_summarize_cluster
+
+    sc = None
+    ai_status = "called"
     try:
-        sc = await summarize_cluster(
-            openai,
-            settings=settings,
-            model=settings.openai_model,
-            posts=cluster,
-            max_json_retries=settings.openai_json_max_retries,
-            request_timeout_sec=settings.openai_request_timeout_sec,
-            log_chat_latency=True,
-        )
-        post_text, used_ids, headline = sc.post_text, sc.used_ids, sc.headline
-        _ai_exec_patch = sc.execution.to_draft_extras_patch()
+        if ai_gate_open:
+            sc = await summarize_cluster(
+                openai,
+                settings=settings,
+                model=settings.openai_model,
+                posts=cluster,
+                max_json_retries=settings.openai_json_max_retries,
+                request_timeout_sec=settings.openai_request_timeout_sec,
+                log_chat_latency=True,
+            )
+        elif bypass:
+            ai_status = "skipped_fallback"
+            sc = fallback_summarize_cluster(cluster, max_body_chars=settings.max_post_chars)
     except SummarizerError as exc:
         circuit = get_openai_circuit()
         circuit.record_failure(str(exc))
@@ -476,10 +623,47 @@ async def _summarize_step(ctx: PipelineContext) -> None:
             note_openai_failure(settings, reason=str(exc))
         except Exception:
             pass
-        log_event(logger, "openai.summarize_failed", error=str(exc), recovery="aborted_draft")
+        if bypass:
+            ai_status = "failed_fallback"
+            sc = fallback_summarize_cluster(cluster, max_body_chars=settings.max_post_chars)
+            log_event(logger, "openai.summarize_failed", error=str(exc), recovery="rule_fallback")
+        else:
+            log_event(logger, "openai.summarize_failed", error=str(exc), recovery="aborted_draft")
+            log_pipeline_trace(
+                logger,
+                stage="ai_summarization",
+                cluster_id=fp,
+                decision="suppress",
+                reason=str(exc)[:200],
+                ai_status="failed",
+            )
+            ctx.tick_timings["openai_sec"] = time.perf_counter() - t_ai
+            observe_histogram("summarize_duration_seconds", ctx.tick_timings["openai_sec"])
+            return
+    if sc is None and bypass:
+        ai_status = "skipped_fallback"
+        sc = fallback_summarize_cluster(cluster, max_body_chars=settings.max_post_chars)
+    if sc is None:
+        log_pipeline_trace(
+            logger,
+            stage="ai_summarization",
+            cluster_id=fp,
+            decision="suppress",
+            reason="no_summarizer_result",
+            ai_status=ai_status,
+        )
         ctx.tick_timings["openai_sec"] = time.perf_counter() - t_ai
-        observe_histogram("summarize_duration_seconds", ctx.tick_timings["openai_sec"])
         return
+    post_text, used_ids, headline = sc.post_text, sc.used_ids, sc.headline
+    _ai_exec_patch = sc.execution.to_draft_extras_patch()
+    log_pipeline_trace(
+        logger,
+        stage="ai_summarization",
+        cluster_id=fp,
+        decision="proceed",
+        ai_status=ai_status,
+        extra={"model": sc.execution.model},
+    )
     ctx.tick_timings["openai_sec"] = time.perf_counter() - t_ai
     observe_histogram("summarize_duration_seconds", ctx.tick_timings["openai_sec"])
     from app.runtime_activity import record_ai_success
@@ -559,11 +743,18 @@ async def _summarize_step(ctx: PipelineContext) -> None:
             recent=recent,
             similarity_threshold=settings.draft_similarity_threshold,
         )
-        if skip:
+        if skip and not bypass:
             inc("skipped_duplicates")
             ctx.duplicate_skipped_this_tick = True
             record_duplicate_skip(logger, settings)
             log_event(logger, "draft.skipped_duplicate", reason=reason, hash_prefix=content_hash[:12])
+            log_pipeline_trace(
+                logger,
+                stage="draft",
+                cluster_id=fp,
+                decision="suppress",
+                reason=f"duplicate:{reason}",
+            )
             append_timeline_event(
                 settings.runtime_state_dir,
                 "draft_skipped_duplicate",
@@ -582,6 +773,8 @@ async def _summarize_step(ctx: PipelineContext) -> None:
                 pass
             ctx.tick_timings["db_draft_sec"] = time.perf_counter() - t_dbw
             return
+        if skip and bypass:
+            log_event(logger, "draft.duplicate_bypass_debug", reason=reason, cluster_id=fp)
 
         draft = await create_draft_and_mark_posts_processed(
             session,
@@ -805,6 +998,7 @@ async def _summarize_step(ctx: PipelineContext) -> None:
                 )
 
     inc("drafts_generated")
+    ctx.tick_draft_id = draft_id
     log_event(
         logger,
         "draft.created",
@@ -812,6 +1006,17 @@ async def _summarize_step(ctx: PipelineContext) -> None:
         raw_posts_used=len(raw_post_ids_for_db),
         content_hash_prefix=content_hash[:12],
     )
+    logger.info("draft generated: draft_id=%s cluster_id=%s", draft_id, fp)
+    log_pipeline_trace(
+        logger,
+        stage="draft",
+        cluster_id=fp,
+        decision="proceed",
+        draft_id=draft_id,
+    )
+
+    if debug:
+        await _force_publish_debug(ctx, draft_id=draft_id, cluster_id=fp)
 
     t_no = time.perf_counter()
     try:
@@ -849,28 +1054,100 @@ async def _summarize_step(ctx: PipelineContext) -> None:
         ctx.tick_timings["notify_admin_sec"] = time.perf_counter() - t_no
 
 
+async def _force_publish_debug(ctx: PipelineContext, *, draft_id: int, cluster_id: str) -> None:
+    from app.pipeline_debug import (
+        is_force_single_publish_env,
+        mark_force_single_publish_done,
+        pipeline_debug_active,
+    )
+    from publisher.publish_service import PublishFlowOutcome, execute_admin_publication_flow
+    from scheduler.pipeline_trace import log_pipeline_trace
+
+    if not pipeline_debug_active(ctx.settings):
+        return
+    res = await execute_admin_publication_flow(
+        ctx.bot,
+        ctx.settings,
+        draft_id,
+        idempotency_key=f"debug:{cluster_id}:{draft_id}",
+        bypass_cadence=True,
+        bypass_leadership=True,
+    )
+    outcome = res.outcome.value
+    if res.outcome is PublishFlowOutcome.OK:
+        ctx.tick_publish_outcome = f"ok:draft_id={draft_id}:message_id={res.channel_message_id}"
+        logger.info("publish succeeded: draft_id=%s channel_message_id=%s", draft_id, res.channel_message_id)
+        log_pipeline_trace(
+            logger,
+            stage="publish",
+            cluster_id=cluster_id,
+            decision="proceed",
+            publish_result=f"ok:message_id={res.channel_message_id}",
+            draft_id=draft_id,
+        )
+        if is_force_single_publish_env() or getattr(ctx.settings, "force_single_publish", False):
+            mark_force_single_publish_done(ctx.settings.runtime_state_dir)
+    else:
+        ctx.tick_publish_outcome = f"{outcome}:{(res.error or '')[:120]}"
+        logger.warning("publish failed: draft_id=%s outcome=%s", draft_id, outcome)
+        log_pipeline_trace(
+            logger,
+            stage="publish",
+            cluster_id=cluster_id,
+            decision="suppress",
+            publish_result=f"{outcome}:{(res.error or '')[:120]}",
+            draft_id=draft_id,
+        )
+
+
 async def _scheduled_publish_step(ctx: PipelineContext) -> None:
     t0 = time.perf_counter()
     settings = ctx.settings
     ctx.tick_timings["scheduled_publish_sec"] = 0.0
-    if settings.dry_run:
-        return
+    from app.pipeline_debug import pipeline_debug_active
     from publisher.publish_service import PublishFlowOutcome, execute_admin_publication_flow
+
+    if settings.dry_run and not pipeline_debug_active(settings):
+        ctx.tick_publish_outcome = "skipped_dry_run"
+        _log_pipeline_idle("publish", ctx.tick_publish_outcome)
+        return
 
     bot = ctx.bot
     async with session_scope() as session:
         ids = await list_due_scheduled_draft_ids(session, limit=3)
+    if pipeline_debug_active(settings) and not ids:
+        from db.repository import list_pending_drafts
+
+        async with session_scope() as session:
+            pending = await list_pending_drafts(session, limit=1)
+        if pending:
+            ids = [int(pending[0].id)]
     for did in ids:
-        res = await execute_admin_publication_flow(bot, settings, did)
+        res = await execute_admin_publication_flow(
+            bot,
+            settings,
+            did,
+            bypass_cadence=pipeline_debug_active(settings),
+            bypass_leadership=pipeline_debug_active(settings),
+        )
         if res.outcome is PublishFlowOutcome.OK:
+            ctx.tick_publish_outcome = f"ok:draft_id={did}:message_id={res.channel_message_id}"
+            logger.info("publish succeeded: draft_id=%s channel_message_id=%s", did, res.channel_message_id)
             inc("scheduled_publish_fired")
             append_runtime_event("scheduled_publish_ok", message="published", draft_id=did)
         elif res.outcome is PublishFlowOutcome.SEND_FAILED:
+            ctx.tick_publish_outcome = f"failed:{res.error or 'send_failed'}"[:200]
+            logger.warning("publish failed: draft_id=%s error=%s", did, (res.error or "")[:200])
             append_runtime_event(
                 "scheduled_publish_failed",
                 message=(res.error or "")[:300],
                 draft_id=did,
             )
+        else:
+            ctx.tick_publish_outcome = f"{res.outcome.value}:draft_id={did}"
+            logger.info("publish not sent: draft_id=%s outcome=%s", did, res.outcome.value)
+    if ctx.tick_publish_outcome == "not_reached":
+        _log_pipeline_idle("publish", "no_due_drafts_or_no_pending")
     ctx.tick_timings["scheduled_publish_sec"] = time.perf_counter() - t0
     observe_histogram("publish_duration_seconds", ctx.tick_timings["scheduled_publish_sec"])
 
@@ -938,14 +1215,28 @@ async def run_pipeline_tick(ctx: PipelineContext, *, wall_clock_start: float) ->
     op_mode = load_operational_mode(settings.runtime_state_dir, settings)
     if not scheduler_allowed(op_mode):
         log_event(logger, "scheduler.tick.skipped", reason="operational_mode", mode=op_mode.value)
+        logger.warning(
+            "scheduler tick skipped: operational_mode=%s (set RUNTIME_OPERATIONAL_MODE=production)",
+            op_mode.value,
+        )
         record_timeline("scheduler.tick.skipped", mode=op_mode.value)
         return
+
+    ctx.tick_collect_rows = 0
+    ctx.tick_summarize_idle_reason = ""
+    ctx.tick_draft_id = None
+    ctx.tick_publish_outcome = "not_reached"
 
     record_scheduler_tick()
     record_timeline("scheduler.tick.started", soak_test=settings.soak_test)
     tick_t0 = time.perf_counter()
     emit_lifecycle("scheduler.tick.started", soak_test=settings.soak_test)
     log_event(logger, "scheduler.pipeline_tick", phase="start", soak_test=settings.soak_test)
+    logger.info(
+        "pipeline tick running: collect → summarize → publish (soak_test=%s dry_run=%s)",
+        settings.soak_test,
+        settings.dry_run,
+    )
     try:
         await _collect_step(ctx)
         await _summarize_step(ctx)
@@ -1067,6 +1358,25 @@ async def run_pipeline_tick(ctx: PipelineContext, *, wall_clock_start: float) ->
         wall_sec=round(ctx.last_scheduler_wall_sec, 4),
         soak_test=settings.soak_test,
     )
+    logger.info(
+        "pipeline tick completed: collect_rows=%s cluster_size=%s summarize_idle=%s draft_id=%s publish=%s wall_sec=%.2f",
+        ctx.tick_collect_rows,
+        ctx.last_cluster_size,
+        ctx.tick_summarize_idle_reason or "none",
+        ctx.tick_draft_id,
+        ctx.tick_publish_outcome,
+        ctx.last_scheduler_wall_sec,
+    )
+    log_event(
+        logger,
+        "pipeline.tick.summary",
+        collect_rows=ctx.tick_collect_rows,
+        cluster_size=ctx.last_cluster_size,
+        summarize_idle=ctx.tick_summarize_idle_reason or "",
+        draft_id=ctx.tick_draft_id,
+        publish_outcome=ctx.tick_publish_outcome,
+        wall_sec=round(ctx.last_scheduler_wall_sec, 4),
+    )
     log_pipeline_metrics(logger)
     if not ctx.duplicate_skipped_this_tick:
         reset_duplicate_skip_streak()
@@ -1117,6 +1427,13 @@ async def run_pipeline(ctx: PipelineContext) -> None:
 
 async def run_pipeline_wrapped(ctx: PipelineContext) -> None:
     """APScheduler entrypoint: wall-clock tick duration (includes lock wait)."""
+    logger.info("pipeline execution started (scheduler job newsroom_pipeline)")
+    log_event(
+        logger,
+        "scheduler.job.invoked",
+        job_id="newsroom_pipeline",
+        interval_min=ctx.settings.pipeline_interval_minutes,
+    )
     t0 = time.perf_counter()
     err: str | None = None
     try:

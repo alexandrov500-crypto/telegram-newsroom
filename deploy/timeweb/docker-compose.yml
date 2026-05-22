@@ -32,6 +32,8 @@ services:
       - ${NEWSROOM_HOST_DATA:-/opt/newsroom/data}:/data
       - ${NEWSROOM_HOST_LOGS:-/opt/newsroom/logs}:/data/logs
       - ${NEWSROOM_HOST_SESSIONS:-/opt/newsroom/sessions}:/data/sessions
+      # Writable .env for `docker compose run ... python gen_session.py --write-env`
+      - ${NEWSROOM_ENV_FILE:-./.env}:/app/.env
     ports:
       - "${HEALTH_HTTP_PUBLISH_PORT:-127.0.0.1:8080}:8080"
     healthcheck:
@@ -46,5 +48,4 @@ services:
         max-size: "20m"
         max-file: "5"
     working_dir: /app
-    command: ["python", "-m", "app.main"]
 

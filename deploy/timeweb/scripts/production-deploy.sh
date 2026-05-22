@@ -45,6 +45,9 @@ set_env_kv TELETHON_SESSION_STRING "${TELETHON_SESSION_STRING:-}"
 set_env_kv ADMIN_USER_ID "${ADMIN_USER_ID:-}"
 set_env_kv TARGET_CHANNEL_ID "${TARGET_CHANNEL_ID:-}"
 set_env_kv SOURCE_CHANNELS "${SOURCE_CHANNELS:-}"
+set_env_kv RUNTIME_OPERATIONAL_MODE "${RUNTIME_OPERATIONAL_MODE:-production}"
+set_env_kv DRY_RUN "${DRY_RUN:-false}"
+set_env_kv PIPELINE_BOOTSTRAP_ON_START "${PIPELINE_BOOTSTRAP_ON_START:-true}"
 
 env_val() { grep "^$1=" .env 2>/dev/null | cut -d= -f2- || true; }
 
@@ -79,8 +82,13 @@ if [[ -f "${REPO_ROOT}/data/newsroom.db" ]]; then
     "${REPO_ROOT}/data/backups/newsroom.db.bak.$(date +%Y%m%d-%H%M%S)" || true
 fi
 
-log "docker compose up -d --build"
-docker compose -f docker-compose.yml up -d --build
+RT_DIR="${NEWSROOM_HOST_DATA:-/opt/newsroom/data}/runtime"
+mkdir -p "$RT_DIR"
+echo '{"mode":"production","updated_at":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","reason":"production_deploy"}' \
+  > "$RT_DIR/operational_mode.json" 2>/dev/null || true
+
+log "docker compose up -d --build --force-recreate"
+docker compose -f docker-compose.yml up -d --build --force-recreate
 
 for i in $(seq 1 30); do
   st=$(docker inspect --format='{{.State.Health.Status}}' telegram-newsroom 2>/dev/null || echo "starting")
@@ -104,5 +112,8 @@ ss -tlnp 2>/dev/null | grep -E '(:8080|:22)\s' || true
 
 echo "========== logs (tail 100) =========="
 docker compose -f docker-compose.yml logs --tail=100 newsroom
+
+sleep 30
+bash "${REPO_ROOT}/deploy/timeweb/scripts/go-live-verify.sh" || true
 
 log "finished"

@@ -1,0 +1,9 @@
+# Local dev overlay: mount repo into /app (do not use in production).
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+
+services:
+  newsroom:
+    env_file:
+      - .env
+    volumes:
+      - .:/app

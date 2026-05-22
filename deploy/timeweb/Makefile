@@ -2,7 +2,16 @@
 COMPOSE := docker compose -f docker-compose.yml
 SERVICE := newsroom
 
-.PHONY: up down logs rebuild restart shell health pull
+.PHONY: up down logs rebuild restart shell health pull gen-session go-live go-live-verify env-local
+
+env-local:
+	bash scripts/build-vps-env.sh
+
+go-live:
+	bash scripts/go-live-start.sh
+
+go-live-verify:
+	bash scripts/go-live-verify.sh
 
 up:
 	$(COMPOSE) up -d --build
@@ -26,6 +35,9 @@ restart:
 
 shell:
 	$(COMPOSE) exec $(SERVICE) /bin/sh
+
+gen-session:
+	$(COMPOSE) run --rm -it $(SERVICE) python gen_session.py --write-env
 
 health:
 	$(COMPOSE) exec $(SERVICE) python /app/docker/healthcheck.py

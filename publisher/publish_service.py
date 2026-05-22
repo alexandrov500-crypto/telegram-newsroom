@@ -103,11 +103,14 @@ async def execute_admin_publication_flow(
     draft_id: int,
     *,
     idempotency_key: str | None = None,
+    bypass_cadence: bool = False,
+    bypass_leadership: bool = False,
 ) -> AdminPublishDraftResult:
     """
     Worker-ready publication: state transitions, optional idempotency, publish lock, Telegram send.
     """
     from app.operational_mode import load_operational_mode, publish_allowed
+    from app.pipeline_debug import debug_bypass_publish_gates, pipeline_debug_active
     from ops.resilience.leadership import require_publish_leadership
     from ops.resilience.publish_journal import (
         append_journal,
@@ -116,22 +119,37 @@ async def execute_admin_publication_flow(
         new_publish_tx_id,
     )
 
+    tx_id = new_publish_tx_id()
+    idem_key = idempotency_key or f"draft:{draft_id}"
+    debug_pub = pipeline_debug_active(settings)
+    bypass_cadence = bypass_cadence or debug_bypass_publish_gates(settings)
+    bypass_leadership = bypass_leadership or debug_bypass_publish_gates(settings)
+
+    log_event(
+        logger,
+        "publish.attempted",
+        draft_id=draft_id,
+        idempotency_key=idem_key,
+        pipeline_debug=debug_pub,
+        bypass_cadence=bypass_cadence,
+        bypass_leadership=bypass_leadership,
+    )
+
     mode = load_operational_mode(settings.runtime_state_dir, settings)
     if not publish_allowed(mode, settings):
         log_event(logger, "publish.blocked_operational_mode", draft_id=draft_id, mode=mode.value)
+        log_event(logger, "publish.failed", draft_id=draft_id, reason="operational_mode", mode=mode.value)
         return AdminPublishDraftResult(
             PublishFlowOutcome.APPROVE_DENIED,
             error=f"operational_mode={mode.value}",
         )
-    if not require_publish_leadership(settings.runtime_state_dir):
+    if not bypass_leadership and not require_publish_leadership(settings.runtime_state_dir):
         log_event(logger, "publish.blocked_no_leadership", draft_id=draft_id)
+        log_event(logger, "publish.failed", draft_id=draft_id, reason="no_leadership")
         return AdminPublishDraftResult(
             PublishFlowOutcome.ALREADY_HANDLED,
             error="publish_leader_not_held",
         )
-
-    tx_id = new_publish_tx_id()
-    idem_key = idempotency_key or f"draft:{draft_id}"
 
     async with session_scope() as session:
         draft = await get_draft_by_id(session, draft_id)
@@ -182,8 +200,9 @@ async def execute_admin_publication_flow(
         idempotency_key=idem_key,
     )
 
-    if settings.dry_run:
+    if settings.dry_run and not debug_pub:
         log_event(logger, "publish.dry_run_skipped", draft_id=draft_id, recovery="dry_run_bypass")
+        log_event(logger, "publish.failed", draft_id=draft_id, reason="dry_run")
         return AdminPublishDraftResult(
             PublishFlowOutcome.DRY_RUN,
             draft_content=content,
@@ -255,7 +274,7 @@ async def execute_admin_publication_flow(
                 topic_key=topic_dedupe_key(topic_hint),
                 is_breaking=is_breaking,
             )
-            if block:
+            if block and not bypass_cadence:
                 inc("cadence_blocked_publish")
                 append_journal(
                     settings.runtime_state_dir,
@@ -271,6 +290,7 @@ async def execute_admin_publication_flow(
                     draft_id=draft_id,
                     reasons=list(reasons),
                 )
+                log_event(logger, "publish.failed", draft_id=draft_id, reason="cadence_blocked", reasons=list(reasons)[:8])
                 append_timeline_event(
                     settings.runtime_state_dir,
                     "publish_cadence_blocked",
@@ -348,6 +368,7 @@ async def execute_admin_publication_flow(
                 error=repr(exc),
             )
             log_event(logger, "publish.channel_send_failed", draft_id=draft_id, error=repr(exc))
+            log_event(logger, "publish.failed", draft_id=draft_id, reason="telegram_send", error=repr(exc)[:500])
             async with session_scope() as session:
                 await mark_draft_failed(session, draft_id, reason=repr(exc))
             return AdminPublishDraftResult(PublishFlowOutcome.SEND_FAILED, error=repr(exc))
@@ -417,6 +438,13 @@ async def execute_admin_publication_flow(
             "publish.success",
             draft_id=draft_id,
             channel_message_id=first_id,
+        )
+        log_event(
+            logger,
+            "publish.succeeded",
+            draft_id=draft_id,
+            channel_message_id=first_id,
+            idempotency_key=idem_key,
         )
         append_timeline_event(
             settings.runtime_state_dir,
