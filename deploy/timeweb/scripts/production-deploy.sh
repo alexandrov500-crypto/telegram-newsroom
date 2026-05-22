@@ -3,7 +3,7 @@
 set -euo pipefail
 
 REPO_ROOT="${REPO_ROOT:-/opt/newsroom}"
-BRANCH="${BRANCH:-v3-live-telegram-validation}"
+BRANCH="${BRANCH:-main}"
 COMPOSE_DIR="${REPO_ROOT}/deploy/timeweb"
 
 log() { echo "[deploy] $*"; }

@@ -29,6 +29,15 @@ ADMIN_USER_ID="${ADMIN_USER_ID:-${ADMIN_USER_IDS:-${TELEGRAM_OPERATOR_CHAT_ID:-}
 TARGET_CHANNEL_ID="${TARGET_CHANNEL_ID:-${LIVE_PUBLIC_CHANNEL_ID:-${TELEGRAM_CHANNEL_ID:-}}}"
 SOURCE_CHANNELS="${SOURCE_CHANNELS:-@${LIVE_ALLOWED_SOURCES:-channel1}}"
 
+ENV_VPS="${REPO_LOCAL}/deploy/timeweb/.env"
+if [[ ! -f "${ENV_VPS}" ]]; then
+  bash "${REPO_LOCAL}/deploy/timeweb/scripts/build-vps-env.sh"
+fi
+
+echo "[mac] syncing .env to VPS..."
+scp "${SSH_OPTS[@]}" "${ENV_VPS}" "${VPS_USER}@${VPS_HOST}:/opt/newsroom/deploy/timeweb/.env"
+ssh "${SSH_OPTS[@]}" "${VPS_USER}@${VPS_HOST}" "chmod 600 /opt/newsroom/deploy/timeweb/.env"
+
 echo "[mac] syncing deploy script and running remote production-deploy..."
 ssh "${SSH_OPTS[@]}" "${VPS_USER}@${VPS_HOST}" "mkdir -p /opt/newsroom/deploy/timeweb/scripts"
 
@@ -49,7 +58,7 @@ export ADMIN_USER_ID='${ADMIN_USER_ID}'
 export TARGET_CHANNEL_ID='${TARGET_CHANNEL_ID}'
 export SOURCE_CHANNELS='${SOURCE_CHANNELS}'
 export TELETHON_SESSION_STRING='${TELETHON_SESSION_STRING:-}'
-export BRANCH='v3-live-telegram-validation'
+export BRANCH='${BRANCH:-main}'
 cd /opt/newsroom
 git fetch origin || true
 git checkout "\$BRANCH" || true
