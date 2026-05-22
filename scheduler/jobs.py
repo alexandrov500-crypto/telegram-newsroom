@@ -269,21 +269,12 @@ async def _summarize_step(ctx: PipelineContext) -> None:
     if not ai_gate_open and not bypass:
         log_event(
             logger,
-            "scheduler.summarize_skipped",
+            "scheduler.summarize_fallback",
             reason="openai_degraded",
             stage="startup",
             circuit_state=circuit.state().value,
+            recovery="rule_fallback",
         )
-        ctx.tick_summarize_idle_reason = f"openai_degraded:{circuit.state().value}"
-        _log_pipeline_idle("summarize", ctx.tick_summarize_idle_reason)
-        log_pipeline_trace(
-            logger,
-            stage="ai_summarization",
-            decision="suppress",
-            reason="openai_degraded",
-            ai_status="skipped",
-        )
-        return
     openai = ctx.openai
     settings = ctx.settings
     bot = ctx.bot
@@ -611,9 +602,15 @@ async def _summarize_step(ctx: PipelineContext) -> None:
                 request_timeout_sec=settings.openai_request_timeout_sec,
                 log_chat_latency=True,
             )
-        elif bypass:
+        else:
             ai_status = "skipped_fallback"
             sc = fallback_summarize_cluster(cluster, max_body_chars=settings.max_post_chars)
+            log_event(
+                logger,
+                "openai.summarize_fallback",
+                reason="ai_gate_closed",
+                circuit_state=circuit.state().value,
+            )
     except SummarizerError as exc:
         circuit = get_openai_circuit()
         circuit.record_failure(str(exc))
@@ -640,7 +637,7 @@ async def _summarize_step(ctx: PipelineContext) -> None:
             ctx.tick_timings["openai_sec"] = time.perf_counter() - t_ai
             observe_histogram("summarize_duration_seconds", ctx.tick_timings["openai_sec"])
             return
-    if sc is None and bypass:
+    if sc is None and (bypass or not ai_gate_open):
         ai_status = "skipped_fallback"
         sc = fallback_summarize_cluster(cluster, max_body_chars=settings.max_post_chars)
     if sc is None:
