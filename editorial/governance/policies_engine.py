@@ -34,7 +34,7 @@ DEFAULT_RULES: dict[str, Any] = {
             "enabled": True,
             "type": "min_unique_channels",
             "min_channels": 1,
-            "min_ratio": 0.25,
+            "min_ratio": 0.1,
             "description": "Require minimum channel spread in multi-post clusters",
         },
         {
