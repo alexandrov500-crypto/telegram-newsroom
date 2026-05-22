@@ -49,12 +49,12 @@ fi
 CLASS="BROKEN"
 if [[ "$MODE_BLOCK" -eq 1 ]]; then
   CLASS="BROKEN"
+elif [[ "$PUBLISH_OK" -eq 1 && "$DRAFT" -eq 1 ]]; then
+  CLASS="ACTIVE"
 elif [[ "$SCHED_STARTED" -eq 0 || "$JOB_REG" -eq 0 ]]; then
   CLASS="BROKEN"
 elif [[ "$PIPE_START" -eq 0 && "$JOB_EXEC" -eq 0 ]]; then
   CLASS="IDLE"
-elif [[ "$PUBLISH_OK" -eq 1 && "$DRAFT" -eq 1 ]]; then
-  CLASS="ACTIVE"
 elif [[ "$TICK_DONE" -eq 1 ]]; then
   CLASS="PARTIAL"
 else
