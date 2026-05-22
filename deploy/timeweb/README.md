@@ -2,7 +2,7 @@
 
 Target: **Ubuntu 24.04** on Timeweb Cloud (example host `213.171.3.133`, `kvmnvm-449`).
 
-Runtime: existing **production-lite** entrypoint `python -m app.main` (APScheduler + aiogram + Telethon + SQLite). No architecture changes.
+Runtime: **`/entrypoint.sh`** (dirs + writable `/data`) → **`python -m app.main`** (APScheduler + aiogram + Telethon + SQLite). App rules only in Python.
 
 ## Production folder structure
 
@@ -75,6 +75,22 @@ make -C deploy/timeweb logs
 | `make shell` | `exec` shell in container |
 | `make gen-session` | interactive Telethon login → updates `deploy/timeweb/.env` |
 | `make health` | run `docker/healthcheck.py` (+ readiness) |
+| `make env-local` | build `deploy/timeweb/.env` from repo-root `.env` (Mac) |
+| `make go-live` | rebuild, start, wait for first tick, classify ACTIVE/IDLE/BROKEN |
+| `make go-live-verify` | log + `/runtime/status` classification only |
+
+### GO-LIVE (VPS)
+
+```bash
+cd /opt/newsroom
+git pull
+cd deploy/timeweb
+# ensure .env has RUNTIME_OPERATIONAL_MODE=production, DRY_RUN=false, TELETHON_SESSION_STRING or session file
+bash scripts/production-deploy.sh
+# or: make go-live
+```
+
+Expect `CLASSIFICATION: ACTIVE` or `PARTIAL` (ticks without publish yet). `BROKEN` → check logs for `operational_mode=` or startup validation.
 
 ### Verify pipeline is alive (30 seconds)
 
