@@ -238,28 +238,28 @@ async def run_polling_supervisor(
             container_id=identity.container_id,
         )
 
-        await ensure_webhook_cleared_with_verify(bot, identity=identity)
-        probe_status = await run_connectivity_probe(bot, settings, retry_count_start=cycle_retry)
-
-        if probe_status == DependencyStatus.UNAVAILABLE:
-            retry_count += 1
-            delay = polling_backoff_sec(retry_count)
-            log_event(
-                logger,
-                "telegram.polling.retry",
-                retry_count=retry_count,
-                backoff_sec=delay,
-                reason="auth_unavailable",
-                dependency_status="unavailable",
-            )
-            try:
-                await asyncio.wait_for(shutdown.wait(), timeout=delay)
-                break
-            except asyncio.TimeoutError:
-                continue
-
         t_poll0 = time.perf_counter()
         try:
+            await ensure_webhook_cleared_with_verify(bot, identity=identity)
+            probe_status = await run_connectivity_probe(bot, settings, retry_count_start=cycle_retry)
+
+            if probe_status == DependencyStatus.UNAVAILABLE:
+                retry_count += 1
+                delay = polling_backoff_sec(retry_count)
+                log_event(
+                    logger,
+                    "telegram.polling.retry",
+                    retry_count=retry_count,
+                    backoff_sec=delay,
+                    reason="auth_unavailable",
+                    dependency_status="unavailable",
+                )
+                try:
+                    await asyncio.wait_for(shutdown.wait(), timeout=delay)
+                    break
+                except asyncio.TimeoutError:
+                    continue
+
             set_telegram_api_runtime(
                 status=DependencyStatus.HEALTHY,
                 detail="polling",
@@ -295,15 +295,32 @@ async def run_polling_supervisor(
             was_ever_connected = True
             retry_count = 0
 
-            poll_task = asyncio.create_task(
+            from app.runtime.task_orchestrator import create_traced_task
+
+            poll_task = create_traced_task(
+                "telegram_polling",
                 _run_one_polling_session(bot, dp, allowed_updates=allowed),
+                trace_id="telegram-polling",
+                owner="telegram_polling",
+                metadata={"task_type": "polling"},
                 name="telegram_polling",
             )
-            conflict_watch = asyncio.create_task(
+            conflict_watch = create_traced_task(
+                "telegram_conflict_watch",
                 run_conflict_recovery_watcher(poll_task, shutdown=shutdown),
+                trace_id="telegram-conflict",
+                owner="telegram_polling",
+                metadata={"task_type": "polling_watch"},
                 name="telegram_conflict_watch",
             )
-            stop_wait = asyncio.create_task(shutdown.wait(), name="polling_shutdown_wait")
+            stop_wait = create_traced_task(
+                "polling_shutdown_wait",
+                shutdown.wait(),
+                trace_id="polling-shutdown",
+                owner="telegram_polling",
+                metadata={"task_type": "polling"},
+                name="polling_shutdown_wait",
+            )
             done, pending = await asyncio.wait(
                 {poll_task, stop_wait},
                 return_when=asyncio.FIRST_COMPLETED,

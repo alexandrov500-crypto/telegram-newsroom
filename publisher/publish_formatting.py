@@ -93,11 +93,27 @@ def build_channel_message_html(
     *,
     draft_id: int,
     max_total_chars: int = 12000,
+    include_sources: bool = False,
+    include_draft_id_footer: bool = False,
+    runtime_dir: str | None = None,
 ) -> str:
-    body = format_body_as_html(content)
-    foot = format_sources_footer_html(sources)
-    tail = f"\n\n<i>Draft #{int(draft_id)}</i>"
-    out = f"{body}\n\n{foot}{tail}"
-    if len(out) > max_total_chars:
-        out = out[: max_total_chars - 20] + "\n<i>…truncated</i>"
-    return sanitize_telegram_html_output(out)
+    """
+    Public channel HTML — delegates to ``public_renderer`` (no debug metadata).
+
+    Legacy flags ``include_sources`` / ``include_draft_id_footer`` are ignored for channel
+    safety; use ``render_internal_review_html`` in admin for diagnostics.
+    """
+    from app.editorial.public_post_formatter import format_public_post_html
+
+    _ = include_sources, include_draft_id_footer
+    if runtime_dir is None:
+        import os
+
+        runtime_dir = os.getenv("RUNTIME_STATE_DIR", "var/runtime").strip() or "var/runtime"
+    return format_public_post_html(
+        content,
+        sources,
+        draft_id=draft_id,
+        max_total_chars=max_total_chars,
+        runtime_dir=runtime_dir,
+    )

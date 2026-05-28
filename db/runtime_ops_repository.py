@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import time
 from datetime import datetime, timezone
 from typing import Any
@@ -119,3 +120,43 @@ async def _persist_safe() -> None:
         await persist_runtime_ops_state()
     except Exception as exc:
         log_event(logger, "runtime_ops.persist_failed", error=repr(exc)[:300])
+
+
+async def try_claim_startup_notification_in_db(
+    session: Any,
+    *,
+    window_sec: float,
+    process_uuid: str,
+) -> bool:
+    """
+  Atomic claim in ``runtime_ops_state`` — only one process per DB may send startup
+  within ``window_sec`` (covers docker overlap and parallel boots on one database).
+    """
+    now = time.time()
+    row = await session.get(RuntimeOpsState, 1)
+    if row is None:
+        row = RuntimeOpsState(id=1, state_json="{}")
+        session.add(row)
+        await session.flush()
+
+    try:
+        sj = json.loads(row.state_json or "{}")
+    except json.JSONDecodeError:
+        sj = {}
+    if not isinstance(sj, dict):
+        sj = {}
+
+    notif = sj.get("notifications")
+    if not isinstance(notif, dict):
+        notif = {}
+    last = notif.get("last_startup_notification_at_unix")
+    if isinstance(last, (int, float)) and window_sec > 0 and (now - float(last)) < window_sec:
+        return False
+
+    notif["last_startup_notification_at_unix"] = now
+    notif["startup_claimed_by"] = str(process_uuid)[:12]
+    notif["startup_claimed_pid"] = os.getpid()
+    sj["notifications"] = notif
+    row.state_json = json.dumps(sj, separators=(",", ":"), ensure_ascii=False)
+    await session.flush()
+    return True

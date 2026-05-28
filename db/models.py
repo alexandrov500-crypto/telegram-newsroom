@@ -30,6 +30,7 @@ class RawPost(Base):
     channel_name: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
     message_id: Mapped[int] = mapped_column(Integer, nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
+    extras: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -107,3 +108,61 @@ class PublishedPost(Base):
     published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     draft: Mapped["Draft"] = relationship(back_populates="published")
+
+
+class PipelineTick(Base):
+    """Persisted scheduler pipeline tick (stuck detection, ops audit)."""
+
+    __tablename__ = "pipeline_ticks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tick_id: Mapped[str] = mapped_column(String(96), unique=True, nullable=False, index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    drafts_created: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    posts_collected: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failures: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="running", index=True)
+    node_name: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    correlation_id: Mapped[str] = mapped_column(String(96), nullable=False, default="", index=True)
+    detail_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+
+
+class OperatorFeedback(Base):
+    """Structured operator actions (advisory; never bypasses publish gates)."""
+
+    __tablename__ = "operator_feedback"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    operator_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    tick_id: Mapped[str] = mapped_column(String(96), nullable=False, default="", index=True)
+    draft_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    action: Mapped[str] = mapped_column(String(48), nullable=False, index=True)
+    metadata_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    applied: Mapped[bool] = mapped_column(Integer, nullable=False, default=0)
+    apply_reason: Mapped[str] = mapped_column(String(240), nullable=False, default="")
+
+
+class FailedDraftQueue(Base):
+    """Retry queue for transient publish failures (not editorial rejects)."""
+
+    __tablename__ = "failed_drafts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    draft_id: Mapped[int] = mapped_column(
+        ForeignKey("drafts.id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+    correlation_id: Mapped[str] = mapped_column(String(96), nullable=False, default="")
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    first_failed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    terminal_failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_error: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    error_category: Mapped[str] = mapped_column(String(32), nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="pending", index=True)

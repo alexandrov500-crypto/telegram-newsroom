@@ -122,7 +122,14 @@ def evaluate_unified_cluster_stage(
     contributing: list[str] = []
     policy_refs = tuple(pref_trace)
 
-    if is_suppression_active(runtime_dir, fingerprint):
+    starvation_bypass_suppression = False
+    try:
+        from app.editorial.desk_starvation import desk_threshold_context
+
+        starvation_bypass_suppression = desk_threshold_context().publish_starvation_detected
+    except Exception:
+        pass
+    if is_suppression_active(runtime_dir, fingerprint) and not starvation_bypass_suppression:
         reasons.append("suppression_ttl_active")
         contributing.append("suppression_memory")
         return UnifiedEditorialDecision(
@@ -138,6 +145,8 @@ def evaluate_unified_cluster_stage(
             policy_refs=policy_refs,
             adaptation=adap,
         )
+    if is_suppression_active(runtime_dir, fingerprint) and starvation_bypass_suppression:
+        contributing.append("suppression_memory_starvation_bypass")
 
     if duplicate_burst_count(runtime_dir) >= 10:
         reasons.append("duplicate_storm_suppress")

@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from db.models import Base
 from utils.database_url import is_postgresql_async_url, is_sqlite_async_url
+from utils.structured_log import log_event
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,14 @@ def _migrate_sqlite_schema(connection: Connection) -> None:
             connection.execute(text(ddl))
             logger.info("SQLite migration: added drafts.%s", col_name)
             cols.add(col_name)
+
+    if "raw_posts" in tables:
+        raw_cols = {c["name"] for c in insp.get_columns("raw_posts")}
+        if "extras" not in raw_cols:
+            connection.execute(
+                text("ALTER TABLE raw_posts ADD COLUMN extras TEXT NOT NULL DEFAULT '{}'"),
+            )
+            logger.info("SQLite migration: added raw_posts.extras")
 
 
 def get_engine() -> AsyncEngine:
@@ -143,6 +152,7 @@ async def session_scope() -> AsyncIterator[AsyncSession]:
         try:
             yield session
             await session.commit()
-        except Exception:
+        except Exception as exc:
+            log_event(logger, "rollback_triggered", error=repr(exc)[:200])
             await session.rollback()
             raise

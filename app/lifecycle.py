@@ -44,6 +44,12 @@ def _database_diagnostics(settings: Any) -> dict[str, Any]:
 
 def log_startup_structured(settings: Any, *, init_db_duration_sec: float | None = None) -> None:
     """Structured startup banner — no tokens or API keys."""
+    try:
+        from app.runtime.task_orchestrator import bump_runtime_generation
+
+        bump_runtime_generation()
+    except Exception:
+        pass
     db = _database_diagnostics(settings)
     try:
         from app.versioning import public_metadata
@@ -135,6 +141,25 @@ async def graceful_shutdown(
             except Exception as exc:
                 log_event(logger, "lifecycle.scheduler_shutdown_failed", error=repr(exc))
 
+        if settings is not None:
+            try:
+                from app.reliability.stale_tick_recovery import reconcile_stale_pipeline_ticks
+
+                tick_rec = await reconcile_stale_pipeline_ticks(
+                    settings,
+                    source="shutdown",
+                    older_than_sec=30.0,
+                )
+                if tick_rec.get("count"):
+                    log_event(
+                        logger,
+                        "lifecycle.shutdown_stale_ticks_finalized",
+                        count=tick_rec.get("count"),
+                        finalized=tick_rec.get("finalized"),
+                    )
+            except Exception as exc:
+                log_event(logger, "lifecycle.shutdown_tick_finalize_failed", error=repr(exc)[:200])
+
         from db.session import close_db
 
         from app.health_http import stop_health_server
@@ -146,6 +171,13 @@ async def graceful_shutdown(
         await close_job_queue()
         await close_redis()
         await stop_health_server(health_http_server)
+
+        try:
+            from app.runtime.task_watchdog import stop_task_watchdog
+
+            await stop_task_watchdog()
+        except Exception:
+            pass
 
         await close_db()
 
@@ -162,7 +194,21 @@ async def graceful_shutdown(
                 log_event(logger, "lifecycle.bot_session_close_failed", error=repr(exc))
 
         await shutdown_pipeline_jobs()
+        try:
+            from app.worker.lane_runtime import stop_lane_workers
+
+            await stop_lane_workers()
+        except Exception as exc:
+            log_event(logger, "lifecycle.lane_workers_stop_failed", error=repr(exc))
         await shutdown_collector_runtime()
+
+        if settings is not None:
+            try:
+                from app.reliability.shutdown import run_graceful_shutdown
+
+                await run_graceful_shutdown(settings)
+            except Exception as exc:
+                log_event(logger, "runtime.shutdown.reliability_failed", error=repr(exc))
 
         if settings is not None:
             try:
@@ -171,6 +217,18 @@ async def graceful_shutdown(
                 release_runtime_startup_lock(settings)
             except Exception as exc:
                 log_event(logger, "runtime.shutdown.startup_lock_failed", error=repr(exc))
+            try:
+                from app.ops.runtime import release_singleton_guard
+
+                release_singleton_guard()
+            except Exception as exc:
+                log_event(logger, "runtime.shutdown.singleton_guard_failed", error=repr(exc))
+            try:
+                from app.ops.runtime.startup_notify_guard import release_startup_notification_lock
+
+                release_startup_notification_lock()
+            except Exception as exc:
+                log_event(logger, "runtime.shutdown.startup_notify_lock_failed", error=repr(exc))
 
         if settings is not None:
             try:

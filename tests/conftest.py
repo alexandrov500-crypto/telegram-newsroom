@@ -14,6 +14,16 @@ pytest_plugins = ("tests.runtime_fixtures",)
 
 
 @pytest.fixture(autouse=True)
+def _runtime_singleton_test_bypass(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Most unit tests are not the singleton owner; bypass unless testing runtime ownership."""
+    mod = getattr(request.node, "module", None)
+    mod_name = getattr(mod, "__name__", "") or ""
+    if mod_name.endswith(("test_runtime_singleton", "test_startup_lock")):
+        return
+    monkeypatch.setenv("RUNTIME_SINGLETON_DISABLED", "true")
+
+
+@pytest.fixture(autouse=True)
 def _isolate_ci_regression_env() -> None:
     """Prevent host/CI NEWSROOM_* skip lists from affecting deterministic unit tests."""
     keys = (
@@ -52,6 +62,8 @@ def minimal_test_settings(**overrides: object) -> Settings:
         telethon_op_max_attempts=4,
         bot_token="123456:ABCDEF-test-token",
         admin_user_id=1,
+        admin_user_ids=frozenset({1}),
+        moderation_chat_id=None,
         target_channel_id=-1001234567890,
         source_channels=("@testchannel",),
         database_url="sqlite+aiosqlite:///:memory:",
@@ -137,6 +149,7 @@ def minimal_test_settings(**overrides: object) -> Settings:
         cluster_min_pair_last_jaccard=0.04,
         precluster_trim_bucket_multiplier=3,
         source_mentions_in_post=False,
+        publish_include_sources=False,
         editorial_safety_enabled=True,
         headline_mode="none",
         digest_multi_post_enabled=False,
@@ -161,6 +174,8 @@ def minimal_test_settings(**overrides: object) -> Settings:
         scheduler_diagnostics_enabled=False,
         security_redaction_enabled=False,
         force_single_publish=False,
+        runtime_node_role="worker",
+        newsroom_worker_url="",
     )
     if not overrides:
         return base

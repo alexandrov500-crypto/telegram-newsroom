@@ -608,5 +608,14 @@ async def serve_health_http(
         logger.info("event=health_server_started", host=host, port=port)
         await server.serve()
 
-    task = asyncio.create_task(_run(), name="health-http")
+    from app.runtime.task_orchestrator import create_traced_task
+
+    task = create_traced_task(
+        "health-http",
+        _run(),
+        trace_id="health-http",
+        owner="bot.health_server",
+        metadata={"task_type": "health_http"},
+        name="health-http",
+    )
     return task

@@ -211,6 +211,87 @@ def handle_economic_mode(settings: Any, body: dict[str, Any], correlation_id: st
     return _ok("economic.mode", correlation_id, settings.runtime_state_dir, {"mode": mode.value})
 
 
+def handle_ops_control(settings: Any, body: dict[str, Any], correlation_id: str) -> dict[str, Any]:
+    """Runtime OPS control plane (ingestion / lanes / halt) without container restart."""
+    from app.ops.control_plane import (
+        clear_emergency_halt,
+        disable_fast_lane,
+        disable_ingestion,
+        emergency_halt,
+        enable_fast_lane,
+        enable_ingestion,
+        ops_control_snapshot,
+        resume_normal_ops,
+        set_fast_lane_only,
+        set_slow_mode,
+    )
+
+    action = str(body.get("action") or "").strip().lower()
+    reason = str(body.get("reason") or "ops_control_api")[:200]
+    if action in ("halt", "emergency_halt"):
+        emergency_halt(reason=reason)
+        label = "ops.halt"
+    elif action in ("clear_halt", "resume"):
+        resume_normal_ops(reason=reason)
+        clear_emergency_halt(reason=reason)
+        label = "ops.resume"
+    elif action == "ingestion_off":
+        disable_ingestion(reason=reason)
+        label = "ops.ingestion_off"
+    elif action == "ingestion_on":
+        enable_ingestion(reason=reason)
+        label = "ops.ingestion_on"
+    elif action == "fast_lane_off":
+        disable_fast_lane(reason=reason)
+        label = "ops.fast_lane_off"
+    elif action == "fast_lane_on":
+        enable_fast_lane(reason=reason)
+        label = "ops.fast_lane_on"
+    elif action == "slow_mode_on":
+        set_slow_mode(True, reason=reason)
+        label = "ops.slow_mode_on"
+    elif action == "slow_mode_off":
+        set_slow_mode(False, reason=reason)
+        label = "ops.slow_mode_off"
+    elif action == "fast_lane_only_on":
+        set_fast_lane_only(True, reason=reason)
+        label = "ops.fast_lane_only_on"
+    elif action == "fast_lane_only_off":
+        set_fast_lane_only(False, reason=reason)
+        label = "ops.fast_lane_only_off"
+    elif action in ("status", "snapshot"):
+        return _ok("ops.status", correlation_id, settings.runtime_state_dir, ops_control_snapshot())
+    else:
+        return _err("ops.control", correlation_id, settings.runtime_state_dir, f"unknown ops action: {action}")
+    return _ok(label, correlation_id, settings.runtime_state_dir, ops_control_snapshot())
+
+
+def handle_execution_takeover(settings: Any, body: dict[str, Any], correlation_id: str) -> dict[str, Any]:
+    from app.ops.runtime.execution_lease import write_execution_intent
+
+    reason = str(body.get("reason") or "ops_control_takeover")[:200]
+    path = write_execution_intent(settings.runtime_state_dir, role="worker", reason=reason)
+    return _ok(
+        "execution.takeover",
+        correlation_id,
+        settings.runtime_state_dir,
+        {"intent_path": str(path), "hint": "Restart with RUNTIME_NODE_ROLE=worker; stop other pollers"},
+    )
+
+
+def handle_execution_release(settings: Any, body: dict[str, Any], correlation_id: str) -> dict[str, Any]:
+    from app.ops.runtime.execution_lease import write_execution_intent
+
+    reason = str(body.get("reason") or "ops_control_release")[:200]
+    path = write_execution_intent(settings.runtime_state_dir, role="control", reason=reason)
+    return _ok(
+        "execution.release",
+        correlation_id,
+        settings.runtime_state_dir,
+        {"intent_path": str(path), "hint": "RUNTIME_NODE_ROLE=control on Mac; start VPS worker"},
+    )
+
+
 def handle_evolution_validate(settings: Any, body: dict[str, Any], correlation_id: str) -> dict[str, Any]:
     from ops.trust.evolution_gates import validate_evolution_change
 
@@ -257,11 +338,20 @@ def dispatch_control_action(
         return handle_economic_mode(settings, body, correlation_id)
     if p in ("evolution/validate", "evolution"):
         return handle_evolution_validate(settings, body, correlation_id)
+    if p in ("execution/takeover", "takeover"):
+        return handle_execution_takeover(settings, body, correlation_id)
+    if p in ("execution/release", "release"):
+        return handle_execution_release(settings, body, correlation_id)
+    if p in ("ops", "ops/control", "control-plane"):
+        return handle_ops_control(settings, body, correlation_id)
     if p == "status":
+        from app.ops.control_plane import ops_control_snapshot
+
         return {
             "ok": True,
             "correlation_id": correlation_id,
             "mode": load_operational_mode(settings.runtime_state_dir, settings).value,
             "snapshots": list_snapshots(settings.runtime_state_dir)[:5],
+            "ops_control_plane": ops_control_snapshot(),
         }
     return _err("unknown", correlation_id, settings.runtime_state_dir, f"unknown control path: {p}")

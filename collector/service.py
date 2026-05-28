@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import os
+from pathlib import Path
 from typing import Iterable
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +13,11 @@ from telethon.errors import RPCError
 
 from collector.retry import ensure_connected, with_telethon_retries
 from collector.telethon_client import to_utc_aware
+from collector.telethon_media import (
+    detect_media_type,
+    download_message_media,
+    message_plain_text,
+)
 from db.repository import upsert_raw_post
 from utils.structured_log import log_event
 
@@ -58,19 +66,51 @@ async def collect_channel_messages(
     async def iterate_messages():
         await ensure_connected(client)
         count = 0
+        media_cache = Path(os.getenv("RUNTIME_STATE_DIR", "var/runtime")) / "media_cache"
+        collect_media = os.getenv("COLLECTOR_MEDIA_ENABLED", "true").strip().lower() not in (
+            "0",
+            "false",
+            "no",
+        )
         async for message in client.iter_messages(entity, limit=limit):
-            if not message.text:
+            text = message_plain_text(message)
+            has_media = detect_media_type(message) != "none"
+            if not text and not has_media:
                 continue
+            extras: dict[str, object] = {}
+            if collect_media and has_media:
+                media_payload = await download_message_media(client, message, media_cache)
+                if media_payload:
+                    extras["media"] = media_payload
             created = to_utc_aware(message.date)
             was_new = await upsert_raw_post(
                 session,
                 channel_name=label,
                 message_id=int(message.id),
-                text=message.text,
+                text=text or " ",
                 created_at=created,
+                extras_json=json.dumps(extras, ensure_ascii=False),
             )
             if was_new:
                 count += 1
+                try:
+                    from ops.pipeline.ingest_hooks import on_raw_post_inserted
+
+                    meta = on_raw_post_inserted(
+                        runtime_dir=os.getenv("RUNTIME_STATE_DIR", "var/runtime"),
+                        channel_name=label,
+                        message_id=int(message.id),
+                        text=text or " ",
+                    )
+                    if meta.get("duplicate"):
+                        count = max(0, count - 1)
+                except Exception as exc:
+                    log_event(
+                        logger,
+                        "collector.ops_hook_failed",
+                        channel=label,
+                        error=repr(exc)[:200],
+                    )
         return count
 
     try:

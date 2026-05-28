@@ -161,6 +161,23 @@ def record_correction_for_channels(channels: list[str], *, runtime_dir: str | No
         _save(runtime_dir, data)
 
 
+def record_contradiction_for_channels(channels: list[str], *, runtime_dir: str | None = None) -> None:
+    if not channels:
+        return
+    with _lock:
+        data = _load(runtime_dir)
+        chmap = data.setdefault("channels", {})
+        assert isinstance(chmap, dict)
+        for ch in channels:
+            key = _norm_channel(ch)
+            if not key:
+                continue
+            row = dict(chmap.get(key) or {})
+            row["contradictions"] = int(row.get("contradictions") or 0) + 1
+            chmap[key] = row
+        _save(runtime_dir, data)
+
+
 def record_duplicate_signal_for_channels(channels: list[str], *, runtime_dir: str | None = None) -> None:
     if not channels:
         return

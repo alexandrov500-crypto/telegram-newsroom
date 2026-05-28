@@ -246,6 +246,14 @@ def _apply_startup_to_registry(
     deps.ai_pipeline_enabled = result.ai_pipeline_enabled
     deps.collector_enabled = result.collector_enabled
     deps.startup_complete = not result.fatal_errors
+    try:
+        from app.state.pipeline_decision_engine import apply_pipeline_decision
+        from app.state.pipeline_execution_wrapper import pipeline_evaluation_only
+
+        with pipeline_evaluation_only():
+            apply_pipeline_decision(source="startup_health")
+    except Exception:
+        pass
     agg = result.aggregate
     log_event(
         logger,

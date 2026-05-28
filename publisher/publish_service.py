@@ -5,9 +5,11 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import time
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 
 from aiogram import Bot
 
@@ -24,6 +26,7 @@ from db.repository import (
 from db.models import DraftStatus
 from db.session import session_scope
 from publisher.publish_lock import publish_draft_lock
+from publisher.publish_trace import PublishTraceTimer, log_publish_trace
 from publisher.telegram_publisher import publish_draft_to_channel
 from dashboard.timeline import append_timeline_event
 from utils.metrics import inc
@@ -34,6 +37,110 @@ logger = logging.getLogger(__name__)
 
 _idem_memory: dict[str, tuple[int, int]] = {}
 _idem_memory_lock = asyncio.Lock()
+
+
+def _final_gate_state_path(runtime_dir: str) -> Path:
+    from pathlib import Path
+
+    return Path(runtime_dir).expanduser().resolve() / "final_publish_gate_state.json"
+
+
+def _record_final_gate_block(runtime_dir: str, reason: str) -> int:
+    import json
+    import time
+
+    p = _final_gate_state_path(runtime_dir)
+    if p.is_file():
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            data = {}
+    else:
+        data = {}
+    c = int(data.get("block_count") or 0) + 1
+    data["block_count"] = c
+    data["last_reason"] = reason[:240]
+    data["last_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    return c
+
+
+async def publish_allowed_final_check(
+    *,
+    settings: Settings,
+    draft_id: int,
+    idempotency_key: str,
+    draft_extras_json: str | None,
+) -> tuple[bool, str]:
+    from app.ops.execution_gates import evaluate_publish_gate
+    from app.ops.live_rollback import rollback_active
+    from app.observability.runtime_protection import protection_payload
+    from app.observability.execution_graph_report import build_execution_graph_report
+    from app.observability.prepublic_qa import prepublic_qa_enabled
+    from utils.database_url import sqlite_path_from_url
+
+    # core publish gate (execution graph/runtime/incident/rollout)
+    gate = evaluate_publish_gate(settings, trace=False)
+    if not gate.allowed:
+        return False, f"base_gate:{gate.reason}"
+
+    if rollback_active(settings.runtime_state_dir):
+        return False, "live_rollback_active"
+
+    prot = protection_payload(settings.runtime_state_dir)
+    if str(prot.get("current_state") or "").lower() == "critical":
+        return False, "runtime_critical"
+
+    # execution graph must remain fully consistent
+    dbp = sqlite_path_from_url(settings.database_url)
+    eg = build_execution_graph_report(
+        db_path=Path(dbp) if dbp and Path(dbp).is_file() else None,
+        runtime_dir=Path(settings.runtime_state_dir),
+        log_path=Path(os.getenv("NEWSROOM_LOG", "logs/local-run.log")),
+        window_ticks=120,
+    )
+    if float(eg.get("consistency_rate") or 0) < 1.0:
+        return False, "execution_graph_inconsistent"
+
+    # QA mode safety rule: require moderation chat configured.
+    if prepublic_qa_enabled() and not getattr(settings, "moderation_chat_id", None):
+        return False, "prepublic_qa_without_moderation_chat"
+
+    # dedup idempotency not seen before
+    from app.reliability.idempotency import is_idempotency_processed
+
+    if is_idempotency_processed(settings.runtime_state_dir, idempotency_key):
+        return False, "idempotency_already_processed"
+
+    # ensure draft not already published
+    try:
+        import sqlite3
+
+        if dbp and Path(dbp).is_file():
+            conn = sqlite3.connect(dbp, timeout=4.0)
+            row = conn.execute(
+                "SELECT COUNT(*) FROM published_posts WHERE draft_id = ?",
+                (int(draft_id),),
+            ).fetchone()
+            conn.close()
+            if int((row or [0])[0] or 0) > 0:
+                return False, "draft_already_published"
+    except Exception:
+        pass
+    return True, "ok"
+
+
+async def _publish_attempt_number(draft_id: int) -> int:
+    try:
+        from db.reliability_repository import get_failed_draft_row
+
+        row = await get_failed_draft_row(draft_id)
+        if row is not None:
+            return int(row.retry_count or 0) + 1
+    except Exception:
+        pass
+    return 1
 
 
 class PublishFlowOutcome(str, Enum):
@@ -106,10 +213,46 @@ async def execute_admin_publication_flow(
     bypass_cadence: bool = False,
     bypass_leadership: bool = False,
 ) -> AdminPublishDraftResult:
+    """Publication entry — enforced via pipeline execution wrapper."""
+    from scheduler.runtime_context import get_pipeline_context
+    from app.state.pipeline_execution_wrapper import execute_pipeline_publish
+
+    ctx = get_pipeline_context()
+
+    async def _run() -> AdminPublishDraftResult:
+        return await _execute_admin_publication_flow_impl(
+            bot,
+            settings,
+            draft_id,
+            idempotency_key=idempotency_key,
+            bypass_cadence=bypass_cadence,
+            bypass_leadership=bypass_leadership,
+        )
+
+    out = await execute_pipeline_publish(ctx, draft_id=draft_id, publish_fn=_run)
+    if out is None:
+        return AdminPublishDraftResult(
+            PublishFlowOutcome.APPROVE_DENIED,
+            error="pipeline_wrapper_blocked_publish",
+        )
+    return out
+
+
+async def _execute_admin_publication_flow_impl(
+    bot: Bot,
+    settings: Settings,
+    draft_id: int,
+    *,
+    idempotency_key: str | None = None,
+    bypass_cadence: bool = False,
+    bypass_leadership: bool = False,
+) -> AdminPublishDraftResult:
     """
     Worker-ready publication: state transitions, optional idempotency, publish lock, Telegram send.
     """
-    from app.operational_mode import load_operational_mode, publish_allowed
+    from app.state.pipeline_execution_wrapper import require_pipeline_wrapper_active
+
+    require_pipeline_wrapper_active("publish_flow")
     from app.pipeline_debug import debug_bypass_publish_gates, pipeline_debug_active
     from ops.resilience.leadership import require_publish_leadership
     from ops.resilience.publish_journal import (
@@ -121,9 +264,48 @@ async def execute_admin_publication_flow(
 
     tx_id = new_publish_tx_id()
     idem_key = idempotency_key or f"draft:{draft_id}"
+    publish_attempt = await _publish_attempt_number(draft_id)
+    try:
+        from app.reliability.publish_watchdog import check_publish_watchdog
+
+        wd = await check_publish_watchdog(draft_id)
+        if not wd.allowed:
+            log_event(
+                logger,
+                "publish.watchdog_blocked",
+                draft_id=draft_id,
+                reason=wd.reason,
+                retry_count=wd.retry_count,
+            )
+            inc("publish_watchdog_blocked_total")
+            return AdminPublishDraftResult(
+                PublishFlowOutcome.APPROVE_DENIED,
+                error=wd.reason,
+            )
+    except Exception:
+        pass
+    trace_timer = PublishTraceTimer()
+    log_publish_trace(
+        event="started",
+        draft_id=draft_id,
+        publish_attempt=publish_attempt,
+        idempotency_key=idem_key,
+        tx_id=tx_id,
+    )
+    from app.recovery.pipeline_overrides import is_force_publish_bypass, is_minimal_pipeline_mode
+
     debug_pub = pipeline_debug_active(settings)
-    bypass_cadence = bypass_cadence or debug_bypass_publish_gates(settings)
-    bypass_leadership = bypass_leadership or debug_bypass_publish_gates(settings)
+    recovery_pub = is_minimal_pipeline_mode() or is_force_publish_bypass()
+    bypass_cadence = bypass_cadence or debug_bypass_publish_gates(settings) or recovery_pub
+    bypass_leadership = bypass_leadership or debug_bypass_publish_gates(settings) or recovery_pub
+    if recovery_pub:
+        log_event(
+            logger,
+            "publish.recovery_bypass",
+            draft_id=draft_id,
+            force_publish_bypass=is_force_publish_bypass(),
+            minimal_mode=is_minimal_pipeline_mode(),
+        )
 
     log_event(
         logger,
@@ -135,14 +317,48 @@ async def execute_admin_publication_flow(
         bypass_leadership=bypass_leadership,
     )
 
-    mode = load_operational_mode(settings.runtime_state_dir, settings)
-    if not publish_allowed(mode, settings):
-        log_event(logger, "publish.blocked_operational_mode", draft_id=draft_id, mode=mode.value)
-        log_event(logger, "publish.failed", draft_id=draft_id, reason="operational_mode", mode=mode.value)
+    from app.observability.publish_audit import log_publish_audit, resolve_publish_mode
+    from app.ops.execution_gates import evaluate_publish_gate
+
+    publish_mode = resolve_publish_mode(settings)
+    gate = evaluate_publish_gate(settings)
+    if not gate.allowed:
+        log_event(
+            logger,
+            "publish.blocked",
+            draft_id=draft_id,
+            reason=gate.reason,
+            layer=gate.layer,
+        )
+        log_event(logger, "publish.failed", draft_id=draft_id, reason=gate.reason)
+        log_publish_audit(
+            draft_id=draft_id,
+            publish_decision="blocked",
+            publish_mode=publish_mode,
+            extra={"block_reason": gate.reason, "gate_layer": gate.layer},
+        )
         return AdminPublishDraftResult(
             PublishFlowOutcome.APPROVE_DENIED,
-            error=f"operational_mode={mode.value}",
+            error=gate.reason,
         )
+    log_publish_audit(
+        draft_id=draft_id,
+        publish_decision="allowed",
+        publish_mode=publish_mode,
+        extra={"gate_layer": gate.layer},
+    )
+    try:
+        from app.observability.prepublic_qa import prepublic_qa_enabled, record_publish_decision_explanation
+
+        if prepublic_qa_enabled():
+            record_publish_decision_explanation(
+                settings.runtime_state_dir,
+                draft_id=draft_id,
+                decision="allowed",
+                detail={"gate_layer": gate.layer, "publish_mode": publish_mode},
+            )
+    except Exception:
+        pass
     if not bypass_leadership and not require_publish_leadership(settings.runtime_state_dir):
         log_event(logger, "publish.blocked_no_leadership", draft_id=draft_id)
         log_event(logger, "publish.failed", draft_id=draft_id, reason="no_leadership")
@@ -173,6 +389,25 @@ async def execute_admin_publication_flow(
             draft_content=content,
             draft_sources=sources,
             channel_message_id=int(finalized["channel_message_id"]),
+        )
+
+    from app.reliability.idempotency import is_idempotency_processed, mark_idempotency_processed
+
+    if is_idempotency_processed(settings.runtime_state_dir, idem_key):
+        prior = await _idem_get_message_id(settings, idem_key)
+        append_journal(
+            settings.runtime_state_dir,
+            tx_id=tx_id,
+            draft_id=draft_id,
+            state="idempotent_replay",
+            idempotency_key=idem_key,
+            channel_message_id=prior,
+        )
+        return AdminPublishDraftResult(
+            PublishFlowOutcome.ALREADY_HANDLED,
+            draft_content=content,
+            draft_sources=sources,
+            channel_message_id=prior,
         )
 
     journal_idem = find_by_idempotency_key(settings.runtime_state_dir, idem_key)
@@ -227,6 +462,41 @@ async def execute_admin_publication_flow(
             channel_message_id=prior_mid,
         )
 
+    final_ok, final_reason = await publish_allowed_final_check(
+        settings=settings,
+        draft_id=draft_id,
+        idempotency_key=idem_key,
+        draft_extras_json="",
+    )
+    if not final_ok:
+        cnt = _record_final_gate_block(settings.runtime_state_dir, final_reason)
+        log_event(
+            logger,
+            "publish_blocked_final_gate",
+            draft_id=draft_id,
+            reason=final_reason,
+            block_count=cnt,
+        )
+        if cnt >= int(os.getenv("FINAL_GATE_ALERT_REPEAT", "3")):
+            try:
+                from ops.operator_notifications import enqueue_operator_notification
+
+                enqueue_operator_notification(
+                    settings.runtime_state_dir,
+                    kind="publish_blocked_final_gate",
+                    severity="critical",
+                    message=f"Final publish gate repeatedly blocked ({cnt}): {final_reason}",
+                    fields={"draft_id": draft_id, "reason": final_reason, "block_count": cnt},
+                )
+            except Exception:
+                pass
+        return AdminPublishDraftResult(
+            PublishFlowOutcome.APPROVE_DENIED,
+            draft_content=content,
+            draft_sources=sources,
+            error=final_reason,
+        )
+
     async with publish_draft_lock(settings, draft_id) as lock_acquired:
         if not lock_acquired:
             return AdminPublishDraftResult(
@@ -273,7 +543,37 @@ async def execute_admin_publication_flow(
                 pol_eff,
                 topic_key=topic_dedupe_key(topic_hint),
                 is_breaking=is_breaking,
+                content=d.content or "",
             )
+            from app.editorial.final_publish_gate import evaluate_final_publish_gate
+
+            gate = evaluate_final_publish_gate(
+                content=d.content or "",
+                sources=d.sources or "[]",
+                draft_extras_json=d.draft_extras,
+                settings=settings,
+                operator_approved=bypass_cadence,
+                draft_id=draft_id,
+            )
+            if not gate.allowed:
+                inc("final_publish_gate_blocked_total")
+                log_event(
+                    logger,
+                    "publish.final_gate_blocked",
+                    draft_id=draft_id,
+                    reason=gate.reason,
+                    manual=gate.manual_review_required,
+                    permanent=gate.permanent_block,
+                )
+                if gate.permanent_block:
+                    await mark_draft_failed(session, draft_id, reason=f"final_gate:{gate.reason}")
+                return AdminPublishDraftResult(
+                    PublishFlowOutcome.APPROVE_DENIED,
+                    draft_content=d.content or "",
+                    draft_sources=d.sources or "",
+                    error=gate.reason,
+                )
+
             if block and not bypass_cadence:
                 inc("cadence_blocked_publish")
                 append_journal(
@@ -348,6 +648,23 @@ async def execute_admin_publication_flow(
             state="sending",
             idempotency_key=idem_key,
         )
+        force_dry = os.getenv("PUBLISH_FORCE_DRY_RUN", "").strip().lower() in {"1", "true", "yes", "on"}
+        if force_dry:
+            from publisher.publish_formatting import build_channel_message_html
+
+            preview_html = build_channel_message_html(content, sources, draft_id=draft_id)
+            log_event(
+                logger,
+                "publish.force_dry_run",
+                draft_id=draft_id,
+                html_preview=preview_html[:500],
+                gate_ok=True,
+            )
+            return AdminPublishDraftResult(
+                PublishFlowOutcome.DRY_RUN,
+                draft_content=content,
+                draft_sources=sources,
+            )
         try:
             first_id = await publish_draft_to_channel(
                 bot,
@@ -356,6 +673,7 @@ async def execute_admin_publication_flow(
                 content=content,
                 sources=sources,
                 draft_extras_json=extras_json,
+                publish_attempt=publish_attempt,
             )
         except BaseException as exc:
             logger.exception("Failed to publish draft %s: %s", draft_id, exc)
@@ -369,8 +687,30 @@ async def execute_admin_publication_flow(
             )
             log_event(logger, "publish.channel_send_failed", draft_id=draft_id, error=repr(exc))
             log_event(logger, "publish.failed", draft_id=draft_id, reason="telegram_send", error=repr(exc)[:500])
+            log_publish_trace(
+                event="failed",
+                draft_id=draft_id,
+                publish_attempt=publish_attempt,
+                idempotency_key=idem_key,
+                tx_id=tx_id,
+                channel_id=getattr(settings, "channel_id", None),
+                latency_ms=trace_timer.latency_ms,
+                outcome="telegram_send",
+                error=repr(exc),
+            )
             async with session_scope() as session:
                 await mark_draft_failed(session, draft_id, reason=repr(exc))
+            try:
+                from utils.operational_context import get_operational_log_fields
+                from app.reliability.failed_draft_recovery import record_publish_failure
+
+                await record_publish_failure(
+                    draft_id,
+                    reason=repr(exc),
+                    correlation_id=str(get_operational_log_fields().get("correlation_id") or ""),
+                )
+            except Exception:
+                pass
             return AdminPublishDraftResult(PublishFlowOutcome.SEND_FAILED, error=repr(exc))
 
         append_journal(
@@ -430,21 +770,145 @@ async def execute_admin_publication_flow(
 
         publish_total = chunks_duration + db_finalize_sec
         record_publish_duration(publish_total)
+        try:
+            from app.observability.runtime_health import record_publish_latency_ms
+
+            record_publish_latency_ms(publish_total * 1000.0)
+        except Exception:
+            pass
         check_publish_trend(logger, settings, publish_total)
 
         inc("publishes")
+        try:
+            from app.ops.ledger.writer import record_published
+
+            pub_item: dict[str, object] = {
+                "news_id": f"draft:{draft_id}",
+                "channel_name": "",
+                "message_id": 0,
+            }
+            try:
+                src_parsed = json.loads(sources or "[]")
+                if isinstance(src_parsed, list) and src_parsed:
+                    s0 = src_parsed[0]
+                    if isinstance(s0, dict):
+                        pub_item["channel_name"] = s0.get("channel") or ""
+                        pub_item["message_id"] = int(s0.get("message_id") or 0)
+            except (json.JSONDecodeError, TypeError, ValueError):
+                pass
+            record_published(
+                pub_item,
+                channel_message_id=int(first_id),
+                lane="scheduler",
+                draft_id=draft_id,
+            )
+        except Exception as exc:
+            logger.warning("ledger publish record skipped: %s", exc)
         log_event(
             logger,
             "publish.success",
             draft_id=draft_id,
             channel_message_id=first_id,
         )
+        try:
+            from app.observability.execution_graph_trace import record_publish_success
+
+            record_publish_success(draft_id=draft_id)
+        except Exception:
+            pass
+        try:
+            from app.observability.prepublic_qa import (
+                mirror_publish_to_qa_chat,
+                prepublic_qa_enabled,
+                record_publish_decision_explanation,
+            )
+
+            if prepublic_qa_enabled():
+                await mirror_publish_to_qa_chat(
+                    bot,
+                    settings,
+                    draft_id=draft_id,
+                    content_preview=content[:500],
+                    channel_message_id=int(first_id),
+                )
+                record_publish_decision_explanation(
+                    settings.runtime_state_dir,
+                    draft_id=draft_id,
+                    decision="published",
+                    detail={"channel_message_id": int(first_id)},
+                )
+        except Exception:
+            pass
+        try:
+            import sqlite3
+
+            from utils.database_url import sqlite_path_from_url
+
+            from app.observability.publish_audit import log_publish_audit, lookup_source_tick_id
+
+            db_path = sqlite_path_from_url(settings.database_url)
+            tick_id = ""
+            if db_path:
+                conn = sqlite3.connect(db_path, timeout=3.0)
+                tick_id = lookup_source_tick_id(conn, draft_id)
+                conn.close()
+            log_publish_audit(
+                draft_id=draft_id,
+                publish_decision="published",
+                publish_mode=publish_mode,
+                publish_source_tick_id=tick_id,
+                extra={"channel_message_id": int(first_id)},
+            )
+        except Exception:
+            pass
+        try:
+            from app.runtime_activity import record_publish_success as record_runtime_publish
+
+            record_runtime_publish()
+        except Exception:
+            pass
+        try:
+            from app.editorial.feedback_loop import record_publish_success
+
+            trust_score = None
+            signal_score = None
+            manual = False
+            if extras_json:
+                ex = json.loads(extras_json)
+                if isinstance(ex, dict):
+                    np = ex.get("newsroom_product")
+                    if isinstance(np, dict):
+                        manual = bool(np.get("manual_review_required"))
+                        pol = np.get("publish_policy")
+                        if isinstance(pol, dict):
+                            trust_score = pol.get("trust_score")
+                            signal_score = pol.get("signal_score")
+            record_publish_success(
+                draft_id=draft_id,
+                runtime_dir=getattr(settings, "runtime_state_dir", None),
+                signal_score=float(signal_score) if signal_score is not None else None,
+                trust_score=float(trust_score) if trust_score is not None else None,
+                manual_review=manual,
+            )
+        except Exception:
+            pass
         log_event(
             logger,
             "publish.succeeded",
             draft_id=draft_id,
             channel_message_id=first_id,
             idempotency_key=idem_key,
+        )
+        log_publish_trace(
+            event="success",
+            draft_id=draft_id,
+            publish_attempt=publish_attempt,
+            idempotency_key=idem_key,
+            tx_id=tx_id,
+            channel_id=getattr(settings, "channel_id", None),
+            telegram_message_id=int(first_id),
+            latency_ms=trace_timer.latency_ms,
+            outcome="ok",
         )
         append_timeline_event(
             settings.runtime_state_dir,
@@ -460,8 +924,41 @@ async def execute_admin_publication_flow(
         from editorial.cadence import record_publish, topic_dedupe_key
 
         record_publish(settings.runtime_state_dir, topic_key=topic_dedupe_key(th))
+        try:
+            from app.editorial.cadence_intelligence import record_cadence_intelligence
+            from app.editorial.staging_mode import is_final_staging_mode, record_staging_publish
+
+            record_cadence_intelligence(
+                settings.runtime_state_dir,
+                content=content,
+                topic_key=topic_dedupe_key(th),
+            )
+            if is_final_staging_mode(settings):
+                record_staging_publish(settings.runtime_state_dir)
+        except Exception:
+            pass
 
         await _idem_record_success(settings, idem_key, draft_id, first_id)
+        mark_idempotency_processed(
+            settings.runtime_state_dir,
+            idem_key,
+            draft_id=draft_id,
+            channel_message_id=int(first_id),
+        )
+        try:
+            from ops.pipeline.ingestion_ledger import IngestionLedger
+            from ops.pipeline.state_machine import NewsState
+
+            IngestionLedger(settings.runtime_state_dir).append(
+                news_id=idem_key[:32],
+                from_state=NewsState.APPROVED,
+                to_state=NewsState.PUBLISHED,
+                decision_reason="publish_ok",
+                idempotency_key=idem_key,
+                extra={"draft_id": draft_id, "channel_message_id": int(first_id)},
+            )
+        except Exception:
+            pass
 
         return AdminPublishDraftResult(
             PublishFlowOutcome.OK,

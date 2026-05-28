@@ -33,15 +33,15 @@ def test_rich_preview_contains_sections() -> None:
         publish_warnings=["Long post"],
     )
     assert "OpenAI" in html
-    assert "coherence" in html
-    assert "Duplicates" in html
+    assert "связность" in html
+    assert "Дубликаты" in html
     assert "@openai" in html or "openai" in html.lower()
-    assert "Tags" in html
-    assert "Scheduled" in html
-    assert "Draft ID" in html
+    assert "Теги" in html
+    assert "Запланирован" in html
+    assert "ID черновика" in html
     assert "<code>42</code>" in html
 
 
 def test_rich_preview_graceful_missing() -> None:
     html = render_rich_draft_preview_html(1, "", None, status="failed")
-    assert "Draft ID" in html
+    assert "ID черновика" in html

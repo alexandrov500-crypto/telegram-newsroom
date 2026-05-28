@@ -11,15 +11,15 @@ def test_render_draft_preview_basic() -> None:
     assert "📰" in out
     assert "Line1 title" in out
     assert "Body here." in out
-    assert "Sources:" in out
+    assert "Источники:" in out
     assert "@a" in out or "a" in out
-    assert "Draft ID: 42" in out
+    assert "ID черновика: 42" in out
 
 
 def test_render_draft_preview_missing_sources() -> None:
     out = render_draft_preview(1, "Only body", None)
-    assert "Sources:" in out
-    assert "Draft ID: 1" in out
+    assert "Источники:" in out
+    assert "ID черновика: 1" in out
 
 
 def test_render_draft_preview_truncation() -> None:

@@ -18,4 +18,5 @@ uvicorn==0.34.0
 prometheus-client==0.21.1
 structlog==24.4.0
 httpx==0.28.1
+Pillow>=10.0.0
 networkx==3.4.2

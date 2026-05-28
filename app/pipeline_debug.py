@@ -68,29 +68,41 @@ def debug_bypass_publish_gates(settings: Any) -> bool:
 
 def ai_gating_snapshot(*, ctx: Any | None = None) -> dict[str, Any]:
     """Expose AI gate state for logs and /runtime/status."""
+    from app.state.pipeline_decision_engine import DECISION_ENGINE_SOURCE, make_pipeline_decision
+    from app.recovery.pipeline_context_builder import build_pipeline_decision_context
+
     deps = get_dependency_state()
     circuit = get_openai_circuit()
     circuit_open = not circuit.allow_request()
-    ai_enabled = bool(deps.ai_pipeline_enabled) and not circuit_open
+    pd = getattr(ctx, "pipeline_decision", None) if ctx is not None else None
+    if pd is None:
+        pd = make_pipeline_decision(build_pipeline_decision_context())
+    ai_enabled = pd.should_execute and pd.ai_gate_open
     block_reasons: list[str] = []
-    if not deps.ai_pipeline_enabled:
-        block_reasons.append("dependency_ai_pipeline_disabled")
-    if circuit_open:
+    if not pd.should_execute:
+        block_reasons.append(f"execution_inactive:{pd.reason}")
+    if circuit_open and not pd.use_fallback:
         block_reasons.append(f"openai_circuit_{circuit.state().value}")
-    if deps.openai.status.value != "healthy":
-        block_reasons.append(f"openai_dependency_{deps.openai.status.value}")
-    ctx_ai = bool(getattr(ctx, "ai_pipeline_enabled", True)) if ctx is not None else True
-    if not ctx_ai:
-        block_reasons.append("pipeline_context_ai_disabled")
+    if deps.openai.status.value != "healthy" and pd.degraded_observability_only:
+        block_reasons.append(f"openai_dependency_observability_{deps.openai.status.value}")
     settings = getattr(ctx, "settings", None) if ctx is not None else None
-    fallback_active = bool(settings and pipeline_debug_active(settings))
+    fallback_active = pd.use_fallback or bool(settings and pipeline_debug_active(settings))
     return {
-        "ai_enabled": ai_enabled and ctx_ai,
+        "decision_source": DECISION_ENGINE_SOURCE,
+        "ai_enabled": ai_enabled,
+        "should_execute": pd.should_execute,
+        "summarize_enabled": pd.summarize_enabled,
+        "ai_gate_open": pd.ai_gate_open,
+        "use_fallback": pd.use_fallback,
+        "execution_mode": pd.mode.value,
+        "next_action": pd.next_action.value,
         "ai_block_reason": ";".join(block_reasons) if block_reasons else None,
         "circuit_state": circuit.state().value,
         "circuit_open": circuit_open,
         "fallback_mode_active": fallback_active,
         "openai_dependency": deps.openai.status.value,
+        "ai_pipeline_enabled_cache_deprecated": deps.ai_pipeline_enabled,
+        "should_execute_derived": pd.should_execute,
         "pipeline_debug_active": bool(settings and pipeline_debug_active(settings)),
         "force_single_publish": is_force_single_publish_env(),
         "first_post_debug_mode": is_first_post_debug_mode(settings),

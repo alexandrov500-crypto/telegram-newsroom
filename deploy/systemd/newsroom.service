@@ -1,0 +1,46 @@
+# Native VPS unit (non-Docker). Install:
+#   sudo cp deploy/systemd/newsroom.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now newsroom
+#
+# Adjust User, paths, and EnvironmentFile for your host.
+
+[Unit]
+Description=Telegram AI Newsroom (pipeline + bot)
+Documentation=file:///opt/newsroom/docs/PRODUCTION_DEPLOYMENT.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=newsroom
+Group=newsroom
+WorkingDirectory=/opt/newsroom
+EnvironmentFile=-/opt/newsroom/.env
+
+# Graceful shutdown: SIGTERM → lifecycle drains scheduler, ticks, SQLite.
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=90
+SendSIGKILL=yes
+
+ExecStart=/opt/newsroom/.venv/bin/python -m app.main
+Restart=always
+RestartSec=15
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+# Startup: allow DB init + singleton claim
+TimeoutStartSec=180
+
+# Journald (operator: journalctl -u newsroom -f)
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=newsroom
+
+# Optional watchdog — app must touch runtime/heartbeat if WatchdogSec is enabled:
+# WatchdogSec=300
+# NotifyAccess=main
+
+[Install]
+WantedBy=multi-user.target

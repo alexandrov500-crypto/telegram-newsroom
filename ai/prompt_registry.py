@@ -34,7 +34,7 @@ def resolve_cluster_draft_prompt(settings: Any) -> PromptSpec:
     fp = fingerprint_cluster_draft(settings)
     return PromptSpec(
         prompt_id=CLUSTER_DRAFT_PROMPT_ID,
-        prompt_version="2026.05.12",
+        prompt_version="2026.05.23",
         fingerprint=fp,
         models_recommended=("gpt-4.1-mini", "gpt-4o", "gpt-4o-mini"),
         metadata={"response_shape": "OpenAIClusterResponse"},

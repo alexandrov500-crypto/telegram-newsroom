@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from aiogram import Bot
-from aiogram.enums import ParseMode
 from aiogram.exceptions import (
     TelegramAPIError,
     TelegramBadRequest,
@@ -23,6 +22,7 @@ from bot.editorial.formatting import (
     truncate_html_safe,
 )
 from bot.processing.media import MEDIA_NONE, MEDIA_PHOTO, MEDIA_VIDEO, MediaInfo
+from publisher.telegram_transport import message_send_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -118,12 +118,12 @@ class ChannelPublisher:
     ) -> int:
         chat_id = channel_id if channel_id is not None else self._channel_id
         assert chat_id is not None
-        message = await self._bot.send_message(
+        kwargs = message_send_kwargs(
             chat_id=chat_id,
-            text=text,
-            parse_mode=ParseMode.HTML,
+            disable_web_page_preview=False,
             disable_notification=disable_notification,
         )
+        message = await self._bot.send_message(text=text, **kwargs)
         return message.message_id
 
     async def _send_media_once(
@@ -142,21 +142,27 @@ class ChannelPublisher:
         if media_input is None:
             raise ValueError("media_unavailable")
 
-        kwargs = {
-            "chat_id": chat_id,
-            "caption": caption,
-            "parse_mode": ParseMode.HTML,
-            "disable_notification": disable_notification,
-        }
+        from publisher.telegram_transport import send_channel_photo, send_channel_video
+
         if media_type == MEDIA_PHOTO:
-            message = await self._bot.send_photo(photo=media_input, **kwargs)
-        elif media_type == MEDIA_VIDEO:
-            if thumbnail_url and thumbnail_url.startswith("http"):
-                kwargs["thumbnail"] = URLInputFile(thumbnail_url)
-            message = await self._bot.send_video(video=media_input, **kwargs)
-        else:
-            raise ValueError(f"unsupported_media_type:{media_type}")
-        return message.message_id
+            return await send_channel_photo(
+                self._bot,
+                photo=media_input,
+                chat_id=int(chat_id),
+                caption=caption,
+                disable_notification=disable_notification,
+            )
+        if media_type == MEDIA_VIDEO:
+            thumb = URLInputFile(thumbnail_url) if thumbnail_url and thumbnail_url.startswith("http") else None
+            return await send_channel_video(
+                self._bot,
+                video=media_input,
+                chat_id=int(chat_id),
+                caption=caption,
+                disable_notification=disable_notification,
+                thumbnail=thumb,
+            )
+        raise ValueError(f"unsupported_media_type:{media_type}")
 
     async def publish_news(
         self,

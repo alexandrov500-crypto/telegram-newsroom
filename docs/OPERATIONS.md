@@ -120,6 +120,65 @@ python -m tools.admin_cli --help
 
 Queue, DLQ, config doctor: see `README.md` (Admin CLI section) and `docs/OPERATIONS_RUNBOOK.md`.
 
+## Runtime degradation & adaptive protection (VPS burn-in)
+
+Long-uptime resilience layer (diagnostics/safety only — no product features):
+
+| Artifact | Purpose |
+|----------|---------|
+| `var/runtime/runtime_health.jsonl` | Rolling health snapshots (RSS, tick p95, latencies, flags) |
+| `var/runtime/runtime_protection_state.json` | `normal` / `elevated` / `degraded` / `critical` + active protections |
+
+**Severity behavior**
+
+- **NORMAL** — full operation
+- **ELEVATED** — log warning (`runtime_health_elevated`); PUBLIC GO may warn
+- **DEGRADED** — slower scheduler ticks, fewer retries, suppressed non-essential tick metrics
+- **CRITICAL** — autonomous publish frozen; ingest + diagnostics continue; `runtime_protection_mode_enabled` logged
+
+Process is **never** auto-terminated.
+
+```bash
+make stability-report          # includes runtime_resilience section
+make public-go-check           # fails on CRITICAL / memory drift / recovery loops
+```
+
+Thresholds (optional `.env`): `RUNTIME_HEALTH_RSS_DRIFT_MB`, `RUNTIME_HEALTH_TICK_P95_SEC`, `PUBLIC_GO_MAX_RSS_DRIFT_MB`, `RUNTIME_PROTECTION_RECOVERY_SAMPLES`.
+
+See also `docs/PIPELINE_EXECUTION.md` (execution graph verification).
+
+## Pre-public launch tooling
+
+```bash
+make qa-status              # PREPUBLIC_QA_MODE summary
+make incident-report        # continuity + graph + protection snapshot
+make release-readiness      # FINAL_PUBLIC_READINESS verdict
+make operator-health        # RSS, flags, protection state
+make autopublish-status     # auto publish + pause flags
+make public-go-check        # includes final readiness gate
+make final-release-check    # FINAL_RELEASE_REPORT.json — BLOCKED/CONDITIONAL/APPROVED
+make chaos-lite-validate    # controlled recovery pytest subset
+```
+
+Docs: [PUBLIC_RELEASE.md](./PUBLIC_RELEASE.md), [PRODUCTION_DEPLOYMENT.md](./PRODUCTION_DEPLOYMENT.md), [INCIDENT_RESPONSE.md](./INCIDENT_RESPONSE.md), [EDITORIAL_OPERATIONS.md](./EDITORIAL_OPERATIONS.md).
+
+Telegram launch ops: `/release_status`, `/burnin_status`, `/go_status`, `/continuity`, `/runtime_state`, `/last_alerts`, `/recent_failures`.
+
+Operator feedback: `app/editorial/operator_feedback.py`, table `operator_feedback`.
+
+### Incident response workflow
+
+1. `make incident-report` — continuity, execution graph, protection snapshot  
+2. `make autopublish-status` — auto publish + operator pause flag  
+3. `/runtime` and `/anomalies` in Telegram admin chat  
+4. If publish stopped: check `publish_gap_hours` in report; `GLOBAL_PUBLISH_PAUSE` and `/pause_autopublish`  
+5. CRITICAL protection: autonomous publish frozen until recovery — see `runtime_protection_state.json`  
+6. Rollback: [PUBLIC_RELEASE.md](./PUBLIC_RELEASE.md#rollback-procedure)
+
+### Operator feedback workflow
+
+See [EDITORIAL_OPERATIONS.md](./EDITORIAL_OPERATIONS.md). Feedback is advisory; publish still requires gates and (for auto) policy flags.
+
 ## Related documentation
 
 | Topic | Doc |

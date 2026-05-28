@@ -29,6 +29,7 @@ async def upsert_raw_post(
     message_id: int,
     text: str,
     created_at: datetime,
+    extras_json: str = "{}",
 ) -> bool:
     """Insert raw post if missing. Returns True if inserted."""
     existing = await session.scalar(
@@ -45,6 +46,7 @@ async def upsert_raw_post(
             channel_name=channel_name,
             message_id=message_id,
             text=text,
+            extras=extras_json or "{}",
             created_at=created_at,
             collected_at=utcnow(),
         )

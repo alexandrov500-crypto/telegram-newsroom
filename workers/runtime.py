@@ -148,7 +148,16 @@ class WorkerRuntime:
             **extra,
         )
 
-        hb_task = asyncio.create_task(self._heartbeat_loop(), name="worker-heartbeat")
+        from app.runtime.task_orchestrator import create_traced_task
+
+        hb_task = create_traced_task(
+            "worker-heartbeat",
+            self._heartbeat_loop(),
+            trace_id="worker-heartbeat",
+            owner="workers.runtime",
+            metadata={"task_type": "heartbeat"},
+            name="worker-heartbeat",
+        )
 
         try:
             while not self._shutdown.is_set():
@@ -166,18 +175,25 @@ class WorkerRuntime:
                     continue
                 raw_exact, env = lease
                 delivery_id = str(env.payload.get("delivery_id") or "")
-                t = asyncio.create_task(
+                t = create_traced_task(
+                    f"job:{delivery_id[:12]}",
                     self._run_with_semaphore(transport, raw_exact, env, delivery_id),
+                    trace_id=delivery_id or None,
+                    owner="workers.runtime",
+                    metadata={"task_type": "job", "retry_id": delivery_id},
                     name=f"job:{delivery_id[:12]}",
                 )
+                if t is None:
+                    continue
                 self._tasks.add(t)
                 t.add_done_callback(self._tasks.discard)
         finally:
-            hb_task.cancel()
-            try:
-                await hb_task
-            except asyncio.CancelledError:
-                pass
+            if hb_task is not None:
+                hb_task.cancel()
+                try:
+                    await hb_task
+                except asyncio.CancelledError:
+                    pass
             except Exception:
                 logger.exception("worker.heartbeat_task_failed")
 

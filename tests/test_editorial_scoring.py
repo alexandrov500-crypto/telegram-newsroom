@@ -121,9 +121,10 @@ def test_operator_feedback_hook() -> None:
 def test_preview_html_includes_scores_and_reasons() -> None:
     scores = compute_editorial_intelligence(_scoring_input())
     html = render_editorial_intelligence_html(scores.to_extras_payload())
-    assert "Editorial intelligence" in html
-    assert "Why selected" in html
-    assert "Quality:" in html
+    assert "Редакционная оценка" in html
+    assert "Почему выбрано" in html
+    assert "Качество:" in html
+    assert "дубликат" in html or "источник" in html
 
 
 def test_fail_open_on_timeout() -> None:

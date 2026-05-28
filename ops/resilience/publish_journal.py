@@ -43,7 +43,15 @@ def append_journal(
     channel_message_id: int | None = None,
     error: str = "",
     extra: dict[str, Any] | None = None,
+    correlation_id: str = "",
+    publish_latency_ms: int | None = None,
+    telegram_response: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    from utils.operational_context import get_operational_log_fields
+
+    cid = (correlation_id or "").strip() or str(
+        get_operational_log_fields().get("correlation_id") or ""
+    )[:96]
     entry: dict[str, Any] = {
         "tx_id": tx_id,
         "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -53,7 +61,12 @@ def append_journal(
         "idempotency_key": (idempotency_key or "")[:120],
         "channel_message_id": channel_message_id,
         "error": (error or "")[:300],
+        "correlation_id": cid,
     }
+    if publish_latency_ms is not None:
+        entry["publish_latency_ms"] = max(0, int(publish_latency_ms))
+    if telegram_response:
+        entry["telegram_response"] = telegram_response
     if extra:
         entry["extra"] = extra
     path = publish_journal_path(runtime_dir)

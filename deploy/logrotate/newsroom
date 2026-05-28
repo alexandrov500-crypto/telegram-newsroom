@@ -1,0 +1,25 @@
+# Host log + runtime NDJSON rotation.
+# Install: sudo cp deploy/logrotate/newsroom /etc/logrotate.d/newsroom
+
+/opt/newsroom/logs/*.log
+/opt/newsroom/app/logs/*.log {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}
+
+/opt/newsroom/var/runtime/*.jsonl
+/opt/newsroom/data/runtime/*.jsonl
+/opt/newsroom/app/var/runtime/*.jsonl {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}

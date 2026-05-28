@@ -14,8 +14,8 @@ REGR_JSON ?=
 # Bounded lint/format scope (frozen governance modules; not whole-repo migration).
 LINT_SCOPE := observability newsroom tests/contracts
 
-.PHONY: help runtime-help demo-runtime docs-map install-dev test ci-test ci-nightly ci-release-check \
-	chaos-test chaos-validate soak-test soak-validate drift-validate resilience-validate \
+.PHONY: help runtime-help demo-runtime docs-map install-dev test ci-test ci-nightly ci-release-check run-local \
+	chaos-test chaos-validate chaos-lite-validate final-release-check final-public-check final-production-test autonomous-weekly-report public-launch-playbook soak-test soak-validate drift-validate resilience-validate \
 	governance-validate release-readiness security-validate security-readiness \
 	scalability-test scalability-validate scalability-diagnostics \
 	intelligence-test intelligence-validate ops-summary \
@@ -36,10 +36,42 @@ LINT_SCOPE := observability newsroom tests/contracts
 	create-baseline compare-baseline compare-baseline-json \
 	inspect-capabilities inspect-capabilities-json inspect-policy inspect-policy-json \
 	runtime-index runtime-index-json release-check \
-	runtime-ops-preflight runtime-ops-nightly
+	runtime-ops-preflight runtime-ops-nightly burnin-check burnin-snapshot burnin-readiness golden-check stability-report execution-graph-report \
+	ops-status health-check publish-tail recover-runtime runtime-report public-go-check final-release-check final-public-check final-production-test autonomous-weekly-report public-launch-playbook backup-sqlite \
+	server-status server-logs runtime-health restart-runtime server-burnin dev-start runtime-cleanup
+
+run-local:
+	bash scripts/run_local_newsroom.sh
+
+mac-start:
+	bash scripts/start_mac_bot.sh
+
+newsroom-status:
+	bash scripts/newsroom status
+
+newsroom-diagnose:
+	bash scripts/newsroom diagnose
+
+newsroom-logs:
+	bash scripts/newsroom logs
+
+newsroom-takeover:
+	bash scripts/newsroom takeover
+
+newsroom-release:
+	bash scripts/newsroom release
+
+newsroom-panel:
+	bash scripts/newsroom panel
+
+deploy-safe:
+	bash scripts/deploy-safe.sh
+
+reliability-test:
+	bash scripts/reliability-test.sh
 
 help:
-	@echo "Targets: install-dev test ci-test runtime-help demo-runtime docs-map"
+	@echo "Targets: install-dev test ci-test runtime-help demo-runtime docs-map run-local"
 	@echo "  make runtime-help   — grouped runtime inspection commands"
 	@echo "  make demo-runtime   — suggested demo / inspection sequence"
 	@echo "  make docs-map       — key documentation index"
@@ -188,6 +220,24 @@ chaos-test:
 
 chaos-validate:
 	$(PYTHON) tools/chaos_validate.py
+
+chaos-lite-validate:
+	$(PYTHON) tools/chaos_lite_validate.py
+
+final-release-check:
+	$(PYTHON) tools/final_release_checklist.py
+
+final-public-check:
+	$(PYTHON) tools/final_public_check.py
+
+final-production-test:
+	$(PYTHON) tools/final_production_test.py
+
+autonomous-weekly-report:
+	$(PYTHON) tools/autonomous_weekly_report.py
+
+public-launch-playbook:
+	$(PYTHON) tools/public_launch_playbook.py
 
 soak-test:
 	$(PYTHON) -m pytest tests/soak -q --tb=short
@@ -504,3 +554,94 @@ release-qualify:
 runtime-ops-preflight: runtime-preflight
 
 runtime-ops-nightly: runtime-nightly
+
+# Pre-production burn-in (read-only; see docs/BURN_IN_VALIDATION.md)
+.PHONY: burnin-check burnin-snapshot burnin-readiness
+
+burnin-check:
+	bash scripts/burnin-check.sh
+
+burnin-snapshot:
+	$(PYTHON) tools/burnin_validation.py snapshot --log logs/local-run.log --write-json var/runtime/burnin_snapshot.json
+
+burnin-readiness:
+	$(PYTHON) tools/burnin_validation.py check --log logs/local-run.log --min-ticks 3
+
+golden-check:
+	$(PYTHON) tools/golden_check.py
+
+.PHONY: stability-report
+stability-report:
+	$(PYTHON) tools/stability_report.py --write var/runtime/stability_report.json
+
+.PHONY: execution-graph-report
+execution-graph-report:
+	$(PYTHON) tools/execution_graph_report.py --write var/runtime/execution_graph_report.json
+
+.PHONY: qa-status incident-report release-readiness operator-health autopublish-status
+qa-status:
+	$(PYTHON) tools/operator_release_tools.py qa-status
+
+incident-report:
+	$(PYTHON) tools/operator_release_tools.py incident-report
+
+release-readiness:
+	$(PYTHON) tools/operator_release_tools.py release-readiness
+
+operator-health:
+	$(PYTHON) tools/operator_release_tools.py operator-health
+
+autopublish-status:
+	$(PYTHON) tools/operator_release_tools.py autopublish-status
+
+# Autonomous operations (see docs/operations/AUTONOMOUS_RUNTIME.md)
+.PHONY: ops-status health-check publish-tail recover-runtime runtime-report public-go-check backup-sqlite
+
+ops-status:
+	bash scripts/ops-status.sh
+
+health-check:
+	@curl -sf "http://127.0.0.1:$${HEALTH_HTTP_PORT:-8080}/health/components" | $(PYTHON) -m json.tool
+
+publish-tail:
+	@tail -n 40 logs/local-run.log | grep -E "publish|auto_publish|media\.|pipeline\.terminal" || true
+
+recover-runtime:
+	bash scripts/stop_local_newsroom.sh && bash scripts/start_mac_bot.sh
+
+runtime-report:
+	$(PYTHON) -c "from app.config import load_settings; from app.observability.runtime_report import write_runtime_report; print(write_runtime_report(load_settings()))"
+
+public-go-check:
+	$(PYTHON) tools/public_go_check.py
+
+backup-sqlite:
+	bash scripts/backup-sqlite.sh
+
+# VPS remote ops (set VPS_HOST, VPS_USER, VPS_DEPLOY_DIR)
+.PHONY: server-status server-logs runtime-health restart-runtime server-burnin server-backup dev-start runtime-cleanup
+
+server-status:
+	bash scripts/prod_status.sh
+
+server-logs:
+	bash scripts/prod_attach_logs.sh
+
+runtime-health:
+	@curl -sf "http://$${VPS_HOST:-127.0.0.1}:$${VPS_HEALTH_PORT:-8080}/health/components" 2>/dev/null | $(PYTHON) -m json.tool || bash scripts/prod_status.sh
+
+restart-runtime:
+	bash scripts/prod_restart.sh
+
+server-burnin burnin-report:
+	@test -n "$${VPS_HOST}" || (echo "Set VPS_HOST" && exit 1)
+	ssh $${VPS_USER:-ubuntu}@$${VPS_HOST} "cd $${VPS_DEPLOY_DIR:-/opt/newsroom/app/deploy/timeweb} && docker compose exec -T newsroom bash scripts/burnin-check.sh"
+
+server-backup:
+	@ssh $${VPS_USER:-ubuntu}@$${VPS_HOST} "cd $${VPS_DEPLOY_DIR:-/opt/newsroom/app} && docker compose -f deploy/timeweb/docker-compose.yml exec -T newsroom bash scripts/backup-sqlite.sh" || true
+
+dev-start:
+	bash scripts/dev_start.sh
+
+runtime-cleanup:
+	bash scripts/runtime_cleanup.sh

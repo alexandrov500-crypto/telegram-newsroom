@@ -45,6 +45,32 @@ _counts: dict[str, int] = {
     "scored_articles_total": 0,
     "scoring_failures_total": 0,
     "queue_overflow_total": 0,
+    "desk_rejected_items_total": 0,
+    "desk_included_items_total": 0,
+    "desk_breaking_override_count": 0,
+    "desk_scoring_total": 0,
+    "dropped_items_total": 0,
+    "breaking_lane_published_total": 0,
+    "high_lane_processed_total": 0,
+    "normal_lane_processed_total": 0,
+    "breaking_items_total": 0,
+    "high_score_items_total": 0,
+    "suppressed_duplicates_total": 0,
+    "compressed_items_dropped_total": 0,
+    "draft_clusters_kept_total": 0,
+    "editorial_gate_rejected_total": 0,
+    "editorial_gate_passed_total": 0,
+    "fast_lane_processed_total": 0,
+    "dropped_due_to_overflow_total": 0,
+    "routing_decision_fast_total": 0,
+    "routing_decision_standard_total": 0,
+    "routing_decision_slow_total": 0,
+    "ledger_events_total": 0,
+    "ledger_ingested_total": 0,
+    "ledger_routed_total": 0,
+    "ledger_dropped_total": 0,
+    "ledger_published_total": 0,
+    "ledger_dropped_duplicates_total": 0,
 }
 
 _gauges: dict[str, float] = {}
@@ -77,6 +103,9 @@ PIPELINE_HISTOGRAMS = (
     "scoring_duration_seconds",
     "publish_duration_seconds",
     "scheduler_cycle_duration_seconds",
+    "breaking_latency_seconds",
+    "breaking_published_latency_ms",
+    "fast_lane_latency_ms",
 )
 
 

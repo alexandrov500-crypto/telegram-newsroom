@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from sqlalchemy.engine.url import URL, make_url
 
 
@@ -50,6 +52,19 @@ def is_sqlite_async_url(url: str) -> bool:
 def is_postgresql_async_url(url: str) -> bool:
     u = make_url(url)
     return "postgresql" in u.get_backend_name()
+
+
+def sqlite_path_from_url(url: str) -> Path | None:
+    """Filesystem path for sqlite+aiosqlite URLs, else None."""
+    if not is_sqlite_async_url(url):
+        return None
+    u = make_url(url.strip())
+    if not u.database:
+        return None
+    raw = str(u.database)
+    if raw == ":memory:":
+        return None
+    return Path(raw).expanduser().resolve()
 
 
 def alembic_sync_url_from_async(url: str) -> str:

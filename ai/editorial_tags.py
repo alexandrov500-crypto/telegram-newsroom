@@ -69,7 +69,11 @@ def infer_editorial_tags(content: str, sources: Any) -> dict[str, Any]:
         best = max(scores.items(), key=lambda kv: (kv[1], -_CATEGORIES.index(kv[0]) if kv[0] in _CATEGORIES else 0))[0]
         conf = round(float(scores[best]), 3)
         hits = matched.get(best) or []
-        reason = f"Keywords matched ({len(hits)}): " + ", ".join(sorted(set(hits))[:6]) if hits else "Score from overlap."
+        reason = (
+            f"Ключевые слова ({len(hits)}): " + ", ".join(sorted(set(hits))[:6])
+            if hits
+            else "Оценка по пересечению тем."
+        )
     tags: list[str] = []
     for t in sorted(set(re.findall(r"#[\w\u0400-\u04FF]{2,32}", content or "", flags=re.UNICODE))):
         tags.append(t)

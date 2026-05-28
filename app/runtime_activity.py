@@ -13,6 +13,9 @@ _last_collect_iso: str | None = None
 _last_ai_mono: float | None = None
 _last_ai_iso: str | None = None
 _last_scheduler_tick_mono: float | None = None
+_last_publish_mono: float | None = None
+_last_publish_iso: str | None = None
+_last_collect_failure_iso: str | None = None
 _exception_times: deque[float] = deque(maxlen=200)
 
 
@@ -22,24 +25,43 @@ def _iso_now() -> str:
 
 def reset_runtime_activity_for_tests() -> None:
     global _last_collect_mono, _last_collect_iso, _last_ai_mono, _last_ai_iso
-    global _last_scheduler_tick_mono
+    global _last_scheduler_tick_mono, _last_publish_mono, _last_publish_iso
+    global _last_collect_failure_iso
     with _lock:
         _last_collect_mono = None
         _last_collect_iso = None
         _last_ai_mono = None
         _last_ai_iso = None
         _last_scheduler_tick_mono = None
+        _last_publish_mono = None
+        _last_publish_iso = None
+        _last_collect_failure_iso = None
         _exception_times.clear()
 
 
 def record_collect_success(*, new_rows: int) -> None:
     if new_rows <= 0:
         return
-    global _last_collect_mono, _last_collect_iso
+    global _last_collect_mono, _last_collect_iso, _last_collect_failure_iso
     now = time.monotonic()
     with _lock:
         _last_collect_mono = now
         _last_collect_iso = _iso_now()
+        _last_collect_failure_iso = None
+
+
+def record_collect_failure(*, reason: str) -> None:
+    global _last_collect_failure_iso
+    with _lock:
+        _last_collect_failure_iso = _iso_now()
+
+
+def record_publish_success() -> None:
+    global _last_publish_mono, _last_publish_iso
+    now = time.monotonic()
+    with _lock:
+        _last_publish_mono = now
+        _last_publish_iso = _iso_now()
 
 
 def record_ai_success() -> None:
@@ -48,6 +70,11 @@ def record_ai_success() -> None:
     with _lock:
         _last_ai_mono = now
         _last_ai_iso = _iso_now()
+
+
+def record_fallback_success() -> None:
+    """Treat rule-based summarize success like AI success for state re-enable."""
+    record_ai_success()
 
 
 def record_scheduler_tick() -> None:
@@ -92,10 +119,16 @@ def activity_snapshot() -> dict[str, Any]:
     since_tick = seconds_since_scheduler_tick()
     since_collect = seconds_since_collect()
     with _lock:
+        since_publish: float | None = None
+        if _last_publish_mono is not None:
+            since_publish = time.monotonic() - _last_publish_mono
         return {
             "last_successful_collect_at": _last_collect_iso,
             "last_successful_ai_at": _last_ai_iso,
+            "last_successful_publish_at": _last_publish_iso,
+            "last_collect_failure_at": _last_collect_failure_iso,
             "last_scheduler_tick_mono": _last_scheduler_tick_mono,
             "seconds_since_scheduler_tick": round(since_tick, 2) if since_tick is not None else None,
             "seconds_since_collect": round(since_collect, 2) if since_collect is not None else None,
+            "seconds_since_publish": round(since_publish, 2) if since_publish is not None else None,
         }

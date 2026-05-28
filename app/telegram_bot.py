@@ -11,6 +11,9 @@ from app.config import Settings
 
 def create_newsroom_bot(settings: Settings) -> Bot:
     """Bot with AiohttpSession timeout; close via ``await bot.session.close()`` on shutdown."""
+    from publisher.telegram_forensic import install_media_send_forensic_guards
+
+    install_media_send_forensic_guards()
     session = AiohttpSession(timeout=settings.telegram_http_timeout_sec)
     return Bot(
         settings.bot_token,

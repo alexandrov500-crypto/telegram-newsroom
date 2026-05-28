@@ -1,17 +1,52 @@
-# Example production compose (run from repository root):
-#   docker compose -f deploy/docker-compose.prod.yml build
+# Generic VPS production-lite (single node).
+# Preferred path for Timeweb: deploy/timeweb/docker-compose.yml (host bind mounts).
+#
+# From repository root:
+#   docker compose -f deploy/docker-compose.prod.yml up -d --build
+
+name: telegram-newsroom-prod
+
 services:
   newsroom:
     build:
-      context: .
-      dockerfile: deploy/Dockerfile.example
+      context: ..
+      dockerfile: deploy/timeweb/Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
+        BUILD_TIMESTAMP: ${BUILD_TIMESTAMP:-unknown}
+    image: telegram-newsroom:production
+    container_name: telegram-newsroom
     restart: unless-stopped
+    stop_grace_period: 45s
     env_file:
-      - deploy/env.production.example
+      - env/vps.env
+    environment:
+      TZ: UTC
+      DATABASE_URL: sqlite+aiosqlite:////data/newsroom.db
+      RUNTIME_STATE_DIR: /data/runtime
+      NEWSROOM_GLOBAL_LOCK_DIR: /data/runtime/locks
+      NEWSROOM_LOCK_BY_BOT_TOKEN: "true"
+      SEND_STARTUP_NOTIFICATION: "false"
+      TELETHON_SESSION_PATH: /data/sessions/telethon.session
+      HEALTH_HTTP_PORT: "8080"
+      HEALTH_HTTP_BIND: 0.0.0.0
+      BACKUP_ON_STARTUP: "true"
     volumes:
-      - newsroom_data:/data
+      - ${NEWSROOM_HOST_DATA:-./data/host}:/data
+      - ${NEWSROOM_HOST_LOGS:-./logs/host}:/data/logs
+      - ${NEWSROOM_HOST_SESSIONS:-./sessions/host}:/data/sessions
+    ports:
+      - "${HEALTH_HTTP_PUBLISH:-127.0.0.1:8080}:8080"
+    healthcheck:
+      test: ["CMD", "python", "/app/docker/http_ready_probe.py"]
+      interval: 60s
+      timeout: 20s
+      start_period: 180s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
     working_dir: /app
     command: ["python", "-m", "app.main"]
-
-volumes:
-  newsroom_data:

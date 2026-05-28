@@ -2,16 +2,23 @@
   "channels": {
     "@a": {
       "publishes": 48,
-      "rejects": 84
+      "rejects": 91
     },
     "@c": {
-      "rejects": 46
+      "rejects": 53
+    },
+    "@cb_economics": {
+      "duplicate_signals": 16,
+      "publishes": 4
+    },
+    "@decenter": {
+      "duplicate_signals": 6
     },
     "@src": {
       "publishes": 24
     },
     "@x": {
-      "publishes": 28
+      "publishes": 30
     }
   },
   "version": 1

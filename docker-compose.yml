@@ -17,6 +17,9 @@ services:
       TZ: ${TZ:-UTC}
       DATABASE_URL: sqlite+aiosqlite:////data/newsroom.db
       RUNTIME_STATE_DIR: /data/runtime
+      NEWSROOM_GLOBAL_LOCK_DIR: /data/runtime/locks
+      NEWSROOM_LOCK_BY_BOT_TOKEN: "true"
+      SEND_STARTUP_NOTIFICATION: "false"
       TELETHON_SESSION_PATH: ${TELETHON_SESSION_PATH:-/data/sessions/telethon.session}
       HEALTH_HTTP_PORT: ${HEALTH_HTTP_PORT:-8080}
       HEALTH_HTTP_BIND: 0.0.0.0

@@ -30,4 +30,6 @@ except Exception as e:
 PY
 fi
 
-echo "[bootstrap] done. Next: pip install -r requirements.txt && cp .env.example .env && python -m app.main"
+echo "[bootstrap] done."
+echo "[bootstrap] Local dev:  bash scripts/dev_start.sh"
+echo "[bootstrap] VPS deploy: docs/VPS_DEPLOYMENT.md + deploy/timeweb/make up"

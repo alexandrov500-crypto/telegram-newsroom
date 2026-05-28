@@ -1,0 +1,131 @@
+"""Public channel format consistency — headline, summary, spacing."""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+
+from app.editorial.tone_engine import apply_newsroom_tone
+from app.editorial.tuning_loader import get_editorial_tuning
+from publisher.public_renderer import clean_headline
+
+
+@dataclass(frozen=True)
+class PublicFormatResult:
+    headline: str
+    summary: str
+    duplicate_wording: bool
+    readability_score: float
+    why_it_matters: str
+
+
+def _headline_max() -> int:
+    return get_editorial_tuning().structure.headline_max_chars
+
+
+def _summary_limits() -> tuple[int, int]:
+    s = get_editorial_tuning().structure
+    return s.summary_max_lines, s.summary_max_chars
+
+
+def _readability_min() -> float:
+    return get_editorial_tuning().quality_gate.min_readability
+
+
+def detect_duplicate_wording(headline: str, summary: str) -> bool:
+    h = re.sub(r"\W+", " ", (headline or "").lower()).strip()
+    s = re.sub(r"\W+", " ", (summary or "").lower()).strip()
+    if not h or not s:
+        return False
+    if h in s or s.startswith(h):
+        return True
+    hw = set(h.split())
+    sw = set(s.split())
+    if len(hw) < 4:
+        return False
+    overlap = len(hw & sw) / len(hw)
+    return overlap >= 0.85
+
+
+def _readability(text: str) -> float:
+    t = (text or "").strip()
+    if not t:
+        return 0.0
+    words = re.findall(r"\w+", t)
+    if not words:
+        return 0.0
+    avg_len = sum(len(w) for w in words) / len(words)
+    sentences = max(1, len(re.split(r"[.!?]+", t)))
+    avg_sent = len(words) / sentences
+    score = 1.0
+    if avg_len > 14:
+        score -= 0.2
+    if avg_sent > 28:
+        score -= 0.25
+    if len(t) > 1200:
+        score -= 0.15
+    return round(max(0.0, min(1.0, score)), 4)
+
+
+def compress_summary(text: str, *, max_lines: int | None = None, max_chars: int | None = None) -> str:
+    default_lines, default_chars = _summary_limits()
+    limit_lines = max_lines if max_lines is not None else default_lines
+    limit_chars = max_chars if max_chars is not None else default_chars
+    toned = apply_newsroom_tone(text).text
+    lines = [ln.strip() for ln in toned.splitlines() if ln.strip()]
+    if not lines:
+        paras = [p.strip() for p in toned.split("\n\n") if p.strip()]
+        lines = paras or [toned.strip()]
+    kept = lines[:limit_lines]
+    out = "\n\n".join(kept).strip()
+    if len(out) > limit_chars:
+        out = out[: limit_chars - 1].rstrip()
+        sp = out.rfind(" ")
+        if sp > limit_chars // 2:
+            out = out[:sp] + "…"
+        else:
+            out = out + "…"
+    return out
+
+
+def normalize_headline(text: str) -> str:
+    t = apply_newsroom_tone(text).text
+    t = re.sub(r"^[⚡🔥📌]+\s*", "", t).strip()
+    t = re.sub(r"^(BREAKING|СРОЧНО)\s*[:—-]\s*", "", t, flags=re.I).strip()
+    return clean_headline(t, max_len=_headline_max())
+
+
+def format_public_story(
+    headline: str,
+    summary: str,
+    *,
+    why_it_matters: str = "",
+    include_why: bool | None = None,
+) -> PublicFormatResult:
+    """Stable public story shape for renderer."""
+    h = normalize_headline(headline)
+    s = compress_summary(summary)
+    dup = detect_duplicate_wording(h, s)
+    if dup and s:
+        s = s[len(h) :].lstrip(" .—-\n") if s.lower().startswith(h.lower()) else s
+    read = _readability(f"{h}\n{s}")
+    why = (why_it_matters or "").strip()
+    if include_why is None:
+        tuning = get_editorial_tuning()
+        include_why = (
+            tuning.structure.include_why_it_matters
+            and bool(why)
+            and read >= _readability_min()
+            and len(why) >= 40
+        )
+    if not include_why:
+        why = ""
+    else:
+        why = compress_summary(why, max_lines=3, max_chars=420)
+    return PublicFormatResult(
+        headline=h,
+        summary=s,
+        duplicate_wording=dup,
+        readability_score=read,
+        why_it_matters=why,
+    )

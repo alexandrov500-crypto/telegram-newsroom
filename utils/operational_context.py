@@ -41,16 +41,34 @@ def reset_tick_id(token: Token[str | None]) -> None:
     _tick_id.reset(token)
 
 
-def begin_pipeline_tick() -> tuple[str, Token[str | None]]:
-    """Assign a tick id for this pipeline run; caller must reset_tick_id(token) in finally."""
+def begin_pipeline_tick() -> tuple[str, Token[str | None], Token[str | None]]:
+    """Assign tick + correlation ids; reset both tokens in ``finally``."""
     with _lock:
         n = next(_tick_seq)
     if _deterministic_ids():
         tid = f"tick-{n:06d}"
     else:
         tid = f"tick-{n}-{time.monotonic_ns()}"
-    tok = _tick_id.set(tid)
-    return tid, tok
+    tick_tok = _tick_id.set(tid)
+    corr_tok = _correlation_id.set(tid)
+    return tid, tick_tok, corr_tok
+
+
+def correlation_fields_for_draft() -> dict[str, str]:
+    """Patch for draft_extras (lifecycle grep)."""
+    fields = get_operational_log_fields()
+    cid = str(fields.get("correlation_id") or fields.get("tick_id") or "")
+    out: dict[str, str] = {}
+    if cid:
+        out["correlation_id"] = cid
+    tid = current_tick_id()
+    if tid:
+        out["tick_id"] = tid
+    return out
+
+
+def current_tick_id() -> str | None:
+    return _tick_id.get()
 
 
 def get_operational_log_fields() -> dict[str, Any]:

@@ -25,6 +25,7 @@ def test_startup_sent_only_once_per_process() -> None:
     assert bot.send_message.await_count == 1
     text = bot.send_message.await_args.args[1]
     assert "Newsroom started" in text
+    assert "runtime_dir=" in text
 
 
 def test_polling_recovery_does_not_send_startup_banner() -> None:
@@ -145,18 +146,25 @@ def test_process_runtime_uuid_stable_in_process() -> None:
     assert len(PROCESS_RUNTIME_UUID) >= 8
 
 
-def test_simulated_runtime_restart_sends_startup_again() -> None:
-    """New process boot: in-process gate cleared (simulates fresh interpreter)."""
+def test_simulated_runtime_restart_sends_startup_again(tmp_path) -> None:
+    """New process boot: in-process gate cleared; file lock released between boots."""
+    from app.ops.runtime.active_runtime import register_active_runtime
+    import os
+
     reset_notification_state_for_tests()
     bot = MagicMock()
     bot.send_message = AsyncMock()
+    rd = str(tmp_path / "runtime")
     settings = minimal_test_settings(
         send_startup_notification=True,
         notification_rate_limit_minutes=0,
+        runtime_state_dir=rd,
     )
+    register_active_runtime(rd, runtime_id="test-a", pid=os.getpid())
 
     assert asyncio.run(maybe_send_process_startup_notification(bot, settings)) is True
     reset_notification_state_for_tests()
+    register_active_runtime(rd, runtime_id="test-b", pid=os.getpid())
     assert asyncio.run(maybe_send_process_startup_notification(bot, settings)) is True
     assert bot.send_message.await_count == 2
 

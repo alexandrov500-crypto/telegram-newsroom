@@ -28,8 +28,8 @@ def test_preview_shows_priority_and_breaking() -> None:
         draft_extras_json=extras,
         created_at_iso="2026-01-01T00:00:00+00:00",
     )
-    assert "Priority" in html
-    assert "Breaking" in html
-    assert "Title suggestions" in html
-    assert "Rewrite" in html
-    assert "Stale draft" in html
+    assert "Приоритет" in html
+    assert "Срочное" in html
+    assert "Варианты заголовка" in html
+    assert "Последняя правка" in html
+    assert "Устаревший черновик" in html

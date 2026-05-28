@@ -88,6 +88,34 @@ async def _handle_client(
         http_code = 503 if status == "unhealthy" else 200
         body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
         writer.write(_http_response(http_code, body))
+    elif path_only in (
+        "/health/runtime",
+        "/health/pipeline",
+        "/health/telegram",
+        "/health/openai",
+        "/health/components",
+    ):
+        from app.observability.ops_health import (
+            check_openai_health,
+            check_pipeline_health,
+            check_runtime_health,
+            check_telegram_health,
+            gather_component_health,
+        )
+
+        if path_only == "/health/components":
+            payload = gather_component_health(settings)
+        elif path_only == "/health/runtime":
+            payload = check_runtime_health()
+        elif path_only == "/health/pipeline":
+            payload = check_pipeline_health()
+        elif path_only == "/health/telegram":
+            payload = check_telegram_health(settings)
+        else:
+            payload = check_openai_health()
+        code = 200 if payload.get("ok", True) else 503
+        body = json.dumps(payload, separators=(",", ":"), default=str).encode("utf-8")
+        writer.write(_http_response(code, body))
     elif path_only in ("/version", "/version.json"):
         from app.build_provenance import version_payload
         from app.dependency_state import get_dependency_state
@@ -105,6 +133,16 @@ async def _handle_client(
         body = json.dumps(snap, default=str).encode("utf-8")
         code = 200 if snap.get("ok") else 503
         writer.write(_http_response(code, body))
+    elif path_only in ("/live", "/livez"):
+        from app.dependency_state import get_dependency_state
+
+        deps = get_dependency_state()
+        alive = deps.startup_complete or True
+        body = json.dumps(
+            {"alive": alive, "service": "newsroom", "startup_complete": deps.startup_complete},
+            separators=(",", ":"),
+        ).encode("utf-8")
+        writer.write(_http_response(200 if alive else 503, body))
     else:
         try:
             if path_only.startswith("/runtime"):

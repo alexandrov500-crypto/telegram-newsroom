@@ -21,6 +21,25 @@ def _env_bool(name: str, default: str = "false") -> bool:
     return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _parse_admin_user_ids(primary: int) -> frozenset[int]:
+    """ADMIN_USER_ID plus optional comma-separated ADMIN_USER_IDS."""
+    ids: set[int] = {int(primary)}
+    extra = os.getenv("ADMIN_USER_IDS", "").strip()
+    if extra:
+        for part in extra.replace(";", ",").split(","):
+            p = part.strip()
+            if p:
+                ids.add(int(p))
+    return frozenset(ids)
+
+
+def _parse_optional_chat_id(env_name: str) -> int | None:
+    raw = os.getenv(env_name, "").strip()
+    if not raw:
+        return None
+    return int(raw)
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     openai_api_key: str
@@ -40,6 +59,8 @@ class Settings:
     telethon_op_max_attempts: int
     bot_token: str
     admin_user_id: int
+    admin_user_ids: frozenset[int]
+    moderation_chat_id: int | None
     target_channel_id: int
     source_channels: tuple[str, ...]
     database_url: str
@@ -109,6 +130,7 @@ class Settings:
     cluster_min_pair_last_jaccard: float
     precluster_trim_bucket_multiplier: int
     source_mentions_in_post: bool
+    publish_include_sources: bool
     editorial_safety_enabled: bool
     headline_mode: str
     digest_multi_post_enabled: bool
@@ -159,6 +181,15 @@ class Settings:
     scheduler_diagnostics_enabled: bool
     security_redaction_enabled: bool
     force_single_publish: bool
+    # Mac control-plane vs VPS worker (see docs/PRODUCTION_HARDENING.md)
+    runtime_node_role: str
+    newsroom_worker_url: str
+    # Public launch preparation
+    public_content_sanitizer_strict: bool
+    newsroom_trust_mode: str
+    final_staging_mode: bool
+    final_staging_max_publishes_per_hour: int
+    global_publish_pause: bool
 
 
 def load_settings() -> Settings:
@@ -188,6 +219,8 @@ def load_settings() -> Settings:
     if not admin_raw:
         raise RuntimeError("ADMIN_USER_ID is required")
     admin_user_id = int(admin_raw)
+    admin_user_ids = _parse_admin_user_ids(admin_user_id)
+    moderation_chat_id = _parse_optional_chat_id("MODERATION_CHAT_ID")
 
     target_raw = os.getenv("TARGET_CHANNEL_ID", "").strip()
     if not target_raw:
@@ -253,7 +286,7 @@ def load_settings() -> Settings:
     openai_json_max_retries = int(os.getenv("OPENAI_JSON_MAX_RETRIES", "3"))
     telethon_op_max_attempts = int(os.getenv("TELETHON_OP_MAX_ATTEMPTS", "4"))
     channel_collect_delay = float(os.getenv("CHANNEL_COLLECT_DELAY_SECONDS", "1.25"))
-    min_raw_posts = int(os.getenv("MIN_RAW_POSTS_FOR_AI", "3"))
+    min_raw_posts = int(os.getenv("MIN_RAW_POSTS_FOR_AI", "1"))
     similarity = float(os.getenv("DRAFT_SIMILARITY_THRESHOLD", "0.93"))
     dedupe_hours = int(os.getenv("DRAFT_DEDUPE_WINDOW_HOURS", "72"))
 
@@ -316,7 +349,8 @@ def load_settings() -> Settings:
     safe_mode = _env_bool("NEWSROOM_SAFE_MODE", "false")
     _startup_notify_raw = os.getenv("SEND_STARTUP_NOTIFICATION", "").strip()
     if _startup_notify_raw:
-        send_startup_notification = _env_bool("SEND_STARTUP_NOTIFICATION", "true")
+        # Default false — enable only on the single production host you operate.
+        send_startup_notification = _env_bool("SEND_STARTUP_NOTIFICATION", "false")
     else:
         send_startup_notification = _env_bool("TELEGRAM_STARTUP_NOTIFY", "false")
     send_recovery_notification = _env_bool("SEND_RECOVERY_NOTIFICATION", "false")
@@ -329,7 +363,7 @@ def load_settings() -> Settings:
 
     from ai.editorial import normalize_headline_mode, normalize_summary_style
 
-    summary_style = normalize_summary_style(os.getenv("SUMMARY_STYLE", "neutral"))
+    summary_style = normalize_summary_style(os.getenv("SUMMARY_STYLE", "warm-overview"))
     headline_mode = normalize_headline_mode(os.getenv("HEADLINE_MODE", "none"))
 
     profile_raw = os.getenv("APP_DEPLOYMENT_PROFILE", os.getenv("NEWSROOM_PROFILE", "development")).strip().lower()
@@ -390,6 +424,8 @@ def load_settings() -> Settings:
         telethon_op_max_attempts=max(1, min(telethon_op_max_attempts, 12)),
         bot_token=bot_token,
         admin_user_id=admin_user_id,
+        admin_user_ids=admin_user_ids,
+        moderation_chat_id=moderation_chat_id,
         target_channel_id=target_channel_id,
         source_channels=channels,
         database_url=database_url,
@@ -462,6 +498,7 @@ def load_settings() -> Settings:
         cluster_min_pair_last_jaccard=max(0.0, min(cluster_min_last, 0.5)),
         precluster_trim_bucket_multiplier=max(2, min(trim_mult, 20)),
         source_mentions_in_post=_env_bool("SOURCE_MENTIONS_IN_POST", "false"),
+        publish_include_sources=_env_bool("PUBLISH_INCLUDE_SOURCES", "false"),
         editorial_safety_enabled=_env_bool("EDITORIAL_SAFETY", "true"),
         headline_mode=headline_mode,
         digest_multi_post_enabled=_env_bool("DIGEST_MULTI_POST", "false"),
@@ -508,4 +545,13 @@ def load_settings() -> Settings:
         scheduler_diagnostics_enabled=scheduler_diagnostics_enabled,
         security_redaction_enabled=security_redaction_enabled,
         force_single_publish=force_single_publish,
+        runtime_node_role=os.getenv("RUNTIME_NODE_ROLE", "worker").strip().lower() or "worker",
+        newsroom_worker_url=os.getenv("NEWSROOM_WORKER_URL", "").strip(),
+        public_content_sanitizer_strict=_env_bool("PUBLIC_CONTENT_SANITIZER_STRICT", "false"),
+        newsroom_trust_mode=os.getenv("NEWSROOM_TRUST_MODE", "off").strip().lower() or "off",
+        final_staging_mode=_env_bool("FINAL_STAGING_MODE", "false"),
+        final_staging_max_publishes_per_hour=max(
+            1, int(os.getenv("FINAL_STAGING_MAX_PUBLISHES_PER_HOUR", "6"))
+        ),
+        global_publish_pause=_env_bool("GLOBAL_PUBLISH_PAUSE", "false"),
     )

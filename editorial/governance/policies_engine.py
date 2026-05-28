@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 from typing import Any
 
@@ -111,11 +112,21 @@ def evaluate_policies(
     chans = {str(p.channel_name or "").strip().lower() for p in posts if str(p.channel_name or "").strip()}
     uniq = len(chans)
 
+    starvation = False
+    try:
+        from app.editorial.desk_starvation import desk_threshold_context
+
+        starvation = desk_threshold_context().publish_starvation_detected
+    except Exception:
+        pass
+
     for rule in rules.get("rules") or []:
         if not isinstance(rule, dict) or not rule.get("enabled", True):
             continue
         rid = str(rule.get("id") or "")
         rtype = str(rule.get("type") or "")
+        if starvation and rtype == "topic_repeat_cooldown":
+            continue
         hit = False
         detail: dict[str, Any] = {}
 
@@ -128,6 +139,13 @@ def evaluate_policies(
         elif rtype == "min_source_trust" and dom:
             score = float(rep.get(dom, {}).get("score") or 0.5)
             thr = float(rule.get("threshold") or 0.35)
+            try:
+                from app.editorial.desk_starvation import desk_threshold_context
+
+                if desk_threshold_context().publish_starvation_detected:
+                    thr = min(thr, float(os.getenv("GOVERNANCE_STARVATION_TRUST_FLOOR", "0.28")))
+            except Exception:
+                pass
             if score < thr:
                 hit = True
                 detail = {"channel": dom, "score": score, "threshold": thr}

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 import uuid
 from typing import Any
@@ -27,6 +28,12 @@ def reset_notification_state_for_tests() -> None:
     _startup_notification_sent = False
     _last_notification_mono.clear()
     _persisted_last_startup_at_unix = None
+    try:
+        from app.ops.runtime.startup_notify_guard import reset_startup_notification_lock_for_tests
+
+        reset_startup_notification_lock_for_tests()
+    except Exception:
+        pass
 
 
 def apply_persisted_notification_state(*, last_startup_notification_at_unix: float | None) -> None:
@@ -141,6 +148,99 @@ async def maybe_send_process_startup_notification(
         )
         return False
 
+    window_sec = max(0.0, float(settings.notification_rate_limit_minutes) * 60.0)
+    try:
+        from db.runtime_ops_repository import try_claim_startup_notification_in_db
+        from db.session import session_scope
+
+        async with session_scope() as session:
+            claimed = await try_claim_startup_notification_in_db(
+                session,
+                window_sec=window_sec if window_sec > 0 else 86400.0,
+                process_uuid=PROCESS_RUNTIME_UUID,
+            )
+        if not claimed:
+            log_event(
+                logger,
+                "runtime.startup.notification.skipped",
+                reason="db_startup_claim_recent",
+                trigger=trigger,
+                process_runtime_uuid=PROCESS_RUNTIME_UUID,
+                rate_limit_minutes=settings.notification_rate_limit_minutes,
+            )
+            return False
+    except Exception as exc:
+        log_event(
+            logger,
+            "runtime.startup.notification.db_claim_skipped",
+            error=repr(exc)[:200],
+            trigger=trigger,
+        )
+        return False
+
+    from app.ops.runtime.active_runtime import load_active_runtime
+    from app.ops.runtime.lock_paths import resolve_process_lock_dir
+    from app.ops.runtime.singleton_guard import get_singleton_guard
+    from app.ops.runtime.startup_notify_guard import try_acquire_startup_notification_lock
+
+    lock_dir = resolve_process_lock_dir(settings)
+
+    from app.ops.runtime.startup_notify_cooldown import try_claim_startup_notify_cooldown
+
+    if not try_claim_startup_notify_cooldown(lock_dir, window_sec=window_sec if window_sec > 0 else 86400.0):
+        log_event(
+            logger,
+            "runtime.startup.notification.skipped",
+            reason="startup_notify_cooldown_file",
+            trigger=trigger,
+            process_runtime_uuid=PROCESS_RUNTIME_UUID,
+            lock_dir=lock_dir,
+        )
+        return False
+    active = load_active_runtime(settings.runtime_state_dir)
+    if active is not None and int(active.get("pid") or 0) not in (0, os.getpid()):
+        log_event(
+            logger,
+            "runtime.startup.notification.skipped",
+            reason="not_active_runtime_owner",
+            trigger=trigger,
+            process_runtime_uuid=PROCESS_RUNTIME_UUID,
+            active_pid=active.get("pid"),
+            our_pid=os.getpid(),
+        )
+        return False
+
+    if not try_acquire_startup_notification_lock(lock_dir):
+        log_event(
+            logger,
+            "runtime.startup.notification.skipped",
+            reason="startup_notify_lock_held",
+            trigger=trigger,
+            process_runtime_uuid=PROCESS_RUNTIME_UUID,
+        )
+        return False
+
+    if os.getenv("RUNTIME_SINGLETON_DISABLED", "").strip().lower() not in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }:
+        sg = get_singleton_guard()
+        if sg is not None and not sg.is_owner():
+            log_event(
+                logger,
+                "runtime.startup.notification.skipped",
+                reason="not_singleton_lock_owner",
+                trigger=trigger,
+                process_runtime_uuid=PROCESS_RUNTIME_UUID,
+            )
+            return False
+
+    import socket
+
+    host = socket.gethostname()[:64]
+    rdir = str(getattr(settings, "runtime_state_dir", "") or os.getenv("RUNTIME_STATE_DIR", "?"))[:120]
     lines = [
         "<b>Newsroom started</b>",
         f"DRY_RUN=<code>{settings.dry_run}</code>",
@@ -148,6 +248,9 @@ async def maybe_send_process_startup_notification(
         f"source_channels={len(settings.source_channels)}",
         f"pipeline_interval_min={settings.pipeline_interval_minutes}",
         f"runtime_id=<code>{PROCESS_RUNTIME_UUID[:8]}</code>",
+        f"pid=<code>{os.getpid()}</code>",
+        f"host=<code>{host}</code>",
+        f"runtime_dir=<code>{rdir}</code>",
     ]
     try:
         await bot.send_message(

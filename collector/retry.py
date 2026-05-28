@@ -18,9 +18,11 @@ T = TypeVar("T")
 
 async def ensure_connected(client: TelegramClient) -> None:
     if not client.is_connected():
-        inc("telethon_reconnects")
-        log_event(logger, "collector.telethon_reconnect", reason="not_connected")
-        await client.connect()
+        from collector.telethon_connect import connect_telethon_resilient
+
+        ok = await connect_telethon_resilient(client, label="ensure_connected")
+        if not ok:
+            raise ConnectionError("Telethon connect timed out or network unreachable")
 
 
 async def with_telethon_retries(
@@ -53,6 +55,12 @@ async def with_telethon_retries(
         except FloodWaitError as exc:
             inc("telethon_flood_waits")
             wait_s = float(getattr(exc, "seconds", 0) or 0)
+            try:
+                from app.observability.telegram_production import record_flood_wait
+
+                record_flood_wait(wait_sec=wait_s, source=f"collector:{label}")
+            except Exception:
+                pass
             wait_s = max(wait_s, base_delay_s * attempt)
             logger.warning(
                 "Telethon FloodWait on %s attempt=%s/%s wait_s=%s",

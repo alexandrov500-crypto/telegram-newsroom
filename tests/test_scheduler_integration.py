@@ -14,9 +14,17 @@ from utils.metrics import export_snapshot, inc, reset_metrics
 
 
 @pytest.fixture(autouse=True)
-def _metrics_and_context_cleanup():
+def _metrics_and_context_cleanup(monkeypatch):
     reset_metrics()
     set_pipeline_context(None)
+    monkeypatch.setattr(
+        "app.ops.runtime.pipeline_gate.require_processing_or_skip",
+        lambda **_: True,
+    )
+    monkeypatch.setattr(
+        "app.ops.control_plane.guards.pipeline_tick_allowed",
+        lambda **_: (True, ""),
+    )
     yield
     reset_metrics()
     set_pipeline_context(None)
@@ -104,7 +112,7 @@ def test_run_pipeline_inner_failure_releases_lock_and_logs(monkeypatch, sqlite_f
             raise RuntimeError("deterministic summarizer failure")
 
         monkeypatch.setattr("scheduler.jobs._collect_step", fake_collect)
-        monkeypatch.setattr("scheduler.jobs._summarize_step", boom_summarize)
+        monkeypatch.setattr("scheduler.jobs._summarize_step_impl", boom_summarize)
 
         lock = get_pipeline_lock()
         await run_pipeline(ctx)

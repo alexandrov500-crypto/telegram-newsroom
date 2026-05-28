@@ -560,15 +560,37 @@ def runtime_index_main(argv: list[str] | None = None) -> int:
     return _cmd_runtime_index(argv)
 
 
+def _operator_commands() -> frozenset[str]:
+    return frozenset(
+        {
+            "status",
+            "logs",
+            "diagnose",
+            "takeover",
+            "release",
+            "queue",
+            "drafts",
+            "pipeline-run",
+            "panel",
+            "newsroom",
+            "maintenance",
+        }
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(argv if argv is not None else sys.argv[1:])
     if not argv:
         return _cmd_health([])
     if argv[0] in ("-h", "--help"):
         print(
-            "usage: python -m newsroom.cli {health|verify-runtime|...|inspect-capabilities} ...",
+            "usage: python -m newsroom.cli {status|logs|health|verify-runtime|...} ...",
         )
         return 0
+    if argv[0] in _operator_commands():
+        from newsroom.cli.operator import main as operator_main
+
+        return operator_main(argv)
     if argv[0] == "health":
         return _cmd_health(argv[1:])
     if argv[0] == "verify-runtime":

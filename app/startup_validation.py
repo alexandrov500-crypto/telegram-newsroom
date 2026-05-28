@@ -92,6 +92,45 @@ def _append_telethon_session_checks(settings: Settings, errors: list[str]) -> No
         errors.append(f"TELETHON_SESSION_PATH invalid: {exc}")
 
 
+def _append_operational_invariant_config_checks(settings: Settings, errors: list[str]) -> None:
+    """Phase 3: dangerous or incompatible deploy configs."""
+    import os
+
+    from app.ops.runtime.node_role import RuntimeNodeRole, resolve_execution_profile
+
+    profile = resolve_execution_profile(settings)
+    role = profile.node_role
+
+    if role == RuntimeNodeRole.CONTROL and settings.telegram_polling_enabled:
+        errors.append(
+            "RUNTIME_NODE_ROLE=control is incompatible with TELEGRAM_POLLING_ENABLED=true "
+            "(single-poller invariant)"
+        )
+
+    if role == RuntimeNodeRole.WORKER and not settings.telegram_polling_enabled:
+        errors.append(
+            "RUNTIME_NODE_ROLE=worker expects TELEGRAM_POLLING_ENABLED=true on the execution host"
+        )
+
+    if os.getenv("FORCE_SINGLE_PUBLISH", "").strip().lower() in {"1", "true", "yes", "on"}:
+        if settings.deployment_profile == "production":
+            errors.append(
+                "FORCE_SINGLE_PUBLISH=true is not allowed with production profile "
+                "(use pipeline_debug only on staging)"
+            )
+
+    if os.getenv("FIRST_POST_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}:
+        if settings.deployment_profile == "production":
+            errors.append("FIRST_POST_DEBUG must not be enabled on production profile")
+
+    try:
+        max_retries = int(os.getenv("FAILED_DRAFT_MAX_RETRIES", "5"))
+        if max_retries < 1 or max_retries > 20:
+            errors.append("FAILED_DRAFT_MAX_RETRIES must be between 1 and 20")
+    except ValueError:
+        errors.append("FAILED_DRAFT_MAX_RETRIES must be an integer")
+
+
 def validate_settings_for_launch(settings: Settings) -> None:
     """
     Fail-fast checks after load_settings(). Raises RuntimeError with a readable message.
@@ -160,6 +199,7 @@ def validate_settings_for_launch(settings: Settings) -> None:
         errors.append(f"HEADLINE_MODE invalid ({settings.headline_mode!r}); use none, json, or prefix")
 
     _append_runtime_environment_checks(settings, errors)
+    _append_operational_invariant_config_checks(settings, errors)
 
     if settings.redis_enabled and not settings.redis_url.strip():
         errors.append("REDIS_ENABLED=true requires a non-empty REDIS_URL")
@@ -190,4 +230,22 @@ def validate_settings_for_launch(settings: Settings) -> None:
 
     emit_validation_result(run_startup_integrity_checks(settings))
 
+    from app.reliability.invariants import assert_startup_invariants
+
+    assert_startup_invariants(settings)
+
     logger.info("Startup validation passed (env, Telegram ids, OpenAI model, retention, intervals)")
+
+
+def warn_duplicate_runtime_startup_risk(settings: Settings) -> None:
+    """Log when local + VPS (or two hosts) are likely to duplicate «Newsroom started»."""
+    if not settings.send_startup_notification:
+        return
+    rd = str(getattr(settings, "runtime_state_dir", "") or "").replace("\\", "/")
+    if rd.endswith("var/runtime") or "/var/runtime" in rd:
+        logger.warning(
+            "SEND_STARTUP_NOTIFICATION=true with RUNTIME_STATE_DIR=%s — if another machine "
+            "uses the same BOT_TOKEN (e.g. VPS Docker), you will get duplicate startup messages. "
+            "On the dev machine set SEND_STARTUP_NOTIFICATION=false or stop the remote instance.",
+            rd,
+        )

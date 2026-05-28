@@ -102,6 +102,7 @@ def evaluate_publish_gate(
     topic_key: str,
     is_breaking: bool,
     now_unix: float | None = None,
+    content: str = "",
 ) -> tuple[bool, list[str]]:
     """
     Returns (block_publish, reasons). When block_publish is True, caller should not approve/send yet.
@@ -125,5 +126,19 @@ def evaluate_publish_gate(
     recent = [t for t in recent if now - t <= burst_win]
     if len(recent) >= burst_max:
         reasons.append("publish_gate_burst_cap")
+        return True, reasons
+
+    from app.editorial.cadence_intelligence import evaluate_cadence_intelligence
+
+    intel_block, intel_reasons = evaluate_cadence_intelligence(
+        settings,
+        runtime_dir,
+        content=content or topic_key,
+        topic_key=topic_key,
+        is_breaking=is_breaking,
+        now_unix=now,
+    )
+    if intel_block:
+        reasons.extend(intel_reasons)
         return True, reasons
     return False, reasons

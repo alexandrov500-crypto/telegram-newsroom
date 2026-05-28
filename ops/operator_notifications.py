@@ -29,19 +29,33 @@ def enqueue_operator_notification(
     severity: str,
     message: str,
     fields: dict[str, Any] | None = None,
+    group_key: str = "",
 ) -> None:
+    from ops.alert_discipline import AlertSeverity, normalize_severity, should_emit_alert
+
+    sev = normalize_severity(severity)
+    if not should_emit_alert(kind, severity=sev, group_key=group_key or kind):
+        log_event(
+            logger,
+            "operator.notification.suppressed",
+            kind=kind,
+            severity=sev.value,
+            reason="cooldown",
+        )
+        return
     row = {
         "ts_unix": time.time(),
         "kind": kind[:60],
-        "severity": severity[:20],
+        "severity": sev.value[:20],
         "message": message[:400],
         "fields": fields or {},
+        "group_key": (group_key or kind)[:80],
     }
     path = _pending_path(runtime_dir)
     with _lock:
         with path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(row, default=str) + "\n")
-    log_event(logger, "operator.notification.enqueued", kind=kind, severity=severity, detail=message[:200])
+    log_event(logger, "operator.notification.enqueued", kind=kind, severity=sev.value, detail=message[:200])
 
 
 def _dedupe_key(kind: str, message: str) -> str:
@@ -87,7 +101,13 @@ async def flush_pending_notifications(bot: Any, settings: Any) -> int:
         sev = str(row.get("severity") or "info")
         if not _should_send(kind, msg, window):
             continue
-        icon = {"high": "🔴", "medium": "🟠", "info": "ℹ️"}.get(sev, "ℹ️")
+        icon = {
+            "critical": "🔴",
+            "warning": "🟠",
+            "info": "ℹ️",
+            "high": "🔴",
+            "medium": "🟠",
+        }.get(sev, "ℹ️")
         text = f"{icon} <b>{kind}</b>\n{msg[:500]}"
         try:
             await bot.send_message(

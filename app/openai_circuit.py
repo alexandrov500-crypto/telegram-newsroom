@@ -112,9 +112,14 @@ class OpenAICircuitBreaker:
             emit_lifecycle("runtime.recovered.full", circuit_state="closed")
             log_event(logger, "openai.circuit.closed", subsystem="openai")
             try:
-                from app.dependency_state import get_dependency_state
+                from app.runtime_activity import record_fallback_success
 
-                get_dependency_state().ai_pipeline_enabled = True
+                record_fallback_success()
+                from app.state.pipeline_decision_engine import apply_pipeline_decision
+                from app.state.pipeline_execution_wrapper import pipeline_evaluation_only
+
+                with pipeline_evaluation_only():
+                    apply_pipeline_decision(source="circuit_record_success")
             except Exception:
                 pass
 
@@ -204,10 +209,11 @@ class OpenAICircuitBreaker:
     @staticmethod
     def _sync_ai_pipeline_flag(*, disabled: bool) -> None:
         try:
-            from app.dependency_state import get_dependency_state
+            from app.state.pipeline_decision_engine import apply_pipeline_decision
+            from app.state.pipeline_execution_wrapper import pipeline_evaluation_only
 
-            deps = get_dependency_state()
-            deps.ai_pipeline_enabled = not disabled
+            with pipeline_evaluation_only():
+                apply_pipeline_decision(source="openai_circuit_sync")
         except Exception:
             pass
 

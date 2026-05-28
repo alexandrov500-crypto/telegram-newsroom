@@ -264,8 +264,14 @@ async def summarize_cluster(
             continue
 
         used_ids = _dedupe_used_ids(parsed.used_raw_post_ids, valid_ids)
-        post_text = parsed.post
-        headline = parsed.headline if include_headline else ""
+        from app.publisher.draft_builder import finalize_draft_content
+
+        post_text = finalize_draft_content(parsed.post, max_chars=settings.max_post_chars)
+        headline = (parsed.headline if include_headline else "").strip()
+        if headline:
+            from app.publisher.draft_builder import strip_source_attribution
+
+            headline = strip_source_attribution(headline)
 
         if not used_ids:
             log_event(logger, "openai.draft_no_valid_ids", attempt=attempt)

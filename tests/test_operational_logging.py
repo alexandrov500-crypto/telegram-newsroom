@@ -15,8 +15,8 @@ def test_log_event_includes_deterministic_event_id(monkeypatch, caplog):
     log = logging.getLogger("test_oplog")
     log_event(log, "op.sample", phase="alpha", ok=True)
     rec = [r for r in caplog.records if "op.sample" in r.message][0]
-    tail = rec.message.split("|", 1)[1].strip()
-    data = json.loads(tail)
+    msg = rec.message
+    data = json.loads(msg[msg.index("{") :])
     assert data["event_id"] == "evt-000001"
     assert data["phase"] == "alpha"
 
@@ -25,16 +25,16 @@ def test_correlation_and_tick_context_merged(monkeypatch, caplog):
     monkeypatch.setenv("NEWSROOM_LOG_DETERMINISTIC_IDS", "1")
     caplog.set_level(logging.INFO)
     log = logging.getLogger("test_oplog2")
-    ctok = set_correlation_id("corr-xyz")
-    tid, ttok = begin_pipeline_tick()
+    tid, ttok, ctok = begin_pipeline_tick()
     try:
         log_event(log, "op.ctx", flag=1)
     finally:
         reset_tick_id(ttok)
         reset_correlation_id(ctok)
     rec = [r for r in caplog.records if "op.ctx" in r.message][0]
-    data = json.loads(rec.message.split("|", 1)[1].strip())
-    assert data["correlation_id"] == "corr-xyz"
+    msg = rec.message
+    data = json.loads(msg[msg.index("{") :])
+    assert data["correlation_id"] == tid
     assert data["tick_id"] == "tick-000001"
     assert data["event_id"] == "evt-000001"
 
@@ -48,6 +48,7 @@ def test_explicit_fields_override_context(monkeypatch, caplog):
         log_event(log, "op.override", correlation_id="outer", tick_id="manual-tick")
     finally:
         reset_correlation_id(ctok)
-    data = json.loads([r for r in caplog.records if "op.override" in r.message][0].message.split("|", 1)[1])
+    msg = [r for r in caplog.records if "op.override" in r.message][0].message
+    data = json.loads(msg[msg.index("{") :])
     assert data["correlation_id"] == "outer"
     assert data["tick_id"] == "manual-tick"

@@ -47,7 +47,16 @@ async def _bundle_dict(settings: Settings) -> dict[str, Any]:
     from dashboard import build_operational_dashboard_bundle
 
     b = await build_operational_dashboard_bundle(settings, include_openai=False)
-    return b.to_dict()
+    out = b.to_dict()
+    try:
+        from app.observability.newsroom_ops import newsroom_ops_snapshot
+
+        from app.observability.newsroom_ops import launch_dashboard
+
+        out["newsroom_ops"] = launch_dashboard(runtime_dir=settings.runtime_state_dir)
+    except Exception:
+        pass
+    return out
 
 
 async def _dlq_page_html(settings: Settings) -> str:
@@ -344,6 +353,31 @@ async def dispatch_ops_http(
             page = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>search</title></head><body>" + _nav() + await _search_page_html(
                 settings, query
             ) + "</body></html>"
+            return 200, "text/html; charset=utf-8", page.encode("utf-8")
+
+        if len(segs) >= 2 and (segs[1] == "panel" or segs[1].startswith("panel") or segs[1] == "operator"):
+            from app.reliability.operator_summary import build_operator_summary
+
+            summary = await build_operator_summary(settings)
+            want_json = segs[1] in ("panel.json",) or query.get("format") == ["json"]
+            if want_json:
+                raw = json.dumps(summary, indent=2, default=str).encode("utf-8")
+                return 200, "application/json", raw
+            rows = []
+            for k, v in summary.items():
+                if isinstance(v, dict):
+                    rows.append(f"<tr><th colspan=2>{_e(k)}</th></tr>")
+                    for sk, sv in v.items():
+                        rows.append(f"<tr><td>{_e(sk)}</td><td><pre>{_e(sv)}</pre></td></tr>")
+                else:
+                    rows.append(f"<tr><td>{_e(k)}</td><td>{_e(v)}</td></tr>")
+            page = (
+                "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>operator</title></head><body>"
+                + _nav()
+                + "<h1>Operator panel</h1><table>"
+                + "".join(rows)
+                + "</table></body></html>"
+            )
             return 200, "text/html; charset=utf-8", page.encode("utf-8")
 
         if len(segs) >= 2 and segs[1] == "dlq":

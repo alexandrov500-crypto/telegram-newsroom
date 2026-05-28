@@ -4,14 +4,19 @@ import asyncio
 import json
 import logging
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from aiogram.enums import ParseMode
-
+from publisher.draft_media import media_from_extras_json
 from publisher.publish_formatting import build_channel_message_html
 from publisher.rate_limit import get_publish_rate_limiter
 from publisher.retry import async_retry
 from publisher.routing import route_draft_to_channel
+from publisher.telegram_transport import (
+    send_channel_message,
+    send_channel_photo,
+    send_channel_video,
+)
 from utils.metrics import inc
 from utils.structured_log import log_event
 from utils.telegram_chunks import split_telegram_text
@@ -22,6 +27,31 @@ if TYPE_CHECKING:
     from app.config import Settings
 
 logger = logging.getLogger(__name__)
+
+_TELEGRAM_CAPTION_LIMIT = 1024
+
+
+def publish_transport_key(draft_id: int, publish_attempt: int = 1) -> str:
+    """Stable transport correlation id (idempotency keys are owned by publish_service)."""
+    return f"draft:{int(draft_id)}:attempt:{int(publish_attempt)}"
+
+
+def _record_send_success(draft_id: int) -> None:
+    try:
+        from app.observability.telegram_production import record_telegram_success
+
+        record_telegram_success(draft_id=draft_id)
+    except Exception:
+        pass
+
+
+def _record_send_failure(draft_id: int, error: str) -> None:
+    try:
+        from app.observability.telegram_production import record_telegram_api_failure
+
+        record_telegram_api_failure(draft_id=draft_id, error=error)
+    except Exception:
+        pass
 
 
 def _routing_kwargs_from_extras(extras_json: str | None) -> dict[str, Any]:
@@ -54,6 +84,131 @@ def _routing_kwargs_from_extras(extras_json: str | None) -> dict[str, Any]:
     return d
 
 
+async def _send_text_chunks(
+    bot: "Bot",
+    *,
+    chat_id: int,
+    chunks: list[str],
+    draft_id: int,
+    settings: "Settings",
+    publish_attempt: int = 1,
+) -> list[int]:
+    sent_ids: list[int] = []
+    for idx, chunk in enumerate(chunks):
+
+        async def _send(c: str = chunk) -> int:
+            return await send_channel_message(
+                bot,
+                text=c,
+                chat_id=chat_id,
+                draft_id=draft_id,
+                publish_attempt=publish_attempt,
+                disable_web_page_preview=True,
+            )
+
+        try:
+            mid = await async_retry(_send, attempts=3, delay_sec=0.6, label=f"publish_chunk_{draft_id}_{idx}")
+        except BaseException as exc:
+            inc("telegram_api_failures")
+            _record_send_failure(draft_id, repr(exc))
+            log_event(
+                logger,
+                "publish.telegram_api_error",
+                draft_id=draft_id,
+                chunk_index=idx,
+                channel_id=chat_id,
+                error=repr(exc)[:500],
+            )
+            raise exc
+        log_event(
+            logger,
+            "publish.telegram_message_sent",
+            draft_id=draft_id,
+            chunk_index=idx,
+            channel_id=chat_id,
+            message_id=mid,
+        )
+        if idx == 0:
+            _record_send_success(draft_id)
+        sent_ids.append(mid)
+        if idx < len(chunks) - 1 and settings.telegram_inter_chunk_delay_sec > 0:
+            await asyncio.sleep(settings.telegram_inter_chunk_delay_sec)
+    return sent_ids
+
+
+async def _send_with_media(
+    bot: "Bot",
+    *,
+    chat_id: int,
+    media: dict[str, Any],
+    chunks: list[str],
+    draft_id: int,
+    settings: "Settings",
+    publish_attempt: int = 1,
+) -> int:
+    from aiogram.types import FSInputFile
+
+    media_type = str(media["media_type"])
+    local_path = str(media["local_path"])
+    upload = FSInputFile(local_path)
+
+    async def _send_media(caption: str | None) -> int:
+        if media_type == "photo":
+            return await send_channel_photo(
+                bot,
+                photo=upload,
+                chat_id=chat_id,
+                caption=caption,
+                draft_id=draft_id,
+                publish_attempt=publish_attempt,
+            )
+        return await send_channel_video(
+            bot,
+            video=upload,
+            chat_id=chat_id,
+            caption=caption,
+            draft_id=draft_id,
+            publish_attempt=publish_attempt,
+        )
+
+    first_chunk = chunks[0] if chunks else ""
+    rest = chunks[1:]
+    if first_chunk and len(first_chunk) <= _TELEGRAM_CAPTION_LIMIT:
+        first_id = await async_retry(
+            lambda: _send_media(first_chunk),
+            attempts=3,
+            delay_sec=0.6,
+            label=f"publish_media_{draft_id}",
+        )
+        if rest:
+            await _send_text_chunks(
+                bot,
+                chat_id=chat_id,
+                chunks=rest,
+                draft_id=draft_id,
+                settings=settings,
+                publish_attempt=publish_attempt,
+            )
+        return first_id
+
+    first_id = await async_retry(
+        lambda: _send_media(None),
+        attempts=3,
+        delay_sec=0.6,
+        label=f"publish_media_{draft_id}",
+    )
+    if chunks:
+        await _send_text_chunks(
+            bot,
+            chat_id=chat_id,
+            chunks=chunks,
+            draft_id=draft_id,
+            settings=settings,
+            publish_attempt=publish_attempt,
+        )
+    return first_id
+
+
 async def publish_draft_to_channel(
     bot: "Bot",
     settings: "Settings",
@@ -63,6 +218,7 @@ async def publish_draft_to_channel(
     sources: str | list[dict[str, Any]] | None = None,
     draft_extras_json: str | None = None,
     manual_channel_id: int | None = None,
+    publish_attempt: int = 1,
 ) -> int:
     """
     Send draft to resolved channel (HTML chunks, routing-aware). Returns first channel message id.
@@ -87,45 +243,58 @@ async def publish_draft_to_channel(
         burst_max_messages=settings.publish_burst_max_messages,
     )
     await limiter.acquire_before_publish(int(chat_id))
-    html = build_channel_message_html(content, sources or "[]", draft_id=draft_id)
+    t_publish = time.perf_counter()
+    html = build_channel_message_html(
+        content,
+        sources or "[]",
+        draft_id=draft_id,
+        include_sources=bool(getattr(settings, "publish_include_sources", False)),
+        include_draft_id_footer=bool(getattr(settings, "publish_include_sources", False)),
+    )
+    from app.editorial.publish_pipeline_guards import enforce_publish_html_guards
+
+    enforce_publish_html_guards(html, draft_id=draft_id, settings=settings)
     chunks = split_telegram_text(html, respect_html=True)
-    sent_ids: list[int] = []
-    for idx, chunk in enumerate(chunks):
+    from publisher.media_pipeline import publish_mode_for_extras
 
-        async def _send() -> int:
-            msg = await bot.send_message(
-                chat_id=chat_id,
-                text=chunk,
-                parse_mode=ParseMode.HTML,
-                disable_web_page_preview=True,
-            )
-            return int(msg.message_id)
-
-        try:
-            mid = await async_retry(_send, attempts=3, delay_sec=0.6, label=f"publish_chunk_{draft_id}_{idx}")
-        except BaseException as exc:
-            inc("telegram_api_failures")
-            log_event(
-                logger,
-                "publish.telegram_api_error",
-                draft_id=draft_id,
-                chunk_index=idx,
-                channel_id=chat_id,
-                error=repr(exc)[:500],
-            )
-            raise exc
+    publish_mode = publish_mode_for_extras(draft_extras_json)
+    media = media_from_extras_json(draft_extras_json)
+    if media and Path(media["local_path"]).is_file():
+        first_id = await _send_with_media(
+            bot,
+            chat_id=int(chat_id),
+            media=media,
+            chunks=chunks,
+            draft_id=draft_id,
+            settings=settings,
+            publish_attempt=publish_attempt,
+        )
+        chunk_count = len(chunks) if chunks else 1
         log_event(
             logger,
-            "publish.telegram_message_sent",
+            "publisher.media_sent",
             draft_id=draft_id,
-            chunk_index=idx,
+            media_type=media.get("media_type"),
+            chunk_count=chunk_count,
             channel_id=chat_id,
-            message_id=mid,
         )
-        sent_ids.append(mid)
-        if idx < len(chunks) - 1 and settings.telegram_inter_chunk_delay_sec > 0:
-            await asyncio.sleep(settings.telegram_inter_chunk_delay_sec)
+        _record_publish_latency(t_publish, draft_extras_json)
+        return first_id
 
+    log_event(
+        logger,
+        "media.publish_mode",
+        draft_id=draft_id,
+        mode=publish_mode,
+    )
+    sent_ids = await _send_text_chunks(
+        bot,
+        chat_id=int(chat_id),
+        chunks=chunks,
+        draft_id=draft_id,
+        settings=settings,
+        publish_attempt=publish_attempt,
+    )
     log_event(
         logger,
         "publisher.chunks_sent",
@@ -134,7 +303,27 @@ async def publish_draft_to_channel(
         channel_id=chat_id,
         duration_sec=round(time.perf_counter(), 4),
     )
+    _record_publish_latency(t_publish, draft_extras_json)
     return sent_ids[0]
+
+
+def _record_publish_latency(t_start: float, draft_extras_json: str | None) -> None:
+    try:
+        from app.observability.newsroom_ops import record_publish_latency_ms
+
+        breaking = False
+        if draft_extras_json:
+            try:
+                ex = json.loads(draft_extras_json)
+                if isinstance(ex, dict):
+                    brk = ex.get("breaking")
+                    if isinstance(brk, dict):
+                        breaking = bool(brk.get("is_breaking"))
+            except (json.JSONDecodeError, TypeError):
+                pass
+        record_publish_latency_ms((time.perf_counter() - t_start) * 1000.0, breaking=breaking)
+    except Exception:
+        pass
 
 
 # Spec / tests: stable name for the same entrypoint.

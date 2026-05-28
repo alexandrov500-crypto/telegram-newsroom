@@ -1,6 +1,7 @@
 """Runtime dependency health model (healthy / degraded / unavailable)."""
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -64,6 +65,7 @@ class RuntimeDependencyState:
     last_recovery_at_iso: str = ""
     last_recovery_mono: float = 0.0
     consecutive_failures: int = 0
+    execution_profile: dict[str, Any] = field(default_factory=dict)
 
     def set_dependency(
         self,
@@ -139,7 +141,7 @@ class RuntimeDependencyState:
         except Exception:
             slo = {}
         prov = load_build_provenance()
-        circuit = get_openai_circuit().snapshot()
+        circuit_snapshot = get_openai_circuit().snapshot()
         activity = activity_snapshot()
         polling_status = {
             "active": self.polling_active,
@@ -155,14 +157,92 @@ class RuntimeDependencyState:
         except Exception:
             queue_depth = 0
 
-        return {
+        execution: dict[str, Any] = dict(self.execution_profile or {})
+        try:
+            from app.ops.runtime.execution_lease import read_lease
+
+            rd = os.getenv("RUNTIME_STATE_DIR", "var/runtime")
+            lease = read_lease(rd)
+            if lease:
+                execution["lease"] = lease.to_dict()
+        except Exception:
+            pass
+
+        pipeline_hint: dict[str, Any] = {}
+        desk_hint: dict[str, Any] = {}
+        try:
+            from app.reliability.pipeline_health_hint import pipeline_health_hint
+
+            pipeline_hint = pipeline_health_hint()
+        except Exception:
+            pass
+        try:
+            from app.editorial.desk_starvation import desk_health_snapshot
+
+            desk_hint = desk_health_snapshot()
+        except Exception:
+            pass
+
+        staging: dict[str, Any] = {}
+        try:
+            from app.observability.staging_health import staging_health_snapshot
+
+            staging = staging_health_snapshot()
+        except Exception:
+            pass
+
+        async_runtime: dict[str, Any] = {}
+        try:
+            from app.runtime.task_orchestrator import orchestrator_health_snapshot
+
+            async_runtime = orchestrator_health_snapshot()
+        except Exception:
+            pass
+
+        circuit_allows = True
+        reconcile_extra: dict[str, Any] = {}
+        try:
+            from app.openai_circuit import get_openai_circuit
+            from app.recovery.pipeline_overrides import upstream_pipeline_state
+            from app.recovery.pipeline_state_reconciler import reconciliation_health_extra
+            from app.state.pipeline_decision_engine import apply_pipeline_decision
+            from app.state.pipeline_execution_wrapper import pipeline_evaluation_only
+
+            circuit = get_openai_circuit()
+            circuit_allows = circuit.allow_request()
+            with pipeline_evaluation_only():
+                pd = apply_pipeline_decision(source="health_payload")
+            ai_live = pd.should_execute
+            reconcile_extra = reconciliation_health_extra()
+            reconcile_extra["pipeline_decision"] = pd.to_dict()
+            upstream_state = upstream_pipeline_state(
+                ctx_ai_enabled=pd.should_execute,
+                circuit_allows=circuit_allows,
+            )
+            reconcile_extra["ai_pipeline_enabled_cache_deprecated"] = self.ai_pipeline_enabled
+        except Exception:
+            ai_live = self.ai_pipeline_enabled
+            upstream_state = "unknown"
+
+        payload: dict[str, Any] = {
             "status": self.aggregate_status().value,
             "service": "newsroom",
             "startup_complete": self.startup_complete,
-            "ai_pipeline_enabled": self.ai_pipeline_enabled,
+            "execution": execution,
+            "ai_pipeline_enabled": ai_live,
+            "should_execute_pipeline": ai_live,
+            "ai_pipeline_enabled_derived": ai_live,
+            "ai_pipeline_enabled_cache_deprecated": self.ai_pipeline_enabled,
+            "pipeline_decision": reconcile_extra.get("pipeline_decision") or reconcile_extra,
+            "pipeline_execution_decision": reconcile_extra,
+            "upstream_pipeline_state": upstream_state,
+            "pipeline_reconcile": reconcile_extra,
             "collector_enabled": self.collector_enabled,
             "dependencies": deps,
             "runtime_slo": slo,
+            "pipeline": pipeline_hint,
+            "desk": desk_hint,
+            "staging": staging,
             "runtime": {
                 "runtime_id": runtime_id(),
                 "uptime_sec": round(uptime_sec(), 2),
@@ -171,11 +251,27 @@ class RuntimeDependencyState:
                 "queue_depth": queue_depth,
                 "last_successful_collect_at": activity.get("last_successful_collect_at"),
                 "last_successful_ai_at": activity.get("last_successful_ai_at"),
-                "openai_circuit_state": circuit.get("state"),
-                "openai_disabled": circuit.get("openai_disabled"),
+                "last_successful_publish_at": activity.get("last_successful_publish_at"),
+                "openai_circuit_state": circuit_snapshot.get("state"),
+                "openai_disabled": circuit_snapshot.get("openai_disabled"),
                 "polling_status": polling_status,
             },
+            "event_loop_lag_ms": async_runtime.get("event_loop_lag_ms", 0),
+            "active_task_count": async_runtime.get("active_task_count", 0),
+            "hung_task_count": async_runtime.get("hung_task_count", 0),
+            "scheduler_generation": async_runtime.get("scheduler_generation", ""),
+            "async_integrity_ok": async_runtime.get("async_integrity_ok", True),
+            "async_runtime": async_runtime,
         }
+        try:
+            from app.runtime.telegram_connectivity import build_telegram_connectivity_snapshot
+
+            payload["telegram_connectivity"] = build_telegram_connectivity_snapshot()
+            if payload["telegram_connectivity"].get("collect_cycle", {}).get("collect_stalled"):
+                payload["async_integrity_ok"] = False
+        except Exception:
+            payload["telegram_connectivity"] = {"error": "snapshot_unavailable"}
+        return payload
 
 
 _REGISTRY: RuntimeDependencyState | None = None

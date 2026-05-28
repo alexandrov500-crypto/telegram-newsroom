@@ -1,0 +1,26 @@
+# Newsroom public-channel editorial policy (override via EDITORIAL_TUNING_PATH).
+
+voice:
+  profile: neutral_professional
+  max_sensational_hits: 1
+  strip_tabloid: true
+
+structure:
+  headline_max_chars: 140
+  summary_max_lines: 6
+  summary_max_chars: 900
+  include_why_it_matters: true
+  include_cta: false
+  paragraph_spacing: double
+
+attribution:
+  style: source
+  tier1_compact: true
+  never_show_json: true
+
+quality_gate:
+  mode: log_only
+  min_readability: 0.35
+  block_duplicate_headline_body: true
+  block_metadata_leak: true
+  block_empty_tail: true

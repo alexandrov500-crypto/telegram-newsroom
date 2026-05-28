@@ -155,12 +155,12 @@ def operational_mode_payload(runtime_dir: str, settings: Any | None = None) -> d
 
 
 def publish_allowed(mode: OperationalMode | None = None, settings: Any | None = None) -> bool:
-    m = mode or (load_operational_mode(settings.runtime_state_dir, settings) if settings else OperationalMode.PRODUCTION)
-    if m in _PUBLISH_BLOCKED:
-        return False
-    if settings is not None and getattr(settings, "dry_run", False):
-        return True
-    return True
+    if settings is None:
+        m = mode or OperationalMode.PRODUCTION
+        return m not in _PUBLISH_BLOCKED
+    from app.ops.execution_gates import publish_allowed_unified
+
+    return publish_allowed_unified(settings)
 
 
 def scheduler_allowed(mode: OperationalMode | None = None) -> bool:

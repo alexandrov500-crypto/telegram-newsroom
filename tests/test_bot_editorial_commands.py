@@ -81,7 +81,7 @@ def test_cmd_draft_preview(sqlite_url: str) -> None:
         await handlers.cmd_draft(msg, settings)
         text = msg.answer.await_args[0][0]
         assert "Title line" in text
-        assert f"<code>{did}</code>" in text or f"Draft ID: {did}" in text
+        assert f"<code>{did}</code>" in text or f"ID черновика: {did}" in text
 
     asyncio.run(run())
 

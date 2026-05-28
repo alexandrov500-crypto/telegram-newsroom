@@ -91,7 +91,10 @@ def select_cluster_for_summarization(
         selected.append(candidate)
         union_words |= cw
 
+    # Do not pad the cluster with unrelated posts from the same time bucket.
+    # Old behavior returned the whole bucket when greedy selection was small,
+    # which merged consecutive channel posts about different stories.
     if len(selected) < min(min_posts_fallback, len(bucket_posts)):
-        return bucket_posts[:max_posts]
+        return selected[:max_posts]
 
     return selected[:max_posts]

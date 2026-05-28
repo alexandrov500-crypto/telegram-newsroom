@@ -22,6 +22,7 @@ COPY db /app/db
 COPY editorial /app/editorial
 COPY observability /app/observability
 COPY ops /app/ops
+COPY newsroom /app/newsroom
 COPY gen_session.py /app/gen_session.py
 COPY publisher /app/publisher
 COPY scheduler /app/scheduler

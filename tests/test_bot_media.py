@@ -118,6 +118,8 @@ def test_publish_photo_success() -> None:
     assert result.success
     assert result.used_media
     bot.send_photo.assert_awaited_once()
+    _, kwargs = bot.send_photo.await_args
+    assert "disable_web_page_preview" not in kwargs
     bot.send_message.assert_not_awaited()
 
 
@@ -141,6 +143,8 @@ def test_publish_video_success() -> None:
     result, bot = asyncio.run(run())
     assert result.success
     bot.send_video.assert_awaited_once()
+    _, kwargs = bot.send_video.await_args
+    assert "disable_web_page_preview" not in kwargs
 
 
 def test_broken_media_falls_back_to_text() -> None:
