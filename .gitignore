@@ -57,3 +57,4 @@ coverage.xml
 
 # --- Node (if any tooling) ---
 node_modules/
+logs/
