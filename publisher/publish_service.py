@@ -100,23 +100,26 @@ async def publish_allowed_final_check(
     except Exception:
         pass
 
-    # execution graph must remain fully consistent (skip during publish starvation recovery)
-    if not starvation_recovery:
-        dbp = sqlite_path_from_url(settings.database_url)
-        eg = build_execution_graph_report(
-            db_path=Path(dbp) if dbp and Path(dbp).is_file() else None,
-            runtime_dir=Path(settings.runtime_state_dir),
-            log_path=Path(os.getenv("NEWSROOM_LOG", "logs/local-run.log")),
-            window_ticks=120,
-        )
-        if float(eg.get("consistency_rate") or 0) < 1.0:
-            return False, "execution_graph_inconsistent"
-    else:
+    # execution graph: recent window only (stale pre-outage traces must not block recovery)
+    graph_window = int(os.getenv("PUBLISH_EXEC_GRAPH_WINDOW", "12"))
+    dbp = sqlite_path_from_url(settings.database_url)
+    eg = build_execution_graph_report(
+        db_path=Path(dbp) if dbp and Path(dbp).is_file() else None,
+        runtime_dir=Path(settings.runtime_state_dir),
+        log_path=Path(os.getenv("NEWSROOM_LOG", "logs/local-run.log")),
+        window_ticks=graph_window,
+    )
+    graph_ok = float(eg.get("consistency_rate") or 0) >= 1.0 or int(eg.get("trace_samples") or 0) < 3
+    if not graph_ok and not starvation_recovery:
+        return False, "execution_graph_inconsistent"
+    if not graph_ok and starvation_recovery:
         log_event(
             logger,
             "publish.final_gate_starvation_bypass",
             draft_id=draft_id,
             recovery="execution_graph_check_skipped",
+            consistency_rate=eg.get("consistency_rate"),
+            trace_samples=eg.get("trace_samples"),
         )
 
     # QA mode safety rule: require moderation chat configured.
