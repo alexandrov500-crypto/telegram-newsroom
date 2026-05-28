@@ -92,16 +92,32 @@ async def publish_allowed_final_check(
     if str(prot.get("current_state") or "").lower() == "critical":
         return False, "runtime_critical"
 
-    # execution graph must remain fully consistent
-    dbp = sqlite_path_from_url(settings.database_url)
-    eg = build_execution_graph_report(
-        db_path=Path(dbp) if dbp and Path(dbp).is_file() else None,
-        runtime_dir=Path(settings.runtime_state_dir),
-        log_path=Path(os.getenv("NEWSROOM_LOG", "logs/local-run.log")),
-        window_ticks=120,
-    )
-    if float(eg.get("consistency_rate") or 0) < 1.0:
-        return False, "execution_graph_inconsistent"
+    starvation_recovery = False
+    try:
+        from app.editorial.desk_starvation import desk_threshold_context
+
+        starvation_recovery = desk_threshold_context().publish_starvation_detected
+    except Exception:
+        pass
+
+    # execution graph must remain fully consistent (skip during publish starvation recovery)
+    if not starvation_recovery:
+        dbp = sqlite_path_from_url(settings.database_url)
+        eg = build_execution_graph_report(
+            db_path=Path(dbp) if dbp and Path(dbp).is_file() else None,
+            runtime_dir=Path(settings.runtime_state_dir),
+            log_path=Path(os.getenv("NEWSROOM_LOG", "logs/local-run.log")),
+            window_ticks=120,
+        )
+        if float(eg.get("consistency_rate") or 0) < 1.0:
+            return False, "execution_graph_inconsistent"
+    else:
+        log_event(
+            logger,
+            "publish.final_gate_starvation_bypass",
+            draft_id=draft_id,
+            recovery="execution_graph_check_skipped",
+        )
 
     # QA mode safety rule: require moderation chat configured.
     if prepublic_qa_enabled() and not getattr(settings, "moderation_chat_id", None):
