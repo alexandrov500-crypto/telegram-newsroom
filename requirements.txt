@@ -1,5 +1,6 @@
 python-dotenv==1.0.1
 telethon==1.38.1
+python-socks[asyncio]==2.5.3
 aiogram==3.17.0
 openai==1.59.6
 sqlalchemy==2.0.36
