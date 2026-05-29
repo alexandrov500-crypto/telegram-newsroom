@@ -46,6 +46,33 @@ def _cache_path(cache_dir: Path, *, chat_id: int, message_id: int, media_type: s
     return cache_dir / f"{safe_chat}_{message_id}{ext}"
 
 
+def _video_dimensions(message: Message) -> tuple[int | None, int | None, int | None]:
+    video = getattr(message, "video", None)
+    if video is not None:
+        w = getattr(video, "w", None) or getattr(video, "width", None)
+        h = getattr(video, "h", None) or getattr(video, "height", None)
+        dur = getattr(video, "duration", None)
+        return (
+            int(w) if w else None,
+            int(h) if h else None,
+            int(dur) if dur else None,
+        )
+    doc = getattr(message, "document", None)
+    if doc is not None:
+        for attr in getattr(doc, "attributes", None) or []:
+            cls = type(attr).__name__
+            if cls == "DocumentAttributeVideo":
+                w = getattr(attr, "w", None)
+                h = getattr(attr, "h", None)
+                dur = getattr(attr, "duration", None)
+                return (
+                    int(w) if w else None,
+                    int(h) if h else None,
+                    int(dur) if dur else None,
+                )
+    return None, None, None
+
+
 async def download_message_media(
     client: TelegramClient,
     message: Message,
@@ -69,9 +96,18 @@ async def download_message_media(
     local = Path(path)
     if not local.is_file() or local.stat().st_size < 512:
         return None
-    return {
+    payload: dict[str, Any] = {
         "media_type": media_type,
         "local_path": str(local.resolve()),
         "message_id": msg_id,
         "chat_id": chat_id,
     }
+    if media_type == MEDIA_VIDEO:
+        w, h, dur = _video_dimensions(message)
+        if w:
+            payload["width"] = w
+        if h:
+            payload["height"] = h
+        if dur:
+            payload["duration"] = dur
+    return payload

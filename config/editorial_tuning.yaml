@@ -7,10 +7,10 @@ voice:
 
 structure:
   headline_max_chars: 140
-  summary_max_lines: 6
-  summary_max_chars: 900
+  summary_max_lines: 24
+  summary_max_chars: 3200
   include_why_it_matters: true
-  include_cta: false
+  include_cta: true
   paragraph_spacing: double
 
 attribution:

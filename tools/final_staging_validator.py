@@ -254,8 +254,8 @@ def _check_trust_layer() -> dict[str, Any]:
     from app.editorial.scoring_engine import score_story
 
     text = "Росстат: инфляция замедлилась по официальным данным."
-    escore = score_story(text=text, sources=["@cb_economics", "@vedofon"])
-    trust = evaluate_editorial_trust(text, escore, sources=["@cb_economics", "@vedofon"])
+    escore = score_story(text=text, sources=["@cb_economics", "@tnews365"])
+    trust = evaluate_editorial_trust(text, escore, sources=["@cb_economics", "@tnews365"])
     return trust.to_dict()
 
 

@@ -235,3 +235,52 @@ def test_create_draft_and_mark_posts_processed(tmp_path):
             await engine.dispose()
 
     asyncio.run(body())
+
+
+def test_upsert_raw_post_backfills_media_extras(tmp_path):
+    async def body() -> None:
+        engine, factory = await _make_engine(_sqlite_url(tmp_path))
+        try:
+            now = repo.utcnow()
+            media = {
+                "media_type": "photo",
+                "local_path": "/data/runtime/media_cache/-100_99.jpg",
+                "message_id": 99,
+                "chat_id": -100,
+            }
+            async with factory() as session:
+                inserted = await repo.upsert_raw_post(
+                    session,
+                    channel_name="@c",
+                    message_id=99,
+                    text="raw",
+                    created_at=now,
+                    extras_json="{}",
+                )
+                assert inserted is True
+                await session.commit()
+
+            async with factory() as session:
+                again = await repo.upsert_raw_post(
+                    session,
+                    channel_name="@c",
+                    message_id=99,
+                    text="raw",
+                    created_at=now,
+                    extras_json=json.dumps({"media": media}),
+                )
+                assert again is False
+                await session.commit()
+
+            async with factory() as session:
+                row = (
+                    await session.execute(
+                        select(RawPost).where(RawPost.channel_name == "@c", RawPost.message_id == 99)
+                    )
+                ).scalar_one()
+                extras = json.loads(row.extras or "{}")
+                assert extras["media"]["local_path"] == media["local_path"]
+        finally:
+            await engine.dispose()
+
+    asyncio.run(body())

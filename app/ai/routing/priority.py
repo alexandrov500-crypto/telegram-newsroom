@@ -26,17 +26,10 @@ _FIN_SHOCK = re.compile(
     re.I,
 )
 
-# High-trust fast channels (Telegram handles vary: @DeCenter vs decenter).
-_FAST_TRUST_CHANNELS = frozenset(
-    {
-        "@decenter",
-        "decenter",
-        "@vedomosti",
-        "vedomosti",
-        "@rbc_news",
-        "rbc_news",
-    }
-)
+from app.editorial.curated_sources import curated_handles_for_routing
+
+# Equal fast-lane trust for all configured SOURCE_CHANNELS.
+_FAST_TRUST_CHANNELS = curated_handles_for_routing()
 
 
 class NewsPriority(str, Enum):

@@ -107,7 +107,8 @@ def format_single_source_draft(
     fallback_text: str = "",
 ) -> str:
     """One Telegram post → readable blurb (no channel tag, no raw markdown)."""
-    text = strip_telegram_markdown(str(item.get("text") or fallback_text))
+    raw = item.get("text") if isinstance(item, dict) else getattr(item, "text", None)
+    text = strip_telegram_markdown(str(raw or fallback_text))
     if not text:
         return "News update."
     summary = complete_story_text(text, max_chars=max_chars)

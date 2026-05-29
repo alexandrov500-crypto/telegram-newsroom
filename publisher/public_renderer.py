@@ -42,9 +42,10 @@ def _public_headline_max() -> int:
 
 def _public_body_max() -> int:
     try:
-        return max(400, int(os.getenv("PUBLIC_BODY_MAX_CHARS", "2800")))
+        default = os.getenv("MAX_POST_CHARS", "3500")
+        return max(400, int(os.getenv("PUBLIC_BODY_MAX_CHARS", default)))
     except ValueError:
-        return 2800
+        return 3500
 
 
 def _why_it_matters_enabled() -> bool:
@@ -135,8 +136,8 @@ def clean_headline(text: str, *, max_len: int | None = None) -> str:
     cut = t[: limit + 1]
     sp = cut.rfind(" ")
     if sp > limit // 2:
-        return cut[:sp].rstrip() + "…"
-    return t[:limit].rstrip() + "…"
+        return cut[:sp].rstrip()
+    return t[:limit].rstrip()
 
 
 def split_headline_and_body(clean_text: str) -> tuple[str, str]:
@@ -156,11 +157,22 @@ def split_headline_and_body(clean_text: str) -> tuple[str, str]:
     if not filtered:
         return "", ""
     if len(filtered) == 1:
-        sents = re.split(r"(?<=[.!?])\s+", filtered[0])
-        sents = [x.strip() for x in sents if x.strip()]
+        blob = filtered[0]
+        sents = [x.strip() for x in re.split(r"(?<=[.!?])\s+", blob) if x.strip()]
         if len(sents) >= 2 and len(sents[0]) <= _public_headline_max():
-            return clean_headline(sents[0]), " ".join(sents[1:])[:_public_body_max()].strip()
-        return clean_headline(filtered[0]), ""
+            body = " ".join(sents[1:])[:_public_body_max()].strip()
+            return clean_headline(sents[0]), body
+        # Single-sentence / teaser line: keep substance in body, short headline from lead.
+        from app.editorial.public_post_template import normalize_lead_emoji
+
+        blob = normalize_lead_emoji(blob)
+        words = blob.split()
+        if len(words) >= 8:
+            split_at = min(12, max(6, len(words) // 3))
+            hl = clean_headline(" ".join(words[:split_at]))
+            body = " ".join(words[split_at:]).strip() or blob
+            return hl, body
+        return clean_headline(blob), ""
     headline = clean_headline(filtered[0])
     body = "\n\n".join(filtered[1:]).strip()
     return headline, body
@@ -252,7 +264,9 @@ def render_public_post(
             parts.append(tag_line)
     out = "\n".join(parts).strip()
     if len(out) > max_total_chars:
-        out = out[: max_total_chars - 1].rstrip() + "…"
+        from app.publisher.draft_builder import complete_story_text
+
+        out = complete_story_text(out, max_chars=max_total_chars)
     return out
 
 
@@ -300,7 +314,7 @@ def render_public_post_html(
             parts.append(f"<i>{tag_line}</i>")
     out = "\n\n".join(p for p in parts if p)
     if len(out) > max_total_chars:
-        out = out[: max_total_chars - 20].rstrip() + "\n<i>…</i>"
+        out = out[:max_total_chars].rstrip()
     return sanitize_telegram_html_output(out)
 
 

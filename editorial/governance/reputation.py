@@ -9,12 +9,7 @@ from editorial.governance.paths import governance_state_path
 from editorial.intelligence_store import load_json, save_json
 from utils.source_reputation import export_channel_scores_for_priority
 
-_CURATED_CHANNEL_FLOOR = {
-    "@cb_economics": 0.9,
-    "@vedofon": 0.6,
-    "@decenter": 0.7,
-}
-
+from app.editorial.curated_sources import CURATED_SOURCE_CREDIBILITY, is_curated_source
 
 def explainable_reputation(runtime_dir: str | None) -> dict[str, dict[str, Any]]:
     """Channel -> explainable reputation row for ranking and governance API."""
@@ -34,9 +29,10 @@ def explainable_reputation(runtime_dir: str | None) -> dict[str, dict[str, Any]]
         prev = float(ema.get(ch) or score)
         # Slow EMA — reputation changes gradually
         blended = round(0.85 * prev + 0.15 * score, 4)
-        if publishes < 3:
-            curated = float(_CURATED_CHANNEL_FLOOR.get(ch, 0.55))
-            blended = round(max(curated * 0.85, blended), 4)
+        if is_curated_source(ch):
+            blended = CURATED_SOURCE_CREDIBILITY
+        elif publishes < 3:
+            blended = round(max(0.55 * 0.85, blended), 4)
         ema[ch] = blended
         out[ch] = {
             "score": blended,

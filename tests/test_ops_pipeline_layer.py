@@ -88,7 +88,7 @@ def test_checkpoint_atomic_write(tmp_path: Path):
 def test_scoring_engine_lane_breaking():
     s = score_story(
         text="BREAKING: central bank raises rates amid war escalation",
-        sources=["@cb_economics", "@vedofon"],
+        sources=["@cb_economics", "@tnews365"],
     )
     assert s.lane in {"breaking", "normal", "discard"}
     assert s.final_priority_score >= 40

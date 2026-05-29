@@ -46,8 +46,8 @@ def test_includes_macro_news():
         "Росстат: дефляция в России замедлилась в январе, "
         "индекс потребительских цен показал снижение давления."
     )
-    escore = score_story(text=text, sources=["@cb_economics", "@vedofon"])
-    desk = evaluate_desk_filter(text, escore, sources=["@cb_economics", "@vedofon"])
+    escore = score_story(text=text, sources=["@cb_economics", "@tnews365"])
+    desk = evaluate_desk_filter(text, escore, sources=["@cb_economics", "@tnews365"])
     assert desk.publish
     assert desk.editorial_category in {"macro", "market", "breaking"}
     assert desk.quality_score >= 30
@@ -71,10 +71,32 @@ def test_macro_floor_allows_moderate_score():
 
 def test_breaking_override():
     text = "BREAKING: central bank emergency rate decision amid war escalation"
-    escore = score_story(text=text, sources=["@cb_economics", "@vedofon"])
-    desk = evaluate_desk_filter(text, escore, sources=["@cb_economics", "@vedofon"])
+    escore = score_story(text=text, sources=["@cb_economics", "@tnews365"])
+    desk = evaluate_desk_filter(text, escore, sources=["@cb_economics", "@tnews365"])
     assert desk.publish
     assert desk.breaking_override or desk.editorial_category == "breaking"
+
+
+def test_rejects_bureaucratic_filler_without_market_implication():
+    text = (
+        "Приказом ФТС утверждена форма предписания о выезде транспортного средства с товарами "
+        "за пределы территории Российской Федерации. Документ содержит порядок заполнения формы."
+    )
+    escore = score_story(text=text, sources=["@vedofon"])
+    desk = evaluate_desk_filter(text, escore, sources=["@vedofon"])
+    assert not desk.publish
+    assert desk.reason == "bureaucratic_filler_low_signal"
+
+
+def test_rejects_hidden_native_advertising():
+    text = (
+        "Партнерский материал: переходите по ссылке и получите скидку по промокоду MARKETS10. "
+        "https://promo.example.com/?ref=affiliate"
+    )
+    escore = score_story(text=text, sources=["@cb_economics"])
+    desk = evaluate_desk_filter(text, escore, sources=["@cb_economics"])
+    assert not desk.publish
+    assert desk.reason == "hidden_advertising_or_native_ad"
 
 
 def test_persist_rejection_writes_jsonl(tmp_path: Path):

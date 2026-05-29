@@ -190,6 +190,8 @@ class Settings:
     final_staging_mode: bool
     final_staging_max_publishes_per_hour: int
     global_publish_pause: bool
+    source_channel_languages: dict[str, str]
+    publish_output_language: str
 
 
 def load_settings() -> Settings:
@@ -233,6 +235,22 @@ def load_settings() -> Settings:
     channels = tuple(_parse_channels(channels_raw))
     if not channels:
         raise RuntimeError("SOURCE_CHANNELS must contain at least one channel")
+
+    from app.editorial.source_languages import (
+        LANG_RU,
+        LANG_ZH,
+        normalize_channel_handle,
+        normalize_language_code,
+        parse_source_channel_languages,
+    )
+
+    source_channel_languages = parse_source_channel_languages()
+    for ch in channels:
+        handle = normalize_channel_handle(ch).lower()
+        bare = handle.lstrip("@")
+        if bare == "tnews365" and handle not in source_channel_languages:
+            source_channel_languages[handle] = LANG_ZH
+    publish_output_language = normalize_language_code(os.getenv("PUBLISH_OUTPUT_LANGUAGE", LANG_RU)) or LANG_RU
 
     database_url = os.getenv("DATABASE_URL", "").strip()
     if not database_url:
@@ -363,7 +381,7 @@ def load_settings() -> Settings:
 
     from ai.editorial import normalize_headline_mode, normalize_summary_style
 
-    summary_style = normalize_summary_style(os.getenv("SUMMARY_STYLE", "warm-overview"))
+    summary_style = normalize_summary_style(os.getenv("SUMMARY_STYLE", "premium-newsroom"))
     headline_mode = normalize_headline_mode(os.getenv("HEADLINE_MODE", "none"))
 
     profile_raw = os.getenv("APP_DEPLOYMENT_PROFILE", os.getenv("NEWSROOM_PROFILE", "development")).strip().lower()
@@ -554,4 +572,6 @@ def load_settings() -> Settings:
             1, int(os.getenv("FINAL_STAGING_MAX_PUBLISHES_PER_HOUR", "6"))
         ),
         global_publish_pause=_env_bool("GLOBAL_PUBLISH_PAUSE", "false"),
+        source_channel_languages=source_channel_languages,
+        publish_output_language=publish_output_language,
     )

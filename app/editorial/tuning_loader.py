@@ -66,7 +66,7 @@ def _defaults() -> EditorialTuning:
         structure=StructureTuning(
             headline_max_chars=140,
             summary_max_lines=6,
-            summary_max_chars=900,
+            summary_max_chars=3200,
             include_why_it_matters=True,
             include_cta=False,
             paragraph_spacing="double",

@@ -156,6 +156,10 @@ def video_send_kwargs(
     reply_parameters: ReplyParameters | None = None,
     thumbnail: URLInputFile | None = None,
     has_spoiler: bool = False,
+    width: int | None = None,
+    height: int | None = None,
+    duration: int | None = None,
+    supports_streaming: bool = True,
 ) -> dict[str, Any]:
     kwargs = photo_send_kwargs(
         chat_id=chat_id,
@@ -169,6 +173,14 @@ def video_send_kwargs(
     )
     if thumbnail is not None:
         kwargs["thumbnail"] = thumbnail
+    if width is not None:
+        kwargs["width"] = int(width)
+    if height is not None:
+        kwargs["height"] = int(height)
+    if duration is not None:
+        kwargs["duration"] = int(duration)
+    if supports_streaming:
+        kwargs["supports_streaming"] = True
     return _drop_message_only(kwargs)
 
 
@@ -247,6 +259,9 @@ async def send_channel_video(
     disable_notification: bool = False,
     reply_markup: InlineKeyboardMarkup | None = None,
     thumbnail: URLInputFile | None = None,
+    width: int | None = None,
+    height: int | None = None,
+    duration: int | None = None,
 ) -> int:
     kwargs = guard_media_kwargs(
         video_send_kwargs(
@@ -255,6 +270,9 @@ async def send_channel_video(
             disable_notification=disable_notification,
             reply_markup=reply_markup,
             thumbnail=thumbnail,
+            width=width,
+            height=height,
+            duration=duration,
         ),
         transport_method="send_video",
         draft_id=draft_id,

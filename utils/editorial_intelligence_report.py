@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 import statistics
+from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
@@ -37,7 +38,10 @@ async def _collect_recent_draft_intel(session: AsyncSession, *, limit: int = 120
     conf_scores: list[float] = []
     hq_scores: list[float] = []
     suppressed_hint = 0
+    status_counts: dict[str, int] = {}
     for _did, _st, extras_raw in rows:
+        st_key = str(_st or "unknown")
+        status_counts[st_key] = int(status_counts.get(st_key, 0)) + 1
         ex = _json_load(str(extras_raw or "{}"))
         ci = ex.get("cluster_intelligence") or {}
         if not isinstance(ci, dict):
@@ -79,8 +83,36 @@ async def _collect_recent_draft_intel(session: AsyncSession, *, limit: int = 120
                 out["other"] += 1
         return out
 
+    pending_total = 0
+    try:
+        pending_total = int(
+            (
+                await session.execute(
+                    select(func.count()).select_from(Draft).where(Draft.status == "pending")
+                )
+            ).scalar_one()
+            or 0
+        )
+    except Exception:
+        pending_total = 0
+
+    last_pub_created: str | None = None
+    try:
+        last_pub_created = (
+            await session.scalar(
+                select(Draft.created_at).where(Draft.status == "published").order_by(Draft.created_at.desc()).limit(1)
+            )
+        )
+        if last_pub_created is not None:
+            last_pub_created = str(last_pub_created)
+    except Exception:
+        last_pub_created = None
+
     return {
         "drafts_sampled": len(rows),
+        "status_counts_sample": status_counts,
+        "pending_backlog_total": pending_total,
+        "last_published_created_at": last_pub_created,
         "cluster_intel_rows": len(rel_totals),
         "relevance_total_mean": round(statistics.mean(rel_totals), 3) if rel_totals else None,
         "relevance_total_median": round(statistics.median(rel_totals), 3) if rel_totals else None,
@@ -186,6 +218,36 @@ def build_editorial_intelligence_report(settings: Settings) -> dict[str, Any]:
     )
 
     cad = load_json(cadence_state_path(rd), {"version": 1, "last_publish_unix": 0.0, "recent": []})
+    try:
+        from app.editorial.intelligence.operator_observability import build_operator_observability_snapshot
+
+        op_obs = build_operator_observability_snapshot(rd)
+    except Exception as exc:
+        op_obs = {"error": repr(exc)}
+
+    operational_diagnostics: dict[str, Any] = {}
+    if isinstance(draft_intel, dict):
+        pending_total = int(draft_intel.get("pending_backlog_total") or 0)
+        last_pub_raw = draft_intel.get("last_published_created_at")
+        minutes_since_publish: float | None = None
+        if isinstance(last_pub_raw, str) and last_pub_raw.strip():
+            try:
+                dt = datetime.fromisoformat(last_pub_raw.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                minutes_since_publish = round((datetime.now(timezone.utc) - dt.astimezone(timezone.utc)).total_seconds() / 60.0, 2)
+            except Exception:
+                minutes_since_publish = None
+        operational_diagnostics = {
+            "pending_backlog_total": pending_total,
+            "minutes_since_last_published": minutes_since_publish,
+            "publish_stall_risk": bool((minutes_since_publish or 0) >= 45 and pending_total >= 3),
+            "recommended_operator_action": (
+                "review_pending_queue_or_expand_fastlane_trusted_sources"
+                if ((minutes_since_publish or 0) >= 45 and pending_total >= 3)
+                else "normal"
+            ),
+        }
 
     return {
         "report": "editorial_intelligence",
@@ -203,6 +265,8 @@ def build_editorial_intelligence_report(settings: Settings) -> dict[str, Any]:
         "recent_event_history": events[:20],
         "top_entities": [{"normalized": n, "count": c} for n, c in top_entities],
         "draft_intelligence_from_db": draft_intel,
+        "operator_observability": op_obs,
+        "operational_diagnostics": operational_diagnostics,
         "cadence_recent": (cad.get("recent") or [])[:10],
         "duplicate_burst_count": duplicate_burst_count(rd),
         "editorial_drift": drift,

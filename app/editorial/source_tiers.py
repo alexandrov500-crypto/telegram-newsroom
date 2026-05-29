@@ -6,6 +6,8 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from app.editorial.curated_sources import curated_handles_for_routing
+
 # Tier 1 — wire services, major financial press, official agencies
 _TIER1_PATTERNS = re.compile(
     r"(reuters|bloomberg|wsj|wall\s*street|financialtimes|\bft\b|apnews|associated\s+press|"
@@ -14,22 +16,7 @@ _TIER1_PATTERNS = re.compile(
 )
 
 # Tier 2 — curated Telegram / analyst handles (extend via env)
-_DEFAULT_TIER2 = frozenset(
-    {
-        "@cb_economics",
-        "cb_economics",
-        "@vedomosti",
-        "vedomosti",
-        "@vedofon",
-        "vedofon",
-        "@rbc_news",
-        "rbc_news",
-        "@decenter",
-        "decenter",
-        "@banksta",
-        "banksta",
-    }
-)
+_DEFAULT_TIER2 = curated_handles_for_routing()
 
 
 @dataclass(frozen=True)

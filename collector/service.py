@@ -63,6 +63,10 @@ async def collect_channel_messages(
 
     label = _channel_label(entity)
 
+    def _media_skip_channels() -> set[str]:
+        raw = os.getenv("COLLECTOR_MEDIA_SKIP_CHANNELS", "")
+        return {c.strip().lower().lstrip("@") for c in raw.split(",") if c.strip()}
+
     async def iterate_messages():
         await ensure_connected(client)
         count = 0
@@ -72,16 +76,23 @@ async def collect_channel_messages(
             "false",
             "no",
         )
+        channel_key = label.lower().lstrip("@")
+        skip_media = channel_key in _media_skip_channels()
         async for message in client.iter_messages(entity, limit=limit):
             text = message_plain_text(message)
             has_media = detect_media_type(message) != "none"
             if not text and not has_media:
                 continue
             extras: dict[str, object] = {}
-            if collect_media and has_media:
+            if collect_media and has_media and not skip_media:
                 media_payload = await download_message_media(client, message, media_cache)
                 if media_payload:
                     extras["media"] = media_payload
+            from app.editorial.source_languages import language_for_channel
+
+            src_lang = language_for_channel(label)
+            if src_lang:
+                extras["source_language"] = src_lang
             created = to_utc_aware(message.date)
             was_new = await upsert_raw_post(
                 session,

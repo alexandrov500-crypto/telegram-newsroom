@@ -27,7 +27,7 @@ def test_fallback_single_post_plain():
 def test_fallback_multi_post_no_raw_markdown():
     posts = [
         _post("Росстат CPI inflation data release for April", pid=1, mid=1),
-        _post("Merz comments on NATO support package", ch="@vedofon", pid=2, mid=2),
+        _post("Merz comments on NATO support package", ch="@tnews365", pid=2, mid=2),
     ]
     sc = fallback_summarize_cluster(posts, max_body_chars=3500)
     assert "TOP STORIES" not in sc.post_text

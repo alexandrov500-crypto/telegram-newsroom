@@ -67,6 +67,19 @@ def test_polish_strips_channel_bullets_and_completes() -> None:
     assert out.count("...") == 0 or out.endswith(".")
 
 
+def test_single_source_keeps_long_text_up_to_max_chars():
+    long_body = (
+        "Первое предложение с достаточной длиной для парсера. "
+        "Второе предложение описывает контекст и детали события подробно. "
+        "Третье предложение добавляет реакцию участников и возможные последствия. "
+        "Четвертое предложение завершает мысль точкой."
+    ) * 8
+    body = format_single_source_draft({"text": long_body, "source": "@vedofon"}, max_chars=3500)
+    assert body.endswith(".")
+    assert "…" not in body
+    assert len(body) > 1200
+
+
 def test_hierarchical_single_cluster_uses_blurb():
     c = CompressedCluster(
         items=[{"text": HARVARD_RAW, "source": "@DeCenter", "final_score": 0.8}],

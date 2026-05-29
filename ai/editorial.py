@@ -7,7 +7,15 @@ if TYPE_CHECKING:
     from db.models import RawPost
 
 ALLOWED_SUMMARY_STYLES = frozenset(
-    {"concise", "analytical", "neutral", "breaking-news", "digest-style", "warm-overview"}
+    {
+        "concise",
+        "analytical",
+        "neutral",
+        "breaking-news",
+        "digest-style",
+        "warm-overview",
+        "premium-newsroom",
+    }
 )
 
 
@@ -33,30 +41,61 @@ def digest_prompt_active(settings: Settings, cluster: list[RawPost]) -> bool:
     return cohesion < settings.digest_cohesion_trigger_below
 
 
-def build_system_prompt(settings: Settings) -> str:
+def build_system_prompt(
+    settings: Settings,
+    *,
+    source_language: str = "ru",
+    output_language: str = "ru",
+) -> str:
+    from app.editorial.source_languages import LANG_ZH, requires_translation
+
     style = settings.summary_style
+    translate_block = ""
+    if requires_translation(source_language, output_language):
+        translate_block = (
+            "Перевод и адаптация:\n"
+            "* входные тексты могут быть на китайском (или другом языке) — итоговый post "
+            f"должен быть **только на русском**;\n"
+            "* переводи факты точно, без выдуманных деталей;\n"
+            "* не оставляй иероглифы и фрагменты исходного языка в post;\n"
+            "* имена собственные допускаются латиницей или общепринятой русской формой."
+        )
+        if source_language == LANG_ZH:
+            translate_block += (
+                "\n* китайский Telegram-канал: сохраняй нейтральный тон русскоязычного новостного канала."
+            )
+
     blocks = [
         "Ты редактор Telegram-новостей.",
+        "Работаешь как premium financial newsroom desk (Bloomberg/Reuters/FT-подход, адаптированный под Telegram).",
         "Тебе даны новости из разных Telegram-каналов.",
         "Найди записи, которые описывают ОДНО И ТО ЖЕ событие (одинаковые факты, одна история).",
         "Не объединяй разные темы и не смешивай несвязные новости.",
         "Если уверенности недостаточно или новости про разные события — не выдумывай связь.",
         "",
         _style_block_ru(style),
-        "",
-        "Строгие запреты:",
-        "* не выдумывай факты, даты, числа, имена, места и цитаты — только то, что явно следует из входных текстов;",
-        "* не добавляй «типичные» детали «наугад»;",
-        "* если источники противоречат друг другу — явно укажи неопределённость и не угадывай, что верно;",
-        "* не приписывай источникам формулировок, которых в данных нет.",
-        "",
-        "Формат поля post (для читателей канала):",
-        "* связный текст из 1–3 коротких абзацев; без маркированных списков вида «• [@channel] …»;",
-        "* не указывай имена Telegram-каналов, @username, ссылки на источники и URL в тексте;",
-        "* не обрывай мысль на «…» — доведи предложение до конца в пределах лимита;",
-        "* если в конце уместна одна короткая реплика с умеренным нейтральным юмором — добавь её "
-        "(без сарказма, мемов и пошлости), логически связанную с темой.",
     ]
+    if translate_block:
+        blocks.extend(["", translate_block])
+    blocks.extend(
+        [
+            "",
+            "Строгие запреты:",
+            "* не выдумывай факты, даты, числа, имена, места и цитаты — только то, что явно следует из входных текстов;",
+            "* не добавляй «типичные» детали «наугад»;",
+            "* если источники противоречат друг другу — явно укажи неопределённость и не угадывай, что верно;",
+            "* не приписывай источникам формулировок, которых в данных нет.",
+            "",
+            "Формат поля post (для читателей канала):",
+            "* первая строка — сильный hook без кликбейта, затем 2–6 коротких абзацев;",
+            "* структура: hook → что произошло → почему это важно → влияние на рынок → краткий вывод;",
+            "* используй конкретные цифры/уровни/проценты, если они есть во входных данных;",
+            "* связный текст без маркированных списков вида «• [@channel] …»;",
+            "* не указывай имена Telegram-каналов, @username, ссылки на источники и URL в тексте;",
+            "* не обрывай мысль на «…» — доведи предложение до конца в пределах лимита;",
+            "* визуальная чистота: короткие абзацы, легко сканируемый текст, без «стены»;",
+        ]
+    )
     if settings.editorial_safety_enabled:
         blocks.extend(
             [
@@ -66,6 +105,7 @@ def build_system_prompt(settings: Settings) -> str:
                 "* не делай категоричных выводов без опоры на цитаты/факты из входа;",
                 "* без эмоциональных усилителей и кликбейта;",
                 "* не преувеличивай значимость события.",
+            "* tone of voice: уверенный, спокойный, институциональный, современный.",
             ]
         )
     blocks.extend(
@@ -93,11 +133,23 @@ def _style_block_ru(style: str) -> str:
             "оптимистичный. Без крика, без пошлости и без навязчивого «всё хорошо». "
             "Заверши пост одной короткой репликой с умеренным нейтральным юмором, связанной с темой."
         ),
+        "premium-newsroom": (
+            "Стиль: premium financial newsroom для Telegram. Коротко, динамично, профессионально. "
+            "Первый абзац должен цеплять фактом, далее давай контекст и market implications. "
+            "Тон уверенный и аналитический, без дешевого кликбейта и без мемного жаргона."
+        ),
     }
     return m.get(style, m["neutral"])
 
 
-def build_user_prompt(settings: Settings, items_json: str, *, digest_active: bool) -> str:
+def build_user_prompt(
+    settings: Settings,
+    items_json: str,
+    *,
+    digest_active: bool,
+    source_language: str = "ru",
+    output_language: str = "ru",
+) -> str:
     headline_rule = ""
     if settings.headline_mode == "json":
         headline_rule = (
@@ -122,6 +174,15 @@ def build_user_prompt(settings: Settings, items_json: str, *, digest_active: boo
             "Режим дайджеста: входные материалы слабо связаны по лексике — не объединяй их в одну «историю». "
             "Сделай компактный дайджест: отдельный абзац на каждую тему (1–2 предложения), без @каналов и без списков; "
             "used_raw_post_ids перечисли все использованные id."
+        )
+
+    from app.editorial.source_languages import requires_translation
+
+    lang_block = ""
+    if requires_translation(source_language, output_language):
+        lang_block = (
+            f"Язык источника: {source_language}. Язык итогового post: {output_language} (строго). "
+            "Переведи и адаптируй содержание; post не должен содержать иероглифы."
         )
 
     fmt_head = ""
@@ -155,6 +216,8 @@ def build_user_prompt(settings: Settings, items_json: str, *, digest_active: boo
 
 {headline_rule}
 {src_mentions}
+
+{lang_block}
 
 {digest_block}
 

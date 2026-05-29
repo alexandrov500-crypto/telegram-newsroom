@@ -52,6 +52,8 @@ def is_publish_failure_retryable(*, reason: str, error_category: str = "") -> bo
     if ce.category == "validation":
         return False
     if "cadence" in low or "duplicate" in low:
+        if "cadence_deferred" in low or "cadence / quiet" in low:
+            return True
         return False
     return ce.retryable or ce.category in ("telegram", "network", "openai", "database", "scheduler")
 
@@ -108,13 +110,16 @@ async def run_failed_draft_retry_batch(
                 settings,
                 int(row.draft_id),
                 idempotency_key=f"retry:{row.draft_id}:{row.retry_count}",
+                bypass_cadence=True,
             )
             ok = res.outcome == PublishFlowOutcome.OK
             if ok:
                 await bump_failed_draft_after_attempt(int(row.draft_id), success=True)
             else:
                 err = res.error or res.outcome.value
-                if not is_publish_failure_retryable(reason=err):
+                if res.outcome == PublishFlowOutcome.CADENCE_DEFERRED:
+                    await bump_failed_draft_after_attempt(int(row.draft_id), success=False, error=err)
+                elif not is_publish_failure_retryable(reason=err):
                     await mark_failed_draft_terminal(int(row.draft_id), reason=err[:500])
                 else:
                     await bump_failed_draft_after_attempt(int(row.draft_id), success=False, error=err)

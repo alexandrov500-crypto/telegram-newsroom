@@ -58,8 +58,8 @@ def test_soft_launch_mode_thresholds(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_editorial_trust_score() -> None:
     text = "Росстат: инфляция замедлилась по официальным данным."
-    escore = score_story(text=text, sources=["@cb_economics", "@vedofon"])
-    trust = evaluate_editorial_trust(text, escore, sources=["@cb_economics", "@vedofon"])
+    escore = score_story(text=text, sources=["@cb_economics", "@tnews365"])
+    trust = evaluate_editorial_trust(text, escore, sources=["@cb_economics", "@tnews365"])
     assert trust.trust_score >= 0.55
 
 

@@ -148,7 +148,14 @@ def build_compressed_draft_from_posts(
     if len(items) < 2 and fallback_text:
         items.extend(parse_bullet_items(fallback_text, runtime_dir=runtime_dir))
     if not items and fallback_text:
-        items = [item_from_text(fallback_text, runtime_dir=runtime_dir)]
+        one = item_from_text(fallback_text, runtime_dir=runtime_dir, skip_gate=True)
+        items = [one] if one is not None else []
+
+    items = [it for it in items if isinstance(it, dict) and (it.get("text") or it.get("content"))]
+    if not items:
+        from app.publisher.draft_builder import format_single_source_draft
+
+        return format_single_source_draft({"text": fallback_text}, max_chars=max_chars, fallback_text=fallback_text)
 
     if len(items) == 1:
         from app.publisher.draft_builder import format_single_source_draft

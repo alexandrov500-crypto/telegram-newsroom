@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -29,6 +30,65 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _TELEGRAM_CAPTION_LIMIT = 1024
+
+
+def _publish_fallback_media_enabled() -> bool:
+    return os.getenv("PUBLISH_FALLBACK_MEDIA", "true").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _video_strict_adapt_enabled() -> bool:
+    return (
+        __import__("os")
+        .getenv("TELEGRAM_VIDEO_STRICT_ADAPT", "false")
+        .strip()
+        .lower()
+        in {"1", "true", "yes", "on"}
+    )
+
+
+def _is_video_telegram_compatible(media: dict[str, Any]) -> bool:
+    if str(media.get("media_type") or "") != "video":
+        return True
+    try:
+        w = int(media.get("width") or 0)
+        h = int(media.get("height") or 0)
+    except (TypeError, ValueError):
+        return False
+    if w <= 0 or h <= 0:
+        return False
+    ratio = w / max(h, 1)
+    return 1.70 <= ratio <= 1.82
+
+
+async def _maybe_adapt_video_for_publish(
+    *,
+    media: dict[str, Any],
+    draft_id: int,
+) -> dict[str, Any] | None:
+    if str(media.get("media_type") or "") != "video":
+        return media
+    if _is_video_telegram_compatible(media):
+        return media
+    src = Path(str(media.get("local_path") or ""))
+    if not src.is_file():
+        return None
+    try:
+        from publisher.video_normalize import normalize_video_for_telegram
+
+        normalized = await normalize_video_for_telegram(
+            src,
+            src.parent,
+            draft_id=draft_id,
+        )
+    except Exception:
+        normalized = None
+    if not normalized:
+        return None
+    out = dict(media)
+    out.update(normalized)
+    out["media_type"] = "video"
+    out["local_path"] = str(normalized.get("local_path") or src)
+    return out
 
 
 def publish_transport_key(draft_id: int, publish_attempt: int = 1) -> str:
@@ -169,6 +229,9 @@ async def _send_with_media(
             caption=caption,
             draft_id=draft_id,
             publish_attempt=publish_attempt,
+            width=int(media["width"]) if media.get("width") else None,
+            height=int(media["height"]) if media.get("height") else None,
+            duration=int(media["duration"]) if media.get("duration") else None,
         )
 
     first_chunk = chunks[0] if chunks else ""
@@ -219,6 +282,7 @@ async def publish_draft_to_channel(
     draft_extras_json: str | None = None,
     manual_channel_id: int | None = None,
     publish_attempt: int = 1,
+    bypass_rate_limit: bool = False,
 ) -> int:
     """
     Send draft to resolved channel (HTML chunks, routing-aware). Returns first channel message id.
@@ -237,12 +301,20 @@ async def publish_draft_to_channel(
         sources=src_list,
         manual_channel_id=manual_channel_id,
     )
-    limiter = get_publish_rate_limiter(
-        min_interval_sec=settings.publish_channel_min_interval_sec,
-        burst_window_sec=settings.publish_burst_window_sec,
-        burst_max_messages=settings.publish_burst_max_messages,
-    )
-    await limiter.acquire_before_publish(int(chat_id))
+    if not bypass_rate_limit:
+        limiter = get_publish_rate_limiter(
+            min_interval_sec=settings.publish_channel_min_interval_sec,
+            burst_window_sec=settings.publish_burst_window_sec,
+            burst_max_messages=settings.publish_burst_max_messages,
+        )
+        await limiter.acquire_before_publish(int(chat_id))
+    else:
+        log_event(
+            logger,
+            "publish.rate_limit_bypassed",
+            draft_id=draft_id,
+            reason="operator_approved",
+        )
     t_publish = time.perf_counter()
     html = build_channel_message_html(
         content,
@@ -258,7 +330,22 @@ async def publish_draft_to_channel(
     from publisher.media_pipeline import publish_mode_for_extras
 
     publish_mode = publish_mode_for_extras(draft_extras_json)
-    media = media_from_extras_json(draft_extras_json)
+    media = media_from_extras_json(
+        draft_extras_json,
+        include_fallback=_publish_fallback_media_enabled(),
+    )
+    if media and str(media.get("media_type") or "") == "video":
+        adapted = await _maybe_adapt_video_for_publish(media=media, draft_id=draft_id)
+        if adapted:
+            media = adapted
+        elif _video_strict_adapt_enabled():
+            log_event(
+                logger,
+                "media.video_not_adapted_dropped",
+                draft_id=draft_id,
+                local_path=str(media.get("local_path") or ""),
+            )
+            media = None
     if media and Path(media["local_path"]).is_file():
         first_id = await _send_with_media(
             bot,

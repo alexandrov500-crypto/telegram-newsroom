@@ -1,8 +1,8 @@
 # Burn-in report — 7d
 
-Generated: 2026-05-23T20:16:28.764503+00:00
+Generated: 2026-05-29T05:05:28.829862+00:00
 
-## Operational burn-in `b9a63092-5ec` (7d)
+## Operational burn-in `3885f932-de4` (7d)
 
 ### Core metrics
 

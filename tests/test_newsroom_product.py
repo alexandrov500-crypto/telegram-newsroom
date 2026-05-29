@@ -21,11 +21,13 @@ def test_high_signal_ranking() -> None:
         "Росстат: дефляция в России замедлилась в январе, "
         "индекс потребительских цен показал снижение давления."
     )
-    escore = score_story(text=text, sources=["@cb_economics", "@vedofon"])
-    signal = rank_story_signal(text, escore, sources=["@cb_economics", "@vedofon"])
-    assert signal.signal_score >= 0.40
+    escore = score_story(text=text, sources=["@cb_economics", "@tnews365"])
+    signal = rank_story_signal(text, escore, sources=["@cb_economics", "@tnews365"])
+    assert signal.signal_score >= 0.50
     assert signal.reject_reason is None
-    tier = aggregate_source_tier(["@cb_economics", "@vedofon"])
+    assert signal.attention_potential >= 0.35
+    assert signal.repost_probability >= 0.45
+    tier = aggregate_source_tier(["@cb_economics", "@tnews365"])
     assert tier.tier <= 2
 
 
@@ -61,9 +63,9 @@ def test_source_attribution_footer() -> None:
 
 
 def test_tabloid_content_blocked() -> None:
-    text = "Шокирующая правда: вы не поверите что случилось с биткоином срочно узнай"
-    escore = score_story(text=text, sources=["@decenter"])
-    desk = evaluate_desk_filter(text, escore, sources=["@decenter"])
+    text = "Шокирующая правда: вы не поверите, какой мем сегодня разлетелся по чатам"
+    escore = score_story(text=text, sources=["@random_aggregator_xyz"])
+    desk = evaluate_desk_filter(text, escore, sources=["@random_aggregator_xyz"])
     assert not desk.publish
 
 
@@ -72,10 +74,10 @@ def test_manual_review_flow() -> None:
         "ЦБ РФ повысил ключевую ставку на 200 б.п. Парламент обсуждает отставку премьера "
         "на фоне политического кризиса и возможных досрочных выборов."
     )
-    escore = score_story(text=text, sources=["@cb_economics", "@vedofon"])
-    desk = evaluate_desk_filter(text, escore, sources=["@cb_economics", "@vedofon"])
+    escore = score_story(text=text, sources=["@cb_economics", "@tnews365"])
+    desk = evaluate_desk_filter(text, escore, sources=["@cb_economics", "@tnews365"])
     assert desk.publish
-    policy = evaluate_publish_policy(text, escore, desk, sources=["@cb_economics", "@vedofon"])
+    policy = evaluate_publish_policy(text, escore, desk, sources=["@cb_economics", "@tnews365"])
     assert policy.manual_review_required
     assert not policy.auto_publish_eligible
 
@@ -99,6 +101,15 @@ def test_tier1_source_authority() -> None:
     tier, auth = classify_source("reuters")
     assert tier == 1
     assert auth >= 0.9
+
+
+def test_curated_growth_sources_have_tier2_authority() -> None:
+    tier, auth = classify_source("@rbc_news")
+    assert tier == 2
+    assert auth >= 0.7
+    tier2, auth2 = classify_source("@banksta")
+    assert tier2 == 2
+    assert auth2 >= 0.7
 
 
 def test_editorial_identity_niches() -> None:

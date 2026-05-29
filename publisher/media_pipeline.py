@@ -10,7 +10,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from publisher.draft_media import lead_media_from_raw_posts, media_from_extras_json
+from publisher.draft_media import (
+    lead_media_from_collector_cache,
+    lead_media_from_raw_posts,
+    media_from_extras_json,
+)
 from publisher.media_cache import download_image_url, validate_local_image
 from publisher.media_fallback_card import render_branded_fallback_card
 from utils.structured_log import log_event
@@ -45,9 +49,39 @@ def _ai_image_enabled() -> bool:
     return os.getenv("MEDIA_AI_IMAGE_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
 
 
+def _newsroom_visual_style() -> str:
+    # Unified visual language for all generated illustrations across sources.
+    return (
+        os.getenv(
+            "MEDIA_NEWSROOM_STYLE",
+            (
+                "strict editorial wire-service style, deep navy and slate palette, "
+                "high-contrast photojournalistic composition, subtle gradient background, "
+                "single focal subject, clean geometry, no collage, no surreal elements, "
+                "no text, no logos, no watermarks"
+            ),
+        )
+        .strip()
+        .replace("\n", " ")
+    )
+
+
+def _branded_fallback_enabled() -> bool:
+    # Explicit emergency switch only; default is always-on to keep posts visual.
+    force_off = os.getenv("MEDIA_FORCE_NO_FALLBACK", "").strip().lower()
+    if force_off in ("1", "true", "yes", "on"):
+        return False
+    return True
+
+
 def _cache_dir(runtime_dir: str | None) -> Path:
     base = Path(runtime_dir or os.getenv("RUNTIME_STATE_DIR", "var/runtime"))
     return base / "media_cache" / "drafts"
+
+
+def _collector_cache_root(runtime_dir: str | None) -> Path:
+    base = Path(runtime_dir or os.getenv("RUNTIME_STATE_DIR", "var/runtime"))
+    return base / "media_cache"
 
 
 @dataclass(frozen=True)
@@ -79,6 +113,9 @@ def _build_media_extra(
     media_fallback_used: bool,
     message_id: int | None = None,
     chat_id: int | None = None,
+    width: int | None = None,
+    height: int | None = None,
+    duration: int | None = None,
 ) -> dict[str, Any]:
     return {
         "media": {
@@ -92,6 +129,9 @@ def _build_media_extra(
             "media_fallback_used": media_fallback_used,
             "message_id": message_id,
             "chat_id": chat_id,
+            "width": width,
+            "height": height,
+            "duration": duration,
         }
     }
 
@@ -161,8 +201,9 @@ async def _try_ai_image(
     if not _ai_image_enabled() or openai_client is None:
         return None
     prompt = (
-        f"Editorial news illustration, modern newsroom style, clean, no text, no logos. "
-        f"Topic: {category}. Headline context: {headline[:200]}"
+        f"{_newsroom_visual_style()}. "
+        f"Topic category: {category}. "
+        f"Headline context: {headline[:200]}"
     )[:900]
     dest = cache_dir / f"ai_{abs(hash(prompt)) % 10**8}.jpg"
     if dest.is_file() and validate_local_image(dest):
@@ -221,24 +262,54 @@ async def enrich_draft_media(
         return reused
 
     lead = lead_media_from_raw_posts(used_posts)
+    cache_hit = False
+    if not lead:
+        lead = lead_media_from_collector_cache(used_posts, _collector_cache_root(runtime_dir))
+        cache_hit = lead is not None
     if lead and Path(str(lead["local_path"])).is_file():
-        log_event(logger, "media.source_found", source="telethon", draft_id=draft_id)
+        log_event(
+            logger,
+            "media.source_found",
+            source="collector_cache" if cache_hit else "telethon",
+            draft_id=draft_id,
+        )
+        local_path = str(lead["local_path"])
+        media_type = str(lead["media_type"])
+        width = lead.get("width")
+        height = lead.get("height")
+        duration = lead.get("duration")
+        if media_type == "video":
+            from publisher.video_normalize import normalize_video_for_telegram
+
+            norm = await normalize_video_for_telegram(
+                Path(local_path),
+                cache,
+                draft_id=draft_id,
+            )
+            if norm:
+                local_path = str(norm.get("local_path") or local_path)
+                width = norm.get("width") or width
+                height = norm.get("height") or height
+                duration = norm.get("duration") or duration
         res = MediaEnrichmentResult(
             media_status=MEDIA_STATUS_SOURCE_REUSED,
-            media_type=str(lead["media_type"]),
-            media_path=str(lead["local_path"]),
+            media_type=media_type,
+            media_path=local_path,
             media_source_url=None,
             media_generation_reason="telethon_cluster",
             media_fallback_used=False,
             extras_patch=_build_media_extra(
-                local_path=str(lead["local_path"]),
-                media_type=str(lead["media_type"]),
+                local_path=local_path,
+                media_type=media_type,
                 media_status=MEDIA_STATUS_SOURCE_REUSED,
                 media_source_url=None,
                 media_generation_reason="telethon_cluster",
                 media_fallback_used=False,
                 message_id=lead.get("message_id"),
                 chat_id=lead.get("chat_id"),
+                width=int(width) if width else None,
+                height=int(height) if height else None,
+                duration=int(duration) if duration else None,
             ),
         )
         log_event(logger, "media.pipeline_completed", draft_id=draft_id, status=res.media_status)
@@ -290,6 +361,19 @@ async def enrich_draft_media(
                 media_generation_reason="openai_image",
                 media_fallback_used=False,
             ),
+        )
+        log_event(logger, "media.pipeline_completed", draft_id=draft_id, status=res.media_status)
+        return res
+
+    if not _branded_fallback_enabled():
+        res = MediaEnrichmentResult(
+            media_status=MEDIA_STATUS_SKIPPED,
+            media_type="none",
+            media_path=None,
+            media_source_url=None,
+            media_generation_reason="fallback_disabled",
+            media_fallback_used=False,
+            extras_patch={},
         )
         log_event(logger, "media.pipeline_completed", draft_id=draft_id, status=res.media_status)
         return res

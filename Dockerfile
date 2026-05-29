@@ -33,7 +33,7 @@ COPY docker /app/docker
 COPY tools /app/tools
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends gosu \
+    && apt-get install -y --no-install-recommends gosu ffmpeg \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 1000 --shell /usr/sbin/nologin appuser \
     && mkdir -p /app/var/runtime \

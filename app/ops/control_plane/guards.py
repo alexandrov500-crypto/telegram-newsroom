@@ -75,7 +75,8 @@ def pipeline_tick_allowed(*, base_interval_minutes: int) -> tuple[bool, str]:
     if last <= 0:
         return True, "first_tick"
     elapsed_min = (time.time() - last) / 60.0
-    if elapsed_min + 0.01 < effective:
+    # Small grace so APScheduler interval and throttle do not miss by seconds (14.9<15 → 30min gap).
+    if elapsed_min + (30.0 / 60.0) < effective:
         return False, f"slow_mode_throttle:{elapsed_min:.1f}<{effective}min"
     return True, "ok"
 

@@ -1,10 +1,10 @@
 # Burn-in operational report — 7d
 
-Generated: 2026-05-23T20:16:28.764425+00:00
+Generated: 2026-05-29T05:05:28.829585+00:00
 
 > Shadow-production staging evidence. Publishing remains operator-gated.
 
-## Operational burn-in `b9a63092-5ec` (7d)
+## Operational burn-in `3885f932-de4` (7d)
 
 ### Core metrics
 

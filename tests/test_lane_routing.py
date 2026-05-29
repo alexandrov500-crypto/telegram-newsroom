@@ -117,7 +117,7 @@ def test_route_drops_when_all_full(lane_queues):
         {
             "text": "Samsung expands semiconductor fab capacity in Vietnam under new policy",
             "news_id": "n1",
-            "source": "@vedofon",
+            "source": "@tnews365",
             "runtime_dir": lane_queues,
         }
     )

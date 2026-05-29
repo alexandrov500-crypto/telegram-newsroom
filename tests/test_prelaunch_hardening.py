@@ -82,8 +82,8 @@ def test_editorial_trust_score() -> None:
         "Росстат опубликовал данные по инфляции. "
         "Показатель снизился в январе согласно официальному отчёту."
     )
-    escore = score_story(text=text, sources=["@cb_economics", "@vedofon"])
-    trust = evaluate_editorial_trust(text, escore, sources=["@cb_economics", "@vedofon"])
+    escore = score_story(text=text, sources=["@cb_economics", "@tnews365"])
+    trust = evaluate_editorial_trust(text, escore, sources=["@cb_economics", "@tnews365"])
     assert trust.trust_score >= 0.55
     assert trust.corroboration_score >= 0.75
     assert not trust.manual_review_required

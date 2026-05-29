@@ -176,6 +176,13 @@ def minimal_test_settings(**overrides: object) -> Settings:
         force_single_publish=False,
         runtime_node_role="worker",
         newsroom_worker_url="",
+        public_content_sanitizer_strict=False,
+        newsroom_trust_mode="off",
+        final_staging_mode=False,
+        final_staging_max_publishes_per_hour=6,
+        global_publish_pause=False,
+        source_channel_languages={"@testchannel": "ru"},
+        publish_output_language="ru",
     )
     if not overrides:
         return base

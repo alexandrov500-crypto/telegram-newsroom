@@ -133,12 +133,21 @@ async def summarize_cluster(
 
     valid_ids = {p.id for p in posts}
     digest_on = digest_prompt_active(settings, posts)
+    from app.editorial.source_languages import translation_context_for_cluster
+
+    lang_ctx = translation_context_for_cluster(posts, settings)
     user_prompt = build_user_prompt(
         settings,
         _serialize_items(posts),
         digest_active=digest_on,
+        source_language=lang_ctx["source_language"],
+        output_language=lang_ctx["output_language"],
     )
-    system_prompt = build_system_prompt(settings)
+    system_prompt = build_system_prompt(
+        settings,
+        source_language=lang_ctx["source_language"],
+        output_language=lang_ctx["output_language"],
+    )
     include_headline = settings.headline_mode == "json"
     response_format = _draft_response_format(include_headline=include_headline)
     prompt_ref = resolve_cluster_draft_prompt(settings)
@@ -274,10 +283,17 @@ async def summarize_cluster(
             headline = strip_source_attribution(headline)
 
         if not used_ids:
-            log_event(logger, "openai.draft_no_valid_ids", attempt=attempt)
-            last_err = "no_valid_ids"
-            _maybe_count_retry(attempt, max_json_retries)
-            continue
+            # Some models (esp. via an OpenAI-compatible relay) omit or garble the
+            # source id echo. The summary is generated from THIS cluster, so attribute
+            # it to the cluster posts instead of discarding an otherwise-valid draft.
+            if post_text and valid_ids:
+                used_ids = sorted(valid_ids)
+                log_event(logger, "openai.draft_ids_defaulted", attempt=attempt, used_ids=len(used_ids))
+            else:
+                log_event(logger, "openai.draft_no_valid_ids", attempt=attempt)
+                last_err = "no_valid_ids"
+                _maybe_count_retry(attempt, max_json_retries)
+                continue
 
         if not post_text:
             log_event(logger, "openai.empty_post_with_ids", attempt=attempt)

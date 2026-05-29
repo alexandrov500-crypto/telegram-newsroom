@@ -22,7 +22,7 @@ def test_accepts_asml_geopolitics():
         "ASML угрожает перенести производство из ЕС из-за новых регуляторных ограничений "
         "на экспорт оборудования"
     )
-    item = {"text": text, "source": "@vedofon"}
+    item = {"text": text, "source": "@tnews365"}
     v = evaluate_editorial_gate(item)
     assert v.allowed
     assert editorial_gate(item)

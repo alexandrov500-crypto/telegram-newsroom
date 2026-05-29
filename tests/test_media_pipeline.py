@@ -91,8 +91,30 @@ def test_enrich_source_from_telethon(tmp_path: Path) -> None:
     assert res.media_path == str(img)
 
 
+def test_enrich_source_from_collector_cache(tmp_path: Path) -> None:
+    cache_root = tmp_path / "media_cache"
+    cache_root.mkdir()
+    img = cache_root / "-1001703721750_25264.jpg"
+    img.write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 600)
+    post = _Post("{}")
+    post.message_id = 25264
+    res = asyncio.run(
+        enrich_draft_media(
+            runtime_dir=str(tmp_path),
+            draft_body="body",
+            headline="H",
+            category="news",
+            used_posts=[post],
+            sources_payload=[],
+        )
+    )
+    assert res.media_status == MEDIA_STATUS_SOURCE_REUSED
+    assert res.media_path == str(img.resolve())
+
+
 def test_enrich_fallback_when_no_source(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("MEDIA_AI_IMAGE_ENABLED", "false")
+    monkeypatch.setenv("MEDIA_BRANDED_FALLBACK_ENABLED", "true")
     res = asyncio.run(
         enrich_draft_media(
         runtime_dir=str(tmp_path),
@@ -134,4 +156,6 @@ def test_media_from_extras_extended_fields(tmp_path: Path) -> None:
         }
     )
     m = media_from_extras_json(payload)
-    assert m is not None
+    assert m is None
+    m_fb = media_from_extras_json(payload, include_fallback=True)
+    assert m_fb is not None

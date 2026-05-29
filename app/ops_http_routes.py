@@ -36,6 +36,7 @@ def _nav() -> str:
     return (
         "<nav style=\"margin:8px 0;font-size:14px\">"
         "<a href=\"/ops\">overview</a> · <a href=\"/ops/search\">search</a> · "
+        "<a href=\"/ops/newsroom-intel\">newsroom-intel</a> · "
         "<a href=\"/ops/dlq\">dlq</a> · <a href=\"/runtime/status\">runtime</a> · "
         "<a href=\"/runtime/timeline\">timeline</a> · "
         "<a href=\"/ops.json\">bundle.json</a> · "
@@ -353,6 +354,27 @@ async def dispatch_ops_http(
             page = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>search</title></head><body>" + _nav() + await _search_page_html(
                 settings, query
             ) + "</body></html>"
+            return 200, "text/html; charset=utf-8", page.encode("utf-8")
+
+        if len(segs) >= 2 and segs[1] in ("newsroom-intel", "newsroom-intel.json"):
+            bundle = await _bundle_dict(settings)
+            editorial = bundle.get("editorial") or {}
+            intel = (
+                editorial.get("operator_observability")
+                if isinstance(editorial, dict)
+                else {}
+            ) or {}
+            want_json = segs[1] == "newsroom-intel.json" or query.get("format") == ["json"]
+            if want_json:
+                raw = json.dumps(intel, indent=2, default=str).encode("utf-8")
+                return 200, "application/json", raw
+            page = (
+                "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>newsroom-intel</title></head><body>"
+                + _nav()
+                + "<h2>Newsroom intelligence</h2><pre>"
+                + _e(json.dumps(intel, indent=2, default=str)[:48_000])
+                + "</pre></body></html>"
+            )
             return 200, "text/html; charset=utf-8", page.encode("utf-8")
 
         if len(segs) >= 2 and (segs[1] == "panel" or segs[1].startswith("panel") or segs[1] == "operator"):

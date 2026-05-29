@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -144,5 +145,37 @@ def test_publish_draft_alias_matches(fake_settings: Settings) -> None:
         a = await publish_draft_to_channel(bot, fake_settings, draft_id=1, content="x")
         b = await publish_draft(bot, fake_settings, draft_id=1, content="x")
         assert a == b == 1
+
+    asyncio.run(body())
+
+
+def test_publish_uses_fallback_media_by_default(fake_settings: Settings, tmp_path) -> None:
+    async def body() -> None:
+        img = tmp_path / "fallback.jpg"
+        img.write_bytes(b"z" * 600)
+        extras = json.dumps(
+            {
+                "media": {
+                    "media_type": "photo",
+                    "local_path": str(img),
+                    "media_status": "fallback_generated",
+                    "media_fallback_used": True,
+                }
+            }
+        )
+        bot = MagicMock()
+        sent = MagicMock()
+        sent.message_id = 101
+        bot.send_photo = AsyncMock(return_value=sent)
+
+        mid = await publish_draft_to_channel(
+            bot,
+            fake_settings,
+            draft_id=11,
+            content="Story with fallback visual",
+            draft_extras_json=extras,
+        )
+        assert mid == 101
+        bot.send_photo.assert_awaited()
 
     asyncio.run(body())

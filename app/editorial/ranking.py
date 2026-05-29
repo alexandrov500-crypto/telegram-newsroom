@@ -6,6 +6,8 @@ import re
 from dataclasses import asdict, dataclass
 from typing import Any
 
+from app.editorial.curated_sources import curated_handles_for_routing
+
 _BREAKING_KW = re.compile(
     r"(срочно|breaking|санкци|войн|обвал|запрет|urgent|attack|war\b|explosion|"
     r"shutdown|экстренно|взрыв|default|экстренн)",
@@ -47,20 +49,7 @@ _OFFICIAL_SOURCES = frozenset(
         "ministry",
     }
 )
-_MAJOR_MEDIA = frozenset(
-    {
-        "@cb_economics",
-        "cb_economics",
-        "@vedofon",
-        "vedofon",
-        "@vedomosti",
-        "vedomosti",
-        "@rbc_news",
-        "rbc_news",
-        "@decenter",
-        "decenter",
-    }
-)
+_MAJOR_MEDIA = curated_handles_for_routing()
 
 
 @dataclass(frozen=True)

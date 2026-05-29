@@ -52,6 +52,16 @@ _TABLOID_BAIT = re.compile(
     r"you\s+won't\s+believe|gone\s+wild)",
     re.I,
 )
+_BUREAUCRATIC_FILLER = re.compile(
+    r"(приказ(ом)?|утвержден(а|о|ы)?\s+форма|предписани|в\s+соответствии\s+с|"
+    r"регламент|процедур|территори(и|я)\s+российской)",
+    re.I,
+)
+_IMPLICATION_SIGNAL = re.compile(
+    r"(это\s+значит|влиян|давлен|риск|издержк|ликвидност|доходност|волатильн|"
+    r"логистик|экспорт|импорт|рынк)",
+    re.I,
+)
 
 _MACRO = re.compile(
     r"(росстат|инфляц|дефляц|ввп|gdp|cpi|ppi|цб\s|фрс|fed\b|ecb|ключев.*ставк|"
@@ -243,6 +253,12 @@ def evaluate_desk_filter(
         return decision
 
     # Hard rejects
+    from app.editorial.content_quality import has_hidden_advertising, is_incomplete_teaser
+
+    if has_hidden_advertising(text or ""):
+        return _finish(
+            _reject("hidden_advertising_or_native_ad", "reject", q, ctx, breakdown, runtime_dir=runtime_dir)
+        )
     if _MEME_NOISE.search(text or "") and not breaking_override:
         return _finish(_reject("meme_or_joke_content", "noise", q, ctx, breakdown, runtime_dir=runtime_dir))
     if _INCIDENT_NOISE.search(text or ""):
@@ -255,10 +271,13 @@ def evaluate_desk_filter(
         return _finish(_reject("clickbait_unverified_framing", "reject", q, ctx, breakdown, runtime_dir=runtime_dir))
     if _UNVERIFIED.search(text or "") and unique_sources < 2 and not breaking_override:
         return _finish(_reject("single_source_unverified", "reject", q, ctx, breakdown, runtime_dir=runtime_dir))
-    if len((text or "").strip()) < 35:
-        return _finish(_reject("low_information_density", "noise", q, ctx, breakdown, runtime_dir=runtime_dir))
-    from app.editorial.content_quality import is_incomplete_teaser
+    from app.editorial.source_languages import LANG_ZH, detect_text_language, language_for_channel
 
+    min_text_len = 35
+    if any(language_for_channel(s) == LANG_ZH for s in sources) or detect_text_language(text or "") == LANG_ZH:
+        min_text_len = 12
+    if len((text or "").strip()) < min_text_len:
+        return _finish(_reject("low_information_density", "noise", q, ctx, breakdown, runtime_dir=runtime_dir))
     if is_incomplete_teaser(text or ""):
         return _finish(
             _reject("incomplete_teaser_no_body", "noise", q, ctx, breakdown, runtime_dir=runtime_dir)
@@ -267,6 +286,10 @@ def evaluate_desk_filter(
         return _finish(_reject("unsafe_public_topic", "reject", q, ctx, breakdown, runtime_dir=runtime_dir))
     if _TABLOID_BAIT.search(text or "") and escore.credibility_score < 0.72:
         return _finish(_reject("tabloid_bait_framing", "reject", q, ctx, breakdown, runtime_dir=runtime_dir))
+    if _BUREAUCRATIC_FILLER.search(text or "") and not _IMPLICATION_SIGNAL.search(text or ""):
+        return _finish(
+            _reject("bureaucratic_filler_low_signal", "reject", q, ctx, breakdown, runtime_dir=runtime_dir)
+        )
 
     from app.editorial.governance_advanced import evaluate_advanced_governance
 
@@ -411,6 +434,8 @@ def _desk_reason_code(reason: str, category: str) -> str:
         "sensationalism_low_authority": "desk.reject.sensationalism",
         "low_authority_single_source": "desk.reject.low_authority_source",
         "incomplete_teaser_no_body": "desk.noise.incomplete_teaser",
+        "bureaucratic_filler_low_signal": "desk.reject.bureaucratic_filler",
+        "hidden_advertising_or_native_ad": "desk.reject.hidden_advertising",
     }
     return mapping.get(reason, f"{prefix}.{reason}")
 
