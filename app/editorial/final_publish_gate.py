@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -81,9 +82,13 @@ def evaluate_final_publish_gate(
         return v
 
     text = (content or "").strip()
+    runtime_dir = getattr(settings, "runtime_state_dir", None) if settings else None
     from app.editorial.content_quality import is_incomplete_teaser
+    from app.publisher.draft_builder import polish_channel_post
 
-    if is_incomplete_teaser(text):
+    quality_text = polish_channel_post(text, max_chars=8000)
+
+    if is_incomplete_teaser(quality_text):
         v = FinalPublishGateVerdict(
             allowed=False,
             manual_review_required=False,
@@ -93,9 +98,82 @@ def evaluate_final_publish_gate(
         log_gate_decision(draft_id=draft_id, verdict=v)
         return v
 
-    chans = _parse_channels(sources)
-    runtime_dir = getattr(settings, "runtime_state_dir", None) if settings else None
+    try:
+        rendered = build_channel_message_html(text, sources, draft_id=draft_id or 0, runtime_dir=runtime_dir)
+        from app.editorial.content_quality import (
+            has_hidden_advertising,
+            is_publishably_informative,
+            passes_premium_newsroom_policy,
+            strip_public_template_metadata,
+        )
+        from publisher.public_renderer import strip_telegram_markdown
 
+        plain_rendered = strip_telegram_markdown(re.sub(r"<[^>]+>", " ", rendered or ""))
+        plain_rendered = re.sub(r"\s+", " ", plain_rendered).strip()
+        if has_hidden_advertising(plain_rendered):
+            v = FinalPublishGateVerdict(
+                allowed=False,
+                manual_review_required=False,
+                permanent_block=True,
+                reason="hidden_advertising",
+            )
+            log_gate_decision(draft_id=draft_id, verdict=v)
+            return v
+        plain_core = strip_public_template_metadata(plain_rendered)
+        informative = is_publishably_informative(plain_core, min_chars=90, min_sentences=2) or (
+            is_publishably_informative(quality_text, min_chars=90, min_sentences=2)
+        )
+        teaser_block = is_incomplete_teaser(plain_core) and is_incomplete_teaser(quality_text)
+        if teaser_block or not informative:
+            v = FinalPublishGateVerdict(
+                allowed=False,
+                manual_review_required=False,
+                permanent_block=True,
+                reason="incomplete_public_template",
+            )
+            log_gate_decision(draft_id=draft_id, verdict=v)
+            return v
+        core_informative = is_publishably_informative(plain_core, min_chars=90, min_sentences=2)
+        policy_text = plain_core if core_informative else quality_text
+        if not passes_premium_newsroom_policy(policy_text) and not (
+            policy_text is plain_core and passes_premium_newsroom_policy(quality_text)
+        ):
+            v = FinalPublishGateVerdict(
+                allowed=False,
+                manual_review_required=False,
+                permanent_block=True,
+                reason="premium_policy_low_signal",
+            )
+            log_gate_decision(draft_id=draft_id, verdict=v)
+            return v
+    except Exception as exc:
+        v = FinalPublishGateVerdict(
+            allowed=False,
+            manual_review_required=True,
+            permanent_block=False,
+            reason="render_check_failed",
+        )
+        log_gate_decision(
+            draft_id=draft_id,
+            verdict=v,
+            extra={"error": repr(exc)[:120]},
+        )
+        return v
+
+    from app.editorial.source_languages import publish_output_language, text_violates_output_language
+
+    out_lang = publish_output_language(settings)
+    if text_violates_output_language(text, output_language=out_lang):
+        v = FinalPublishGateVerdict(
+            allowed=False,
+            manual_review_required=True,
+            permanent_block=False,
+            reason="output_language_cjk_leak",
+        )
+        log_gate_decision(draft_id=draft_id, verdict=v, extra={"output_language": out_lang})
+        return v
+
+    chans = _parse_channels(sources)
     gov = evaluate_advanced_governance(text)
     if gov.auto_block:
         return FinalPublishGateVerdict(

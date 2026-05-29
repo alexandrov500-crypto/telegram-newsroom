@@ -194,8 +194,8 @@ class WorkerRuntime:
                     await hb_task
                 except asyncio.CancelledError:
                     pass
-            except Exception:
-                logger.exception("worker.heartbeat_task_failed")
+                except Exception:
+                    logger.exception("worker.heartbeat_task_failed")
 
         grace = float(self.settings.worker_grace_shutdown_sec)  # type: ignore[attr-defined]
         log_event(logger, "worker.drain_wait", worker_role=self.role.value, grace_sec=grace, **extra)

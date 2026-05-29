@@ -15,9 +15,9 @@ _MD_BOLD = re.compile(r"\*\*([^*]+)\*\*")
 _MD_ITALIC = re.compile(r"(?<!\*)\*([^*]+)\*(?!\*)")
 _MD_UNDER = re.compile(r"__([^_]+)__")
 _LEAD_CHANNEL = re.compile(r"^(?:\[@\w+\]|@\w+)\s*")
-_INLINE_CHANNEL = re.compile(r"\[@?[\w]{3,64}\]")
+_INLINE_CHANNEL = re.compile(r"(?:\[@?[\w]{3,64}\]|@\w{3,64})")
 _SOURCES_LINE = re.compile(r"^(?:источники|sources)\s*:", re.IGNORECASE)
-_TRAIL_ELLIPSIS = re.compile(r"(?<=\w)\.{3,}\s*$")
+_TRAIL_ELLIPSIS = re.compile(r"(?<=\w)(?:\.{3,}|…)\s*$")
 
 
 def _one_line_max() -> int:
@@ -64,20 +64,22 @@ def complete_story_text(text: str, *, max_chars: int = 2800) -> str:
         return joined
     if len(parts) == 1 and len(parts[0]) > max_chars:
         return _truncate_at_sentence(parts[0], max_chars)
-    if joined.rstrip().endswith((".", "!", "?", "…")):
-        return joined
-    return joined.rstrip() + "…"
+    return joined.rstrip()
 
 
 def _truncate_at_sentence(text: str, max_len: int) -> str:
+    """Trim only at sentence/word boundaries — no trailing ellipsis."""
     if len(text) <= max_len:
         return text
     chunk = text[:max_len]
     for sep in (". ", "! ", "? ", " — ", "; "):
         pos = chunk.rfind(sep)
         if pos > max_len // 2:
-            return chunk[: pos + len(sep.rstrip())].rstrip() + "…"
-    return chunk.rstrip() + "…"
+            return chunk[: pos + len(sep.rstrip())].rstrip()
+    sp = chunk.rfind(" ")
+    if sp > max_len // 3:
+        return chunk[:sp].rstrip()
+    return chunk.rstrip()
 
 
 def _one_line_summary(text: str, *, max_len: int | None = None) -> str:
@@ -108,8 +110,7 @@ def format_single_source_draft(
     text = strip_telegram_markdown(str(item.get("text") or fallback_text))
     if not text:
         return "News update."
-    blurb_limit = min(max_chars - 80, max(_one_line_max(), 1200))
-    summary = complete_story_text(text, max_chars=blurb_limit)
+    summary = complete_story_text(text, max_chars=max_chars)
     return polish_channel_post(summary, max_chars=max_chars)
 
 
@@ -217,7 +218,7 @@ def polish_channel_post(body: str, *, max_chars: int = 2800) -> str:
         clean = complete_story_text(clean, max_chars=max_chars)
     if len(clean) > max_chars:
         clean = complete_story_text(clean, max_chars=max_chars)
-    return clean[:max_chars].strip()
+    return clean.strip()
 
 
 def finalize_draft_content(body: str, *, max_chars: int = 2800) -> str:

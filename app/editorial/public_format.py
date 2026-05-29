@@ -79,12 +79,9 @@ def compress_summary(text: str, *, max_lines: int | None = None, max_chars: int 
     kept = lines[:limit_lines]
     out = "\n\n".join(kept).strip()
     if len(out) > limit_chars:
-        out = out[: limit_chars - 1].rstrip()
-        sp = out.rfind(" ")
-        if sp > limit_chars // 2:
-            out = out[:sp] + "…"
-        else:
-            out = out + "…"
+        from app.publisher.draft_builder import complete_story_text
+
+        out = complete_story_text(out, max_chars=limit_chars)
     return out
 
 
@@ -103,8 +100,14 @@ def format_public_story(
     include_why: bool | None = None,
 ) -> PublicFormatResult:
     """Stable public story shape for renderer."""
-    h = normalize_headline(headline)
-    s = compress_summary(summary)
+    from app.editorial.content_quality import strip_dangling_ellipsis
+    from app.editorial.public_post_template import normalize_lead_emoji
+
+    h = normalize_headline(normalize_lead_emoji(headline))
+    s = compress_summary(strip_dangling_ellipsis(summary))
+    if not s.strip() and headline:
+        s = compress_summary(strip_dangling_ellipsis(headline))
+        h = ""
     dup = detect_duplicate_wording(h, s)
     if dup and s:
         s = s[len(h) :].lstrip(" .—-\n") if s.lower().startswith(h.lower()) else s
