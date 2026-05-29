@@ -192,15 +192,43 @@ async def _collect_step(ctx: PipelineContext) -> None:
             log_event(logger, "collector.telethon_unauthorized")
             _log_pipeline_idle("collector", collect_err)
             return
+        channel_list = list(settings.source_channels)
+        try:
+            from app.sources.registry import load_active_source_handles, seed_registry_if_empty
+
+            await seed_registry_if_empty()
+            channel_list = await load_active_source_handles(settings)
+        except Exception:
+            pass
+        use_sharded = __import__("os").getenv("COLLECT_PARALLEL_ENABLED", "true").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
         async with session_scope() as session:
-            inserted_total = await collect_all_channels(
-                client,
-                session,
-                channels=settings.source_channels,
-                limit_per_channel=settings.collect_messages_per_channel,
-                telethon_max_attempts=settings.telethon_op_max_attempts,
-                channel_delay_seconds=settings.channel_collect_delay_seconds,
-            )
+            if use_sharded:
+                from collector.sharded_collect import collect_channels_sharded
+
+                inserted_total = await collect_channels_sharded(
+                    client,
+                    session,
+                    channels=channel_list,
+                    limit_per_channel=settings.collect_messages_per_channel,
+                    telethon_max_attempts=settings.telethon_op_max_attempts,
+                    channel_delay_seconds=settings.channel_collect_delay_seconds,
+                )
+            else:
+                from collector.service import collect_all_channels
+
+                inserted_total = await collect_all_channels(
+                    client,
+                    session,
+                    channels=channel_list,
+                    limit_per_channel=settings.collect_messages_per_channel,
+                    telethon_max_attempts=settings.telethon_op_max_attempts,
+                    channel_delay_seconds=settings.channel_collect_delay_seconds,
+                )
         inc("posts_collected", inserted_total)
         if inserted_total > 0:
             from app.runtime_activity import record_collect_success

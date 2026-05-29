@@ -32,7 +32,11 @@ from utils.structured_log import log_event
 _CTA_LINE = "Подписывайтесь на канал — главные новости без шума."
 _EMOJI_SPAM = re.compile(r"([\U0001F300-\U0001FAFF\u2600-\u27BF]){4,}")
 _TABLOID = re.compile(r"(шокирующ|сенсаци|вы\s+не\s+поверите|срочно\s+узнай)", re.I)
-_MACRO_RE = re.compile(r"(инфляц|ставк|cpi|gdp|цб|фрс|fed|ecb|росстат|минфин)", re.I)
+_MACRO_RE = re.compile(
+    r"(?:инфляц|(?<![а-яёa-z])ставк(?:а|и|у|е|ой|ами)(?![а-яёa-z])|"
+    r"\bcpi\b|\bgdp\b|\bцб\b|\bфрс\b|\bfed\b|\becb\b|росстат|минфин)",
+    re.I,
+)
 _CRYPTO_RE = re.compile(r"(bitcoin|btc|ethereum|eth|крипт|defi|etf)", re.I)
 _GEO_RE = re.compile(r"(санкци|войн|атака|nato|parliament|президент|геополит)", re.I)
 _MARKET_RE = re.compile(r"(акци|индекс|рынок|бирж|доходност|облигац|нефт|oil|fx)", re.I)
@@ -40,10 +44,21 @@ _MARKET_RE = re.compile(r"(акци|индекс|рынок|бирж|доход�
 _STRIP_SOURCE_LINE = re.compile(r"^(Источник|Source|via)\s*:", re.I)
 _INLINE_SOURCE = re.compile(r"(Источник|Source|via)\s*:\s*@?\w+", re.I)
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
-_FED_RE = re.compile(r"(fed|fomc|фрс|ставк)", re.I)
-_INFLATION_RE = re.compile(r"(inflation|инфляц|cpi|pce)", re.I)
-_OIL_RE = re.compile(r"(oil|brent|wti|нефт)", re.I)
-_RATES_RE = re.compile(r"(rate|yield|доходност|ключев.*ставк)", re.I)
+# Word-boundary aware: avoid "ставк" inside "доставка" and "ключев.*ставк" spanning paragraphs.
+_FED_RE = re.compile(
+    r"(?:\bfed\b|\bfomc\b|\bфрс\b|"
+    r"ключев(?:ая|ой|ую|ые)?\s+ставк(?:а|и|у|е|ой|ами)|"
+    r"(?<![а-яёa-z])ставк(?:а|и|у|е|ой|ами)(?![а-яёa-z]))",
+    re.I,
+)
+_INFLATION_RE = re.compile(r"(?:\binflation\b|\bcpi\b|\bpce\b|(?<![а-яёa-z])инфляц\w*)", re.I)
+_OIL_RE = re.compile(r"(?:\boil\b|\bbrent\b|\bwti\b|(?<![а-яёa-z])нефт\w*)", re.I)
+_RATES_RE = re.compile(
+    r"(?:\brate(?:s)?\b|\byield(?:s)?\b|"
+    r"(?<![а-яёa-z])доходност(?:ь|и|ью|ями)?|"
+    r"ключев(?:ая|ой|ую|ые)?\s+ставк(?:а|и|у|е|ой|ами)?)",
+    re.I,
+)
 _BTC_RE = re.compile(r"(bitcoin|btc|биткоин)", re.I)
 _ETH_RE = re.compile(r"(ethereum|eth|эфир)", re.I)
 _SP500_RE = re.compile(r"(s&p|sp500|snp500|spx)", re.I)
@@ -59,7 +74,7 @@ _SEMIS_RE = re.compile(r"(semiconductor|chip|полупровод)", re.I)
 _CHINA_RE = re.compile(r"(china|китай|beijing|пекин)", re.I)
 _USA_RE = re.compile(r"(usa|us\b|сша|washington|вашингтон)", re.I)
 _RUSSIA_RE = re.compile(r"(russia|росси|москв|moscow)", re.I)
-_ME_RE = re.compile(r"(middle\s*east|ближн.*восток|iran|israel|gaza)", re.I)
+_ME_RE = re.compile(r"(?:middle\s*east|ближн\w*\s+восток|(?<![a-z])\biran\b|\bisrael\b|\bgaza\b)", re.I)
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +151,9 @@ def _light_tone_cleanup(text: str) -> str:
 
 
 def _prepare_body_plain(content: str, *, max_chars: int) -> str:
-    scrubbed = scrub_publish_plaintext(content)
+    from app.publisher.draft_builder import _repair_leading_name_glitches
+
+    scrubbed = scrub_publish_plaintext(_repair_leading_name_glitches(content))
     cleaned = strip_internal_debug_text(scrubbed)
     return _light_tone_cleanup(polish_channel_post(cleaned, max_chars=max_chars))
 
@@ -223,6 +240,9 @@ def _stable_mod(text: str, n: int) -> int:
 
 def _smart_hashtags(text: str, bucket: str, *, runtime_dir: str | None = None) -> list[str]:
     if os.getenv("NEWSROOM_HASHTAGS_ENABLED", "true").strip().lower() not in {"1", "true", "yes", "on"}:
+        return []
+    # Country/macro tags on pure geo/diplomatic posts confuse readers — reserve for market buckets.
+    if bucket not in {"macro", "market", "crypto"}:
         return []
     max_tags = 2
     try:

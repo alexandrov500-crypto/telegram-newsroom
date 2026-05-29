@@ -18,6 +18,12 @@ _LEAD_CHANNEL = re.compile(r"^(?:\[@\w+\]|@\w+)\s*")
 _INLINE_CHANNEL = re.compile(r"(?:\[@?[\w]{3,64}\]|@\w{3,64})")
 _SOURCES_LINE = re.compile(r"^(?:источники|sources)\s*:", re.IGNORECASE)
 _TRAIL_ELLIPSIS = re.compile(r"(?<=\w)(?:\.{3,}|…)\s*$")
+_COLON_DASH_ATTRIB = re.compile(r":\s*[-–—]\s*")
+_BROKEN_QUOTE_TAIL = re.compile(
+    r",?\s*(?:что\s+)?(?:все,\s*)?что\s+[^.!?]{0,200}\b\w+(?:ского|ского|ного|ной|ному|ными)\.?\s*$",
+    re.I,
+)
+_ATTRIB_AFTER_THOUGHT = re.compile(r"\.\s*(?:[Сс]казал|[Зз]аявил|[Пp]о\s+словам|[дД]обавил)\b")
 
 
 def _one_line_max() -> int:
@@ -206,21 +212,64 @@ def strip_source_attribution(text: str) -> str:
     return out
 
 
+def _normalize_colon_attribution(text: str) -> str:
+    """«отношений: - Сказал Пашиняну» → «отношений. Сказал Пашиняну»."""
+    t = (text or "").strip()
+    t = _COLON_DASH_ATTRIB.sub(". ", t)
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def _strip_broken_quote_tail(text: str, *, had_ellipsis: bool) -> str:
+    """Drop a clause that was cut mid-phrase after the model/source ellipsis."""
+    t = (text or "").rstrip()
+    if not t:
+        return t
+    if had_ellipsis and _ATTRIB_AFTER_THOUGHT.search(t):
+        t = t[: _ATTRIB_AFTER_THOUGHT.search(t).start()].rstrip()
+    if had_ellipsis or _BROKEN_QUOTE_TAIL.search(t):
+        trimmed = _BROKEN_QUOTE_TAIL.sub("", t).rstrip()
+        if trimmed and len(trimmed) >= 40:
+            t = trimmed
+    # Orphan name stub after a bad cut («… Пашиняну.»).
+    t = re.sub(r"[.:]\s*[А-ЯЁA-Z][а-яё]{2,20}\.\s*$", ".", t).rstrip()
+    return t
+
+
 def polish_channel_post(body: str, *, max_chars: int = 2800) -> str:
     """Reader-facing post: no sources, full sentences, no lazy trailing ellipsis."""
     clean = strip_source_attribution(normalize_legacy_bullet_lines(body))
     clean = strip_telegram_markdown(clean)
+    clean = _normalize_colon_attribution(clean)
     if not clean:
         return "News update."
-    if _TRAIL_ELLIPSIS.search(clean):
+    had_ellipsis = bool(_TRAIL_ELLIPSIS.search(clean))
+    if had_ellipsis:
         clean = _TRAIL_ELLIPSIS.sub("", clean).rstrip()
-        clean = complete_story_text(clean, max_chars=max_chars)
+        clean = _strip_broken_quote_tail(clean, had_ellipsis=True)
     elif not clean.rstrip().endswith((".", "!", "?", "…")):
         clean = complete_story_text(clean, max_chars=max_chars)
     if len(clean) > max_chars:
         clean = complete_story_text(clean, max_chars=max_chars)
-    clean = _finish_thought(clean)
-    return clean.strip()
+    from app.editorial.content_quality import is_truncated_mid_thought
+
+    if not is_truncated_mid_thought(clean):
+        clean = _finish_thought(clean)
+    elif had_ellipsis:
+        # Prefer dropping to the last complete sentence rather than faking an ending.
+        parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", clean) if p.strip()]
+        if len(parts) > 1:
+            clean = " ".join(parts[:-1]).strip()
+            clean = _finish_thought(clean)
+    clean = clean.strip()
+    if os.getenv("HEADLINE_ENGINE_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on"):
+        try:
+            from app.editorial.headline_engine import apply_headline_to_content, pick_best_headline
+
+            headline = pick_best_headline(clean, vertical="macro")
+            clean = apply_headline_to_content(clean, headline)
+        except Exception:
+            pass
+    return clean
 
 
 def _finish_thought(text: str) -> str:
@@ -247,9 +296,32 @@ def _finish_thought(text: str) -> str:
     return t
 
 
+# YandexGPT / relay models sometimes drop the first letter of a proper name at sentence start.
+_LEADING_NAME_FIXES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"^утин\b", re.I), "Путин"),
+    (re.compile(r"^утина\b", re.I), "Путина"),
+    (re.compile(r"^утине\b", re.I), "Путине"),
+)
+
+
+def _repair_leading_name_glitches(text: str) -> str:
+    if not (text or "").strip():
+        return text or ""
+    lines = (text or "").splitlines()
+    if not lines:
+        return text
+    first = lines[0]
+    for pat, repl in _LEADING_NAME_FIXES:
+        first = pat.sub(repl, first, count=1)
+    if first != lines[0]:
+        lines[0] = first
+        return "\n".join(lines)
+    return text
+
+
 def finalize_draft_content(body: str, *, max_chars: int = 2800) -> str:
     """Last-mile cleanup before DB / admin notify (strip markdown, complete sentences)."""
-    return polish_channel_post(body, max_chars=max_chars)
+    return polish_channel_post(_repair_leading_name_glitches(body), max_chars=max_chars)
 
 
 def build_draft_body(

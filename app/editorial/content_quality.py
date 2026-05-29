@@ -16,6 +16,12 @@ _UNFINISHED_ENDING = re.compile(
     r"(\.\.\.|…|[,;:]\s*|[-–—]\s*|и\s*$|или\s*$|а\s*$|но\s*$)\s*$",
     re.I,
 )
+# Model/source cut-off disguised as a full sentence (… stripped → «для армянского.»).
+_TRUNCATED_TAIL = re.compile(
+    r"(?:,\s*)?(?:что|котор\w*|когда)\s+[^.!?]{0,160}\b\w+(?:ского|ского|ного|ной|ному|ными)\.\s*$",
+    re.I,
+)
+_INCOMPLETE_FOR_PHRASE = re.compile(r"\bдля\s+\w+(?:ского|ского|ного|ной|ному|ными)\.\s*$", re.I)
 _SENTENCE_END = re.compile(r"[.!?]\s*$")
 _BUREAUCRATIC = re.compile(
     r"(приказ(ом)?|утвержден(а|о|ы)?\s+форма|предписани|в\s+соответствии\s+с|"
@@ -110,6 +116,20 @@ def is_publishably_informative(
     return len(t) >= min_chars
 
 
+def is_truncated_mid_thought(text: str) -> bool:
+    """Detect ellipsis-truncated or fake-completed cut-offs (YandexGPT / source teasers)."""
+    t = (text or "").strip()
+    if not t:
+        return True
+    if re.search(r"(\.\.\.|…)\s*$", t):
+        return True
+    if _INCOMPLETE_FOR_PHRASE.search(t):
+        return True
+    if _TRUNCATED_TAIL.search(t):
+        return True
+    return False
+
+
 def is_incomplete_teaser(text: str) -> bool:
     """
     Source post refers to image/chart («выглядят так») without extractable body.
@@ -117,6 +137,8 @@ def is_incomplete_teaser(text: str) -> bool:
     """
     t = (text or "").strip()
     if not t:
+        return True
+    if is_truncated_mid_thought(t):
         return True
     if _INCOMPLETE_TEASER.search(t):
         return True

@@ -166,3 +166,69 @@ class FailedDraftQueue(Base):
     last_error: Mapped[str] = mapped_column(Text, nullable=False, default="")
     error_category: Mapped[str] = mapped_column(String(32), nullable=False, default="")
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="pending", index=True)
+
+
+class PostPerformance(Base):
+    """Measured Telegram post metrics (views/forwards/reactions) at scheduled snapshots."""
+
+    __tablename__ = "post_performance"
+    __table_args__ = (
+        UniqueConstraint("draft_id", "snapshot_label", name="uq_post_perf_draft_snapshot"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    draft_id: Mapped[int | None] = mapped_column(
+        ForeignKey("drafts.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    telegram_post_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    channel_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    snapshot_label: Mapped[str] = mapped_column(String(16), nullable=False, default="t0")
+    snapshot_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    views: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    forwards: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    reactions_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    subscribers_at_snapshot: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    engagement_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    virality_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    primary_source: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    topic_bucket: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    publish_hour_local: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    extras_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+
+
+class ChannelAudienceSnapshot(Base):
+    """Subscriber count time series for growth delta tracking."""
+
+    __tablename__ = "channel_audience_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    channel_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    member_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    delta_24h: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    delta_7d: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class SourceRegistryEntry(Base):
+    """Curated source metadata for tiered polling and probation."""
+
+    __tablename__ = "source_registry"
+    __table_args__ = (UniqueConstraint("handle", name="uq_source_registry_handle"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    handle: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    tier: Mapped[str] = mapped_column(String(8), nullable=False, default="T2", index=True)
+    vertical: Mapped[str] = mapped_column(String(32), nullable=False, default="general", index=True)
+    poll_interval_sec: Mapped[int] = mapped_column(Integer, nullable=False, default=900)
+    trust_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.72)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="active", index=True)
+    probation_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_poll_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    fail_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    extras_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

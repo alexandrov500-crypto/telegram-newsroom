@@ -166,13 +166,13 @@ def split_headline_and_body(clean_text: str) -> tuple[str, str]:
         from app.editorial.public_post_template import normalize_lead_emoji
 
         blob = normalize_lead_emoji(blob)
-        words = blob.split()
-        if len(words) >= 8:
-            split_at = min(12, max(6, len(words) // 3))
-            hl = clean_headline(" ".join(words[:split_at]))
-            body = " ".join(words[split_at:]).strip() or blob
-            return hl, body
-        return clean_headline(blob), ""
+        # «Спикер: тезис» — headline only before the colon; never split mid-sentence by word count.
+        if ":" in blob:
+            head, _, tail = blob.partition(":")
+            head, tail = head.strip(), tail.strip()
+            if head and tail and len(head) <= _public_headline_max() and len(tail) >= 24:
+                return clean_headline(head), tail
+        return "", blob
     headline = clean_headline(filtered[0])
     body = "\n\n".join(filtered[1:]).strip()
     return headline, body

@@ -23,7 +23,9 @@ async def _async_main() -> None:
 
     settings = load_settings()
     await init_worker_stack(settings)
-    bot = Bot(settings.bot_token, parse_mode=ParseMode.HTML)
+    from app.telegram_bot import create_newsroom_bot
+
+    bot = create_newsroom_bot(settings)
     registry = build_publisher_registry()
     rt = WorkerRuntime(
         settings,

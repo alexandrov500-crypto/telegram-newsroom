@@ -484,59 +484,52 @@ def _floor_enabled() -> bool:
 
 
 async def select_floor_publish_candidate(settings: Any, session: Any) -> dict[str, Any] | None:
-    """Guaranteed publishing floor.
+    """Guaranteed publishing floor (W1 safe mode).
 
     When the channel has been silent past the hard ceiling, pick the best
-    *trustworthy* pending draft to force-publish in safety-only mode. This is
-    intentionally independent of the experimental ranking/quality stack so that
-    no algorithm change can keep the channel silent. Safety is still enforced
-    downstream by the safety-only final gate (advertising, governance, trust).
+    pending draft that passes ``evaluate_floor_eligibility`` (premium policy,
+    no truncation, min 2 sentences). Floor does **not** bypass the premium
+    final publish gate — only cadence/leadership bypass applies downstream.
 
     Returns ``{"draft_id": int, "minutes_since": float, ...}`` or ``None``.
     """
     if not _floor_enabled() or not auto_publish_enabled():
         return None
     try:
-        from app.editorial.content_quality import has_hidden_advertising, is_publishably_informative
+        from app.ops.floor_eligibility import evaluate_floor_eligibility
         from app.publisher.draft_builder import polish_channel_post
-        from db.repository import list_pending_drafts, list_recent_quality_failed_drafts
+        from db.repository import list_pending_drafts
 
         stall = await detect_publish_stall_risk(settings, session)
         minutes_since = float(stall.get("minutes_since_last_published") or 0.0)
         if minutes_since < _floor_max_silence_min():
             return None
-        pending = await list_pending_drafts(session, limit=25)
-        # Fall back to the freshest quality-failed drafts (e.g. OpenAI down →
-        # rule-fallback summaries judged "low-signal") so the channel never goes
-        # dark when no clean pending draft exists. Safety is re-checked by the
-        # safety-only final gate at publish time.
-        quality_failed = await list_recent_quality_failed_drafts(session, limit=15)
-        # Most recent first; prefer fresh pending over reopened failed drafts.
-        candidates = sorted(
-            list(pending) + list(quality_failed),
-            key=lambda d: int(getattr(d, "id", 0)),
-            reverse=True,
-        )
+        pending = await list_pending_drafts(session, limit=40)
+        candidates = sorted(pending, key=lambda d: int(getattr(d, "id", 0)), reverse=True)
         if not candidates:
+            log_event(logger, "publish_floor.no_eligible_candidate", minutes_since=minutes_since)
             return None
-        seen: set[int] = set()
+        best: dict[str, Any] | None = None
+        best_score = -1.0
         for draft in candidates:
             did = int(getattr(draft, "id", 0))
-            if did in seen:
-                continue
-            seen.add(did)
             body = polish_channel_post(str(draft.content or ""), max_chars=8000)
-            if not body or has_hidden_advertising(body):
+            sources_json = str(getattr(draft, "sources", "") or "")
+            verdict = evaluate_floor_eligibility(body, sources_json=sources_json)
+            if not verdict.eligible:
                 continue
-            if not is_publishably_informative(body, min_chars=80, min_sentences=1):
-                continue
-            return {
-                "draft_id": did,
-                "minutes_since": round(minutes_since, 2),
-                "pending_backlog": stall.get("pending_backlog"),
-                "incoming_raw_flow_30m": stall.get("incoming_raw_flow_30m"),
-            }
-        return None
+            if verdict.score > best_score:
+                best_score = verdict.score
+                best = {
+                    "draft_id": did,
+                    "minutes_since": round(minutes_since, 2),
+                    "floor_score": verdict.score,
+                    "pending_backlog": stall.get("pending_backlog"),
+                    "incoming_raw_flow_30m": stall.get("incoming_raw_flow_30m"),
+                }
+        if best is None:
+            log_event(logger, "publish_floor.no_eligible_candidate", minutes_since=minutes_since)
+        return best
     except Exception as exc:
         log_event(logger, "publish_floor.select_failed", error=repr(exc)[:200])
         return None

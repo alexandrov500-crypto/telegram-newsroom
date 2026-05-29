@@ -67,9 +67,9 @@ def _session_for_hour(hour: int) -> CadenceSession:
 
 def _daily_cap() -> int:
     try:
-        return max(6, min(20, int(os.getenv("GROWTH_CADENCE_DAILY_CAP", "8"))))
+        return max(6, min(50, int(os.getenv("GROWTH_CADENCE_DAILY_CAP", "20"))))
     except ValueError:
-        return 8
+        return 20
 
 
 def now_in_newsroom_tz(newsroom_tz: str | None = None) -> datetime:

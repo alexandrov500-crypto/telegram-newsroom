@@ -38,7 +38,9 @@ async def _publish_draft(ctx: HandlerContext, job: JobEnvelope) -> None:
     idem_s = str(idem) if idem is not None else None
     bot = ctx.bot
     if bot is None:
-        bot = Bot(ctx.settings.bot_token, parse_mode=ParseMode.HTML)
+        from app.telegram_bot import create_newsroom_bot
+
+        bot = create_newsroom_bot(ctx.settings)
     res = await execute_admin_publication_flow(bot, ctx.settings, draft_id, idempotency_key=idem_s)
     log_event(
         logger,

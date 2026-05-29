@@ -8,6 +8,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 
@@ -314,7 +315,8 @@ async def _execute_admin_publication_flow_impl(
     bypass_leadership = (
         bypass_leadership or debug_bypass_publish_gates(settings) or recovery_pub or floor_publish or operator_override
     )
-    safety_only_gate = floor_publish or operator_override
+    # W1: floor must NOT bypass premium editorial gate — operator override only.
+    safety_only_gate = operator_override and not floor_publish
 
     try:
         from app.reliability.publish_watchdog import check_publish_watchdog
@@ -880,6 +882,53 @@ async def _execute_admin_publication_flow_impl(
             draft_id=draft_id,
             channel_message_id=first_id,
         )
+        try:
+            from app.analytics.telegram_stats import enqueue_post_for_tracking
+            from app.editorial.cadence_dynamic import record_publish_for_cadence
+
+            primary_source = ""
+            topic_bucket = "general"
+            try:
+                src_parsed = json.loads(sources or "[]")
+                if isinstance(src_parsed, list) and src_parsed:
+                    s0 = src_parsed[0]
+                    if isinstance(s0, dict):
+                        primary_source = str(s0.get("channel") or "")
+            except (json.JSONDecodeError, TypeError):
+                pass
+            try:
+                ex = json.loads(extras_json or "{}")
+                if isinstance(ex, dict):
+                    topic_bucket = str(
+                        ex.get("category")
+                        or (ex.get("editorial_tags") or {}).get("category")
+                        or topic_bucket
+                    )
+            except (json.JSONDecodeError, TypeError):
+                pass
+            tz = getattr(settings, "newsroom_timezone", None) or "Europe/Moscow"
+            hour_local = 0
+            try:
+                from zoneinfo import ZoneInfo
+
+                hour_local = datetime.now(ZoneInfo(tz)).hour
+            except Exception:
+                pass
+            await enqueue_post_for_tracking(
+                draft_id=int(draft_id),
+                telegram_post_id=int(first_id),
+                channel_id=int(getattr(settings, "channel_id", 0) or 0),
+                primary_source=primary_source,
+                topic_bucket=topic_bucket,
+                publish_hour_local=hour_local,
+            )
+            record_publish_for_cadence(
+                runtime_dir=settings.runtime_state_dir,
+                topic_bucket=topic_bucket,
+                newsroom_tz=tz,
+            )
+        except Exception as exc:
+            logger.warning("analytics/cadence post-publish hook skipped: %s", exc)
         try:
             from app.observability.execution_graph_trace import record_publish_success
 

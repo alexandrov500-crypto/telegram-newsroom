@@ -80,6 +80,41 @@ def test_formatter_no_irrelevant_ai_hashtag_on_debt_story() -> None:
     assert "#AI" not in html
 
 
+def test_formatter_no_macro_hashtags_on_kazakhstan_transport_story() -> None:
+    body = (
+        "Путин находится в Казахстане с государственным визитом.\n\n"
+        "Одной из ключевых тем проходящих переговоров будут совместные проекты РФ и Казахстана "
+        "в области транспорта и логистики, прежде всего, МТК «Север – Юг». "
+        "В 2025 году объем контейнерных перевозок по железной дороге в южном направлении вырос на 60%, "
+        "а средние сроки доставки сократились с 33 до 16 дней. "
+        "Кроме того, Москва и Астана развивают трансконтинентальный ж/д маршрут Китай – Европа."
+    )
+    out = format_public_post_plain(body, '[{"channel": "@vedofon"}]', include_cta=False)
+    assert "#Fed" not in out
+    assert "#Rates" not in out
+    assert "#Inflation" not in out
+
+
+def test_finalize_draft_repairs_truncated_putin_leading_name() -> None:
+    from app.publisher.draft_builder import finalize_draft_content
+
+    out = finalize_draft_content("утин находится в Казахстане с государственным визитом.")
+    assert out.startswith("Путин")
+
+
+def test_formatter_strips_ellipsis_teaser_and_skips_geo_hashtags() -> None:
+    body = (
+        "Владимир Путин: Народы России и Армении связывают узы дружбы и особых отношений: "
+        "- Сказал Пашиняну что все, что хорошо для армянского…"
+    )
+    out = format_public_post_plain(body, '[{"channel": "@cb_economics"}]', include_cta=False)
+    assert "…" not in out
+    assert "армянского" not in out
+    assert "связывают узы дружбы" in out
+    assert "#Russia" not in out
+    assert "связывают\nузы" not in out
+
+
 def test_formatter_no_redundant_hook_duplicating_headline() -> None:
     html = format_public_post_html(
         "ЦБ повысил ставку на 100 б.п. Это усиливает давление на кредитование.",

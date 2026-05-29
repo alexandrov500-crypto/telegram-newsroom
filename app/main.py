@@ -371,6 +371,34 @@ async def main() -> None:
                 settings.operational_report_interval_hours,
             )
 
+        if os.getenv("TELEGRAM_ANALYTICS_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on"):
+            from app.analytics.scheduler_jobs import run_analytics_tick
+
+            analytics_min = max(5, int(os.getenv("TELEGRAM_ANALYTICS_INTERVAL_MIN", "15")))
+            scheduler.add_job(
+                run_analytics_tick,
+                "interval",
+                minutes=analytics_min,
+                args=[ctx],
+                id="telegram_analytics",
+                replace_existing=True,
+            )
+            logger.info("Telegram analytics poll every %s minutes", analytics_min)
+
+        if os.getenv("BREAKING_LANE_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on"):
+            from app.lanes.breaking_pipeline import run_breaking_tick
+
+            breaking_min = max(1, int(os.getenv("BREAKING_LANE_INTERVAL_MIN", "3")))
+            scheduler.add_job(
+                run_breaking_tick,
+                "interval",
+                minutes=breaking_min,
+                args=[ctx],
+                id="breaking_lane",
+                replace_existing=True,
+            )
+            logger.info("Breaking lane tick every %s minutes", breaking_min)
+
         # 5–6) Lane workers (fast/standard) then start scheduler pipeline
         if execution_profile.lane_workers_enabled:
             try:
