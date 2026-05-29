@@ -271,6 +271,43 @@ async def list_pending_drafts(session: AsyncSession, *, limit: int = 50, offset:
     return list(rows)
 
 
+async def list_recent_quality_failed_drafts(
+    session: AsyncSession, *, limit: int = 15
+) -> list[Draft]:
+    """Recently-failed drafts blocked by editorial *quality* gates (not safety).
+
+    Used only by the guaranteed publishing floor: when no clean pending draft is
+    available (e.g. OpenAI is down and every fresh fallback summary is judged
+    "low-signal"), the floor may still ship the freshest of these in safety-only
+    mode so the channel never goes dark. Content-safety reasons (advertising,
+    governance, language leaks) are excluded here and re-checked downstream.
+    """
+    safety_markers = (
+        "advertis",
+        "governance",
+        "cjk",
+        "language",
+        "trust",
+        "rumor",
+        "contradiction",
+    )
+    stmt = (
+        select(Draft)
+        .where(Draft.status == DraftStatus.FAILED.value)
+        .where(Draft.last_publish_error.like("final_gate:%"))
+        .order_by(Draft.id.desc())
+        .limit(max(1, min(limit, 100)))
+    )
+    rows = (await session.execute(stmt)).scalars().all()
+    out: list[Draft] = []
+    for d in rows:
+        err = (d.last_publish_error or "").lower()
+        if any(marker in err for marker in safety_markers):
+            continue
+        out.append(d)
+    return out
+
+
 def _channels_from_sources_json(sources: str | None) -> list[str]:
     if not sources:
         return []

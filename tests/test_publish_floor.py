@@ -78,3 +78,60 @@ def test_floor_silence_threshold_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PUBLISH_FLOOR_MAX_SILENCE_MIN", "5")
     # Clamped to a sane minimum.
     assert ap._floor_max_silence_min() == 30.0
+
+
+def test_floor_falls_back_to_quality_failed_draft(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When no clean pending draft exists, the floor must reach into recent
+    quality-failed drafts (e.g. fallback summaries judged 'low-signal') so the
+    channel never goes dark, picking the freshest viable one."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from app.ops import autonomous_publish as ap
+
+    monkeypatch.setenv("PUBLISH_FLOOR_ENABLED", "true")
+    monkeypatch.setenv("AUTO_PUBLISH_ENABLED", "true")
+    monkeypatch.setenv("PUBLISH_FLOOR_MAX_SILENCE_MIN", "90")
+
+    fresh = SimpleNamespace(
+        id=72,
+        content=(
+            "Пашинян анонсировал строительство транзитного газопровода через территорию Армении. "
+            "Премьер-министр Армении заявил, что за транзит страна будет получать газ."
+        ),
+    )
+
+    async def _stall(*_a, **_k):
+        return {"minutes_since_last_published": 120.0, "pending_backlog": 0, "incoming_raw_flow_30m": 0}
+
+    async def _no_pending(*_a, **_k):
+        return []
+
+    async def _quality_failed(*_a, **_k):
+        return [fresh]
+
+    monkeypatch.setattr(ap, "auto_publish_enabled", lambda: True)
+    monkeypatch.setattr(ap, "detect_publish_stall_risk", _stall)
+    monkeypatch.setattr("db.repository.list_pending_drafts", _no_pending)
+    monkeypatch.setattr("db.repository.list_recent_quality_failed_drafts", _quality_failed)
+
+    async def _run() -> None:
+        out = await ap.select_floor_publish_candidate(settings=object(), session=object())
+        assert out is not None
+        assert out["draft_id"] == 72
+
+    asyncio.run(_run())
+
+
+def test_rule_fallback_keeps_drafts_flowing_when_openai_down(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When OpenAI is unavailable, the rule-based summarizer must keep producing
+    drafts so the channel never runs dry on fresh content."""
+    import app.reliability.summarize_fallback as sf
+
+    # Isolate from real desk-starvation / burn-in runtime state.
+    monkeypatch.setattr(sf, "_starvation_fallback_active", lambda: False)
+    monkeypatch.setenv("SUMMARIZE_RULE_FALLBACK_WHEN_AI_DOWN", "true")
+    assert sf._rule_fallback_when_ai_down() is True
+    assert sf.fallback_allowed(bypass=False, minimal_mode=False) is True
+    monkeypatch.setenv("SUMMARIZE_RULE_FALLBACK_WHEN_AI_DOWN", "false")
+    assert sf._rule_fallback_when_ai_down() is False

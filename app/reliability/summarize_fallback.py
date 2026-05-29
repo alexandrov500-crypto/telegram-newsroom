@@ -33,10 +33,39 @@ def _starvation_fallback_active() -> bool:
         return False
 
 
-def fallback_allowed(*, bypass: bool, minimal_mode: bool) -> bool:
+def _rule_fallback_when_ai_down() -> bool:
+    """Reliability flag: keep producing drafts via the rule-based summarizer
+    whenever OpenAI is unavailable, so the channel never runs dry on fresh
+    content (algorithm/provider outages can't stall the publishing pipeline).
+    Default on; set SUMMARIZE_RULE_FALLBACK_WHEN_AI_DOWN=false to require OpenAI.
+    """
+    import os
+
+    return os.getenv("SUMMARIZE_RULE_FALLBACK_WHEN_AI_DOWN", "true").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def fallback_allowed(*, bypass: bool, minimal_mode: bool, cluster: list[Any] | None = None, settings: Any | None = None) -> bool:
+    if cluster and settings is not None:
+        from app.editorial.source_languages import (
+            cluster_source_language,
+            publish_output_language,
+            requires_translation,
+        )
+
+        src = cluster_source_language(cluster, settings)
+        out = publish_output_language(settings)
+        if requires_translation(src, out):
+            return False
     if bypass or minimal_mode:
         return True
     if _starvation_fallback_active():
+        return True
+    if _rule_fallback_when_ai_down():
         return True
     try:
         from app.editorial.burnin_governance import burnin_openai_always_fallback
@@ -79,6 +108,32 @@ async def summarize_openai_or_fallback(
     from app.openai_circuit import get_openai_circuit
 
     if not ai_gate_open:
+        from app.editorial.source_languages import (
+            cluster_source_language,
+            publish_output_language,
+            requires_translation,
+        )
+
+        src = cluster_source_language(cluster, settings)
+        out = publish_output_language(settings)
+        if requires_translation(src, out):
+            from app.editorial.translate_fallback import translate_cluster_posts
+
+            translated = await translate_cluster_posts(cluster, settings)
+            if translated:
+                sc = rule_fallback_summary(translated, settings, recovery="zh_translate_fallback")
+                record_summarize_path(ai_status="zh_translate_fallback")
+                return SummarizePathResult(summary=sc, ai_status="zh_translate_fallback", rejected=False)
+            if not fallback_allowed(bypass=bypass, minimal_mode=minimal_mode, cluster=cluster, settings=settings):
+                reason = f"translation_required_no_openai:{src}->{out}"
+                apply_forced_reject_idle(ctx, reason)
+                record_summarize_path(ai_status="translation_required")
+                return SummarizePathResult(summary=None, ai_status="translation_required", rejected=True)
+        elif not fallback_allowed(bypass=bypass, minimal_mode=minimal_mode, cluster=cluster, settings=settings):
+            reason = f"fallback_blocked_ai_gate_closed:{src}->{out}"
+            apply_forced_reject_idle(ctx, reason)
+            record_summarize_path(ai_status="fallback_blocked")
+            return SummarizePathResult(summary=None, ai_status="fallback_blocked", rejected=True)
         sc = rule_fallback_summary(cluster, settings, recovery="ai_gate_closed")
         record_summarize_path(ai_status="skipped_fallback")
         return SummarizePathResult(summary=sc, ai_status="skipped_fallback", rejected=False)
@@ -107,8 +162,25 @@ async def summarize_openai_or_fallback(
             note_openai_failure(settings, reason=str(exc))
         except Exception:
             pass
+        from app.editorial.source_languages import (
+            cluster_source_language,
+            publish_output_language,
+            requires_translation,
+        )
+
+        src = cluster_source_language(cluster, settings)
+        out = publish_output_language(settings)
+        if requires_translation(src, out):
+            from app.editorial.translate_fallback import translate_cluster_posts
+
+            translated = await translate_cluster_posts(cluster, settings)
+            if translated:
+                sc = rule_fallback_summary(translated, settings, recovery="zh_translate_fallback")
+                log_event(logger, "openai.summarize_failed", error=str(exc), recovery="zh_translate_fallback")
+                record_summarize_path(ai_status="failed_zh_translate_fallback")
+                return SummarizePathResult(summary=sc, ai_status="failed_zh_translate_fallback", rejected=False)
         starvation = _starvation_fallback_active()
-        if fallback_allowed(bypass=bypass, minimal_mode=minimal_mode) or starvation:
+        if fallback_allowed(bypass=bypass, minimal_mode=minimal_mode, cluster=cluster, settings=settings) or starvation:
             recovery = "rule_fallback_starvation" if starvation else "rule_fallback"
             sc = rule_fallback_summary(cluster, settings, recovery=recovery)
             status = "failed_fallback_starvation" if starvation else "failed_fallback"
@@ -122,7 +194,7 @@ async def summarize_openai_or_fallback(
         return SummarizePathResult(summary=None, ai_status="failed", rejected=True)
 
     if sc is None:
-        if bypass or fallback_allowed(bypass=False, minimal_mode=minimal_mode):
+        if bypass or fallback_allowed(bypass=False, minimal_mode=minimal_mode, cluster=cluster, settings=settings):
             sc = rule_fallback_summary(cluster, settings, recovery="empty_model_fallback")
             return SummarizePathResult(summary=sc, ai_status="skipped_fallback", rejected=False)
         apply_forced_reject_idle(ctx, "ai_summarization:no_summarizer_result")

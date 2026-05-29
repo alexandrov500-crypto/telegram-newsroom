@@ -499,25 +499,39 @@ async def select_floor_publish_candidate(settings: Any, session: Any) -> dict[st
     try:
         from app.editorial.content_quality import has_hidden_advertising, is_publishably_informative
         from app.publisher.draft_builder import polish_channel_post
-        from db.repository import list_pending_drafts
+        from db.repository import list_pending_drafts, list_recent_quality_failed_drafts
 
         stall = await detect_publish_stall_risk(settings, session)
         minutes_since = float(stall.get("minutes_since_last_published") or 0.0)
         if minutes_since < _floor_max_silence_min():
             return None
         pending = await list_pending_drafts(session, limit=25)
-        if not pending:
+        # Fall back to the freshest quality-failed drafts (e.g. OpenAI down →
+        # rule-fallback summaries judged "low-signal") so the channel never goes
+        # dark when no clean pending draft exists. Safety is re-checked by the
+        # safety-only final gate at publish time.
+        quality_failed = await list_recent_quality_failed_drafts(session, limit=15)
+        # Most recent first; prefer fresh pending over reopened failed drafts.
+        candidates = sorted(
+            list(pending) + list(quality_failed),
+            key=lambda d: int(getattr(d, "id", 0)),
+            reverse=True,
+        )
+        if not candidates:
             return None
-        # Prefer the most recent draft that reads as a finished, ad-free story.
-        ranked = sorted(pending, key=lambda d: int(getattr(d, "id", 0)), reverse=True)
-        for draft in ranked:
+        seen: set[int] = set()
+        for draft in candidates:
+            did = int(getattr(draft, "id", 0))
+            if did in seen:
+                continue
+            seen.add(did)
             body = polish_channel_post(str(draft.content or ""), max_chars=8000)
             if not body or has_hidden_advertising(body):
                 continue
             if not is_publishably_informative(body, min_chars=80, min_sentences=1):
                 continue
             return {
-                "draft_id": int(draft.id),
+                "draft_id": did,
                 "minutes_since": round(minutes_since, 2),
                 "pending_backlog": stall.get("pending_backlog"),
                 "incoming_raw_flow_30m": stall.get("incoming_raw_flow_30m"),
