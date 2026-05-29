@@ -57,7 +57,15 @@ def test_breaking_bypasses_cadence_caps(tmp_path) -> None:
     assert reason == "breaking_immediate"
 
 
-def test_signature_line_matches_session() -> None:
+def test_signature_line_disabled_by_default(monkeypatch) -> None:
+    monkeypatch.delenv("GROWTH_SIGNATURE_ENABLED", raising=False)
+    tz = ZoneInfo("Europe/Moscow")
+    sig = signature_line_for_now(now_local=datetime(2026, 5, 28, 20, 0, tzinfo=tz))
+    assert sig == ""
+
+
+def test_signature_line_matches_session_when_enabled(monkeypatch) -> None:
+    monkeypatch.setenv("GROWTH_SIGNATURE_ENABLED", "true")
     tz = ZoneInfo("Europe/Moscow")
     sig = signature_line_for_now(now_local=datetime(2026, 5, 28, 20, 0, tzinfo=tz))
     assert sig == "Closing Bell"

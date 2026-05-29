@@ -64,6 +64,32 @@ _ME_RE = re.compile(r"(middle\s*east|ближн.*восток|iran|israel|gaza)"
 logger = logging.getLogger(__name__)
 
 
+def _flag(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _normalize_for_compare(text: str) -> str:
+    return re.sub(r"[^\w]+", " ", (text or "").lower()).strip()
+
+
+def _hook_duplicates_headline(hook: str, headline: str) -> bool:
+    """A hook that merely restates the headline adds no value."""
+    h = _normalize_for_compare(headline)
+    k = _normalize_for_compare(re.sub(r"^[^:]+:\s*", "", hook or ""))
+    if not h or not k:
+        return False
+    if h in k or k in h:
+        return True
+    hw = set(h.split())
+    kw = set(k.split())
+    if len(hw) < 3:
+        return False
+    return len(hw & kw) / len(hw) >= 0.7
+
+
 def _parse_source_channels(sources: str | list[dict[str, Any]] | None) -> list[str]:
     if isinstance(sources, list):
         return [str(r.get("channel") or "") for r in sources if isinstance(r, dict) and r.get("channel")]
@@ -154,20 +180,28 @@ def _lead_sentence(text: str, *, max_len: int = 140) -> str:
     return lead[:max_len].rstrip()
 
 
-def _engagement_hook(summary: str, bucket: str) -> str:
+def _engagement_hook(summary: str, bucket: str, *, headline: str = "") -> str:
+    # Off by default: the hook restated the lead sentence (≈ the headline),
+    # producing a redundant "Ключевой факт: <тот же заголовок>" line.
+    if not _flag("NEWSROOM_ENGAGEMENT_HOOK_ENABLED", False):
+        return ""
     lead = _lead_sentence(summary, max_len=130)
     if not lead:
         return ""
     lead = lead.rstrip(".!? ").strip()
     if bucket == "macro":
-        return f"Главное для экономики: {lead}."
-    if bucket == "crypto":
-        return f"Ключевой сигнал для крипторынка: {lead}."
-    if bucket == "geo":
-        return f"Что важно в геоповестке: {lead}."
-    if bucket == "market":
-        return f"Что это значит для рынка: {lead}."
-    return f"Ключевой факт: {lead}."
+        hook = f"Главное для экономики: {lead}."
+    elif bucket == "crypto":
+        hook = f"Ключевой сигнал для крипторынка: {lead}."
+    elif bucket == "geo":
+        hook = f"Что важно в геоповестке: {lead}."
+    elif bucket == "market":
+        hook = f"Что это значит для рынка: {lead}."
+    else:
+        hook = f"Ключевой факт: {lead}."
+    if headline and _hook_duplicates_headline(hook, headline):
+        return ""
+    return hook
 
 
 def _adaptive_cta_line(bucket: str) -> str:
@@ -190,11 +224,11 @@ def _stable_mod(text: str, n: int) -> int:
 def _smart_hashtags(text: str, bucket: str, *, runtime_dir: str | None = None) -> list[str]:
     if os.getenv("NEWSROOM_HASHTAGS_ENABLED", "true").strip().lower() not in {"1", "true", "yes", "on"}:
         return []
-    max_tags = 3
+    max_tags = 2
     try:
-        max_tags = max(1, min(3, int(os.getenv("NEWSROOM_HASHTAGS_MAX", "3"))))
+        max_tags = max(1, min(2, int(os.getenv("NEWSROOM_HASHTAGS_MAX", "2"))))
     except ValueError:
-        max_tags = 3
+        max_tags = 2
     t = text or ""
     candidates: list[str] = []
     pairs = [
@@ -219,8 +253,8 @@ def _smart_hashtags(text: str, bucket: str, *, runtime_dir: str | None = None) -
     for tag, rx in pairs:
         if rx.search(t):
             candidates.append(tag)
-    if bucket == "macro" and "#Macro" not in candidates:
-        candidates.append("#Macro")
+    # No bucket-derived fallback tags: a hashtag must reflect a term that
+    # literally appears in the post, otherwise it confuses the reader.
     uniq: list[str] = []
     seen: set[str] = set()
     for tag in candidates:
@@ -252,6 +286,10 @@ def _open_loop_line(
     runtime_dir: str | None = None,
     text: str = "",
 ) -> str:
+    # Off by default: these were English templated lines that broke the
+    # reading flow on a Russian channel and often had no link to the story.
+    if not _flag("NEWSROOM_OPEN_LOOP_ENABLED", False):
+        return ""
     if engagement_score < 0.62:
         return ""
     if runtime_dir:
@@ -284,6 +322,9 @@ def _open_loop_line(
 
 
 def _adaptive_brand_footer(text: str, engagement_score: float) -> str:
+    # Off by default: English brand taglines added noise without reader value.
+    if not _flag("NEWSROOM_BRAND_FOOTER_ENABLED", False):
+        return ""
     if engagement_score < 0.72:
         return ""
     if _stable_mod(text, 3) != 0:
@@ -331,7 +372,7 @@ def format_public_post_plain(
     if story.headline:
         parts.append(story.headline)
     if story.summary:
-        hook = _engagement_hook(story.summary, bucket)
+        hook = _engagement_hook(story.summary, bucket, headline=story.headline)
         if hook:
             parts.append(hook)
             parts.append("")
@@ -409,10 +450,10 @@ def format_public_post_html(
     if attr.strip_urls_from_body:
         polished = strip_raw_urls(polished)
     use_cta = tuning.structure.include_cta if include_cta is None else include_cta
-    hook = ""
     bucket = _story_bucket(polished)
     score = _engagement_score(polished, bucket)
-    hook = _engagement_hook(polished, bucket)
+    _hl_for_hook, _ = split_headline_and_body(polished)
+    hook = _engagement_hook(polished, bucket, headline=_hl_for_hook)
     tags = _smart_hashtags(polished, bucket, runtime_dir=runtime_dir)
     open_loop = _open_loop_line(bucket, score, runtime_dir=runtime_dir, text=polished)
     brand_footer = _adaptive_brand_footer(polished, score)

@@ -87,7 +87,9 @@ def resolve_cadence_session(*, now_local: datetime | None = None, newsroom_tz: s
 
 
 def signature_line_for_now(*, now_local: datetime | None = None, newsroom_tz: str | None = None) -> str:
-    if os.getenv("GROWTH_SIGNATURE_ENABLED", "true").strip().lower() not in {"1", "true", "yes", "on"}:
+    # Off by default: the English column labels ("Alpha Flow", "Market Pulse"…)
+    # appeared as a bare line above the headline and confused readers.
+    if os.getenv("GROWTH_SIGNATURE_ENABLED", "false").strip().lower() not in {"1", "true", "yes", "on"}:
         return ""
     return resolve_cadence_session(now_local=now_local, newsroom_tz=newsroom_tz).signature
 

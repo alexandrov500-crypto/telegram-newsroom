@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from app.editorial.public_post_formatter import format_public_post_plain
+import re
+
+from app.editorial.public_post_formatter import format_public_post_html, format_public_post_plain
 from app.editorial.source_attribution import resolve_source_attribution
 
 
@@ -35,9 +37,66 @@ def test_formatter_no_tabloid_markers() -> None:
     assert "шокирующ" not in out.lower()
 
 
-def test_formatter_default_no_cta() -> None:
+def test_formatter_default_includes_cta() -> None:
     out = format_public_post_plain("Заголовок\n\nТекст новости.", '[{"channel": "@cb_economics"}]')
-    assert "Подписывайтесь" not in out
+    assert "Подписывайтесь" in out
+
+
+def test_formatter_adaptive_cta_for_crypto() -> None:
+    out = format_public_post_plain(
+        "Крипторынок оживился после запуска нового ETF на биткоин.\n\nОбъемы выросли.",
+        '[{"channel": "@decenter"}]',
+    )
+    assert "крипторынок" in out.lower()
+
+
+def test_formatter_no_signature_label_by_default() -> None:
+    html = format_public_post_html(
+        "Сбер не видит проблем у РЖД с обслуживанием долга почти на 3,5 трлн рублей. "
+        "В банке говорят, что угрозы для обязательств компании нет.",
+        '[{"channel": "@cb_economics"}]',
+    )
+    for label in ("Alpha Flow", "Market Pulse", "Closing Bell", "5-Minute Macro"):
+        assert label not in html
+
+
+def test_formatter_no_english_open_loop_by_default() -> None:
+    html = format_public_post_html(
+        "Сбер не видит проблем у РЖД с обслуживанием долга почти на 3,5 трлн рублей. "
+        "В банке говорят, что угрозы для обязательств компании нет.",
+        '[{"channel": "@cb_economics"}]',
+    )
+    for phrase in ("rally continues", "Traders now focus", "Watch closely", "risk-on continues"):
+        assert phrase not in html
+
+
+def test_formatter_no_irrelevant_ai_hashtag_on_debt_story() -> None:
+    html = format_public_post_html(
+        "Сбер не видит проблем у РЖД с обслуживанием долга почти на 3,5 трлн рублей. "
+        "В банке говорят, что угрозы для обязательств компании нет.",
+        '[{"channel": "@cb_economics"}]',
+        include_cta=False,
+    )
+    assert "#AI" not in html
+
+
+def test_formatter_no_redundant_hook_duplicating_headline() -> None:
+    html = format_public_post_html(
+        "ЦБ повысил ставку на 100 б.п. Это усиливает давление на кредитование.",
+        '[{"channel": "@cb_economics"}]',
+    )
+    assert "Ключевой факт:" not in html
+    assert "Главное для экономики:" not in html
+
+
+def test_formatter_finishes_cut_off_thought() -> None:
+    out = format_public_post_plain(
+        "Сбер не видит проблем у РЖД. В банке говорят, что угрозы для обязательств компании нет:",
+        '[{"channel": "@cb_economics"}]',
+        include_cta=False,
+    )
+    assert ":…" not in out
+    assert "нет:" not in out
 
 
 def test_formatter_scrubs_json_from_body() -> None:
@@ -45,3 +104,24 @@ def test_formatter_scrubs_json_from_body() -> None:
     out = format_public_post_plain(body, "[]")
     assert "JSON" not in out
     assert "channel" not in out
+
+
+def test_formatter_adds_smart_hashtags_macro() -> None:
+    out = format_public_post_plain(
+        "Fed сохранила ставку, но инфляция остается выше целевого уровня.\n\n"
+        "Рынок оценивает траекторию доходностей и влияние на доллар.",
+        '[{"channel": "@cb_economics"}]',
+        include_cta=False,
+    )
+    tags = re.findall(r"#\w+", out)
+    assert any(t in tags for t in ("#Fed", "#Inflation", "#Rates", "#Macro"))
+    assert len(tags) <= 3
+
+
+def test_formatter_html_includes_hashtags_when_relevant() -> None:
+    html = format_public_post_html(
+        "NVIDIA поднимает прогноз, а рынок чипов ускоряет AI-капекс цикл.",
+        '[{"channel": "@cb_economics"}]',
+        include_cta=False,
+    )
+    assert "#AI" in html or "#NVIDIA" in html or "#Semiconductors" in html

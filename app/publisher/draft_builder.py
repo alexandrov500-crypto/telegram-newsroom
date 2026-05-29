@@ -218,7 +218,32 @@ def polish_channel_post(body: str, *, max_chars: int = 2800) -> str:
         clean = complete_story_text(clean, max_chars=max_chars)
     if len(clean) > max_chars:
         clean = complete_story_text(clean, max_chars=max_chars)
+    clean = _finish_thought(clean)
     return clean.strip()
+
+
+def _finish_thought(text: str) -> str:
+    """Remove a dangling clause opener and ensure a terminal sentence mark.
+
+    A body ending in «… компании нет:» or «… потому что,» is a cut-off
+    thought. Drop the trailing connector/colon and, if the remaining text is a
+    complete clause, close it with a period so it reads as a finished sentence.
+    """
+    t = (text or "").rstrip()
+    if not t:
+        return t
+    t = re.sub(r"(\.\.\.|…)$", "", t).rstrip()
+    # Trailing colon / dash / conjunction signals an unfinished continuation.
+    t = re.sub(
+        r"[\s,;:–—-]*\b(и|или|а|но|потому что|поскольку|так как|что|чтобы)\s*$",
+        "",
+        t,
+        flags=re.I,
+    ).rstrip()
+    t = re.sub(r"[\s,;:–—-]+$", "", t).rstrip()
+    if t and t[-1] not in ".!?…":
+        t = f"{t}."
+    return t
 
 
 def finalize_draft_content(body: str, *, max_chars: int = 2800) -> str:

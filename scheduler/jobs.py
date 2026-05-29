@@ -43,8 +43,10 @@ from db.repository import (
     draft_duplicate_intel,
     draft_should_be_skipped_as_duplicate,
     fetch_recent_drafts_for_dedupe,
+    fetch_recent_published_for_dedupe,
     fetch_unprocessed_raw_posts,
     get_draft_by_id,
+    mark_raw_posts_processed,
     merge_draft_extras,
     list_due_scheduled_draft_ids,
     utcnow,
@@ -1004,6 +1006,64 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
         return
 
     used_posts = [id_to_post[i] for i in used_ids]
+    from app.editorial.source_languages import text_violates_output_language, translation_context_for_cluster
+
+    tctx = translation_context_for_cluster(used_posts, settings)
+    # Hard guarantee: for multilingual sources (e.g. zh->ru), do not create a draft
+    # if summarize output still contains CJK leakage.
+    if tctx.get("translation_required") and text_violates_output_language(
+        post_text,
+        output_language=str(tctx.get("output_language") or "ru"),
+    ):
+        from app.editorial.translate_fallback import translate_zh_to_ru
+        from app.publisher.draft_builder import finalize_draft_content, polish_channel_post
+
+        lead_text = str((used_posts[0].text if used_posts else "") or post_text or "")
+        fixed_ru = await translate_zh_to_ru(lead_text)
+        if fixed_ru and not text_violates_output_language(
+            fixed_ru,
+            output_language=str(tctx.get("output_language") or "ru"),
+        ):
+            post_text = polish_channel_post(fixed_ru, max_chars=settings.max_post_chars)
+            post_text = finalize_draft_content(post_text, max_chars=settings.max_post_chars)
+            log_event(
+                logger,
+                "scheduler.translation_recovered_fallback",
+                source_language=tctx.get("source_language"),
+                output_language=tctx.get("output_language"),
+            )
+        else:
+            skipped_ids = sorted({int(p.id) for p in used_posts if getattr(p, "id", None) is not None})
+            if skipped_ids:
+                try:
+                    async with session_scope() as session:
+                        await mark_raw_posts_processed(session, skipped_ids, utcnow())
+                    log_event(
+                        logger,
+                        "scheduler.translation_reject_marked_processed",
+                        skipped_raw_posts=len(skipped_ids),
+                        source_language=tctx.get("source_language"),
+                        output_language=tctx.get("output_language"),
+                    )
+                except Exception as exc:
+                    log_event(
+                        logger,
+                        "scheduler.translation_reject_mark_processed_failed",
+                        error=repr(exc)[:200],
+                        skipped_raw_posts=len(skipped_ids),
+                    )
+            ctx.tick_summarize_idle_reason = (
+                f"translation_failed_output_language:{tctx.get('source_language')}->{tctx.get('output_language')}"
+            )
+            log_event(
+                logger,
+                "scheduler.summarize_skipped",
+                reason=ctx.tick_summarize_idle_reason,
+                stage="post_openai",
+            )
+            log_event(logger, "summarize_exit", outcome="reject", reason=ctx.tick_summarize_idle_reason)
+            return
+
     sources_payload: list[dict[str, object]] = [
         {
             "channel": p.channel_name,
@@ -1033,12 +1093,16 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
         from app.editorial.compression_pipeline import build_compressed_draft_from_posts
         from app.publisher.draft_builder import format_single_source_draft
 
-        # One source → always readable blurb from raw text (ignore AI bullet markdown).
+        # One source → readable blurb; prefer translated summary for zh→ru clusters.
         if len(used_posts) == 1:
             p = used_posts[0]
+            if tctx.get("translation_required") and post_text:
+                src_text = str(post_text)
+            else:
+                src_text = str(p.text or post_text or "")
             compressed = format_single_source_draft(
                 {
-                    "text": str(p.text or post_text or ""),
+                    "text": src_text,
                     "source": str(p.channel_name or ""),
                     "message_id": int(p.message_id),
                 },
@@ -1072,6 +1136,108 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
             if (str(p.channel_name).strip(), int(p.message_id)) in keys
         }
     )
+    cadence_session_key = ""
+    cadence_signature = ""
+    cadence_decision_reason = ""
+
+    # Guardrail: never send placeholder/empty or truncated teasers to moderation.
+    from app.editorial.content_quality import is_publishably_informative
+
+    normalized_body = " ".join(str(draft_body or "").split()).strip()
+    if not is_publishably_informative(normalized_body, min_chars=60, min_sentences=2):
+        if raw_post_ids_for_db:
+            try:
+                async with session_scope() as session:
+                    await mark_raw_posts_processed(session, raw_post_ids_for_db, utcnow())
+            except Exception as exc:
+                log_event(
+                    logger,
+                    "scheduler.informative_reject_mark_processed_failed",
+                    error=repr(exc)[:200],
+                )
+        ctx.tick_summarize_idle_reason = "draft_not_informative_or_truncated"
+        log_event(
+            logger,
+            "scheduler.summarize_skipped",
+            reason=ctx.tick_summarize_idle_reason,
+            normalized_len=len(normalized_body),
+        )
+        log_event(logger, "summarize_exit", outcome="reject", reason=ctx.tick_summarize_idle_reason)
+        return
+
+    if normalized_body in {"News update.", "News update"} or len(normalized_body) < 20:
+        if raw_post_ids_for_db:
+            try:
+                async with session_scope() as session:
+                    await mark_raw_posts_processed(session, raw_post_ids_for_db, utcnow())
+            except Exception as exc:
+                log_event(
+                    logger,
+                    "scheduler.empty_draft_mark_processed_failed",
+                    error=repr(exc)[:200],
+                    skipped_raw_posts=len(raw_post_ids_for_db),
+                )
+        ctx.tick_summarize_idle_reason = "draft_too_short_or_placeholder"
+        log_event(
+            logger,
+            "scheduler.summarize_skipped",
+            reason=ctx.tick_summarize_idle_reason,
+            normalized_len=len(normalized_body),
+        )
+        log_event(
+            logger,
+            "summarize_exit",
+            outcome="reject",
+            reason=ctx.tick_summarize_idle_reason,
+        )
+        return
+
+    cadence_enabled = os.getenv("GROWTH_CADENCE_ENABLED", "true").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    if cadence_enabled and not bypass:
+        try:
+            from app.editorial.growth_cadence import allow_story_for_current_session
+
+            priority_score = float(getattr(escore, "final_priority_score", 0.0) or 0.0) if escore is not None else 0.0
+            is_breaking = bool(
+                (escore is not None and getattr(escore, "is_breaking", False))
+                or (desk is not None and getattr(desk, "breaking_override", False))
+            )
+            cadence_allowed, cadence_decision_reason, cadence_sess = allow_story_for_current_session(
+                runtime_dir=settings.runtime_state_dir,
+                priority_score=priority_score,
+                is_breaking=is_breaking,
+                newsroom_tz=settings.newsroom_timezone,
+            )
+            cadence_session_key = cadence_sess.key
+            cadence_signature = cadence_sess.signature
+            if not cadence_allowed:
+                if raw_post_ids_for_db:
+                    try:
+                        async with session_scope() as session:
+                            await mark_raw_posts_processed(session, raw_post_ids_for_db, utcnow())
+                    except Exception as exc:
+                        log_event(
+                            logger,
+                            "scheduler.cadence_reject_mark_processed_failed",
+                            error=repr(exc)[:200],
+                        )
+                ctx.tick_summarize_idle_reason = f"growth_cadence:{cadence_decision_reason}"
+                log_event(
+                    logger,
+                    "scheduler.summarize_skipped",
+                    reason=ctx.tick_summarize_idle_reason,
+                    session=cadence_session_key,
+                    priority_score=priority_score,
+                )
+                log_event(logger, "summarize_exit", outcome="reject", reason=ctx.tick_summarize_idle_reason)
+                return
+        except Exception as exc:
+            log_event(logger, "growth_cadence.evaluate_failed", error=repr(exc)[:200])
 
     observe_draft_quality(
         logger,
@@ -1083,6 +1249,9 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
         content_hash=content_hash,
     )
     dedupe_since = utcnow() - timedelta(hours=settings.draft_dedupe_window_hours)
+    published_dedupe_since = utcnow() - timedelta(
+        hours=float(os.getenv("PUBLISHED_DEDUPE_WINDOW_HOURS", "96"))
+    )
 
     t_dbw = time.perf_counter()
     editorial_intel: dict[str, object] | None = None
@@ -1141,6 +1310,44 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
         if skip and bypass:
             log_event(logger, "draft.duplicate_bypass_debug", reason=reason, cluster_id=fp)
 
+        # Do not send Russian duplicates to moderation if similar content was already published.
+        from app.editorial.source_languages import LANG_RU, detect_text_language
+
+        if detect_text_language(draft_body) == LANG_RU:
+            recent_published = await fetch_recent_published_for_dedupe(
+                session,
+                limit=64,
+                not_older_than=published_dedupe_since,
+            )
+            pub_threshold = float(
+                os.getenv("PUBLISHED_DUPLICATE_SIMILARITY_THRESHOLD", str(settings.draft_similarity_threshold))
+            )
+            pub_skip, pub_reason = draft_should_be_skipped_as_duplicate(
+                new_content=draft_body,
+                new_hash=content_hash,
+                recent=recent_published,
+                similarity_threshold=max(0.5, min(pub_threshold, 0.999)),
+            )
+            if pub_skip:
+                await mark_raw_posts_processed(session, raw_post_ids_for_db, utcnow())
+                inc("skipped_duplicates")
+                ctx.duplicate_skipped_this_tick = True
+                ctx.tick_summarize_idle_reason = f"published_duplicate:{pub_reason[:120]}"
+                log_event(
+                    logger,
+                    "draft.skipped_published_duplicate",
+                    reason=pub_reason,
+                    hash_prefix=content_hash[:12],
+                )
+                log_event(
+                    logger,
+                    "summarize_exit",
+                    outcome="reject",
+                    reason=ctx.tick_summarize_idle_reason,
+                )
+                ctx.tick_timings["db_draft_sec"] = time.perf_counter() - t_dbw
+                return
+
         log_event(logger, "draft_insert_started", cluster_id=fp, content_hash_prefix=content_hash[:12])
         draft = await create_draft_and_mark_posts_processed(
             session,
@@ -1157,6 +1364,13 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
         )
         await merge_draft_extras(session, draft_id, {"quality": scores})
         await merge_draft_extras(session, draft_id, correlation_fields_for_draft())
+        from app.editorial.source_languages import translation_context_for_cluster
+
+        await merge_draft_extras(
+            session,
+            draft_id,
+            translation_context_for_cluster(used_posts, settings),
+        )
         from publisher.draft_media import lead_media_from_raw_posts
         from publisher.media_pipeline import enrich_draft_media
 
@@ -1187,6 +1401,18 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
                 "media_fallback": False,
             }
         await merge_draft_extras(session, draft_id, _ai_exec_patch)
+        if cadence_enabled:
+            await merge_draft_extras(
+                session,
+                draft_id,
+                {
+                    "growth_cadence": {
+                        "session": cadence_session_key,
+                        "signature": cadence_signature,
+                        "decision_reason": cadence_decision_reason or "allowed",
+                    }
+                },
+            )
         ed_card = compute_editorial_score_card(
             draft_text=draft_body,
             raw_posts=used_posts,
@@ -1288,6 +1514,51 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
         inf_tags = tag_payload.get("inferred_tags") or []
         if not isinstance(inf_tags, list):
             inf_tags = []
+        narrative_intel: dict[str, Any] | None = None
+        if escore is not None:
+            try:
+                from app.editorial.intelligence.trend_memory import (
+                    evaluate_narrative_strategy,
+                    observe_narrative_event,
+                )
+                from app.editorial.signal_ranking import rank_story_signal
+
+                _chans = [
+                    str(s.get("channel") or "")
+                    for s in sources_payload
+                    if isinstance(s, dict) and str(s.get("channel") or "").strip()
+                ]
+                _cat = str(tag_payload.get("category") or "general")
+                _signal = rank_story_signal(
+                    draft_body,
+                    escore,
+                    sources=_chans,
+                    runtime_dir=settings.runtime_state_dir,
+                    category=_cat,
+                )
+                narrative_intel = evaluate_narrative_strategy(
+                    settings.runtime_state_dir,
+                    text=draft_body,
+                    category=_cat,
+                )
+                narrative_intel["cluster_key"] = _signal.narrative_cluster or narrative_intel.get("cluster_key")
+                narrative_intel["signal_priority_multiplier"] = _signal.priority_multiplier
+                observe_narrative_event(
+                    settings.runtime_state_dir,
+                    text=draft_body,
+                    category=_cat,
+                    repost_rate=_signal.repost_probability,
+                    forward_velocity=_signal.forwardability,
+                    open_retention=min(1.0, _signal.narrative_strength * 0.6 + _signal.repost_probability * 0.4),
+                    reaction_density=_signal.reaction_potential,
+                    quoteability=_signal.quoteability,
+                    screenshot_probability=_signal.screenshotability,
+                    engagement_longevity=min(1.0, _signal.novelty * 0.5 + _signal.shareability * 0.5),
+                    hashtags=[str(t) for t in inf_tags[:3]],
+                    hook_variant=f"{_cat}_default",
+                )
+            except Exception as exc:
+                log_event(logger, "narrative_trend.observe_failed", error=repr(exc)[:200])
         await merge_draft_extras(
             session,
             draft_id,
@@ -1306,6 +1577,7 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
                 "priority": pri,
                 "breaking": brk,
                 "title_suggestions": titles,
+                "narrative_intelligence": narrative_intel or {},
             },
         )
         if brk.get("is_breaking"):
@@ -1603,6 +1875,7 @@ async def _scheduled_publish_step_impl(ctx: PipelineContext) -> None:
     bot = ctx.bot
     async with session_scope() as session:
         ids = await list_due_scheduled_draft_ids(session, limit=3)
+    autonomous_publish_ids: set[int] = set()
     starvation_auto_publish = os.getenv("DESK_STARVATION_AUTO_PUBLISH", "true").strip().lower() in (
         "1",
         "true",
@@ -1610,13 +1883,34 @@ async def _scheduled_publish_step_impl(ctx: PipelineContext) -> None:
     )
     if not ids:
         try:
-            from app.ops.autonomous_publish import try_auto_schedule_one_pending
+            from app.ops.autonomous_publish import detect_publish_stall_risk, try_auto_schedule_one_pending
 
             async with session_scope() as session:
-                auto_did = await try_auto_schedule_one_pending(settings, session)
-                if auto_did:
+                try:
+                    stall = await detect_publish_stall_risk(settings, session)
+                    if stall.get("level") == "high":
+                        log_event(
+                            logger,
+                            "publish.stall_alert",
+                            level="high",
+                            minutes_since_last_published=stall.get("minutes_since_last_published"),
+                            pending_backlog=stall.get("pending_backlog"),
+                            incoming_raw_flow_30m=stall.get("incoming_raw_flow_30m"),
+                        )
+                except Exception as exc:
+                    log_event(logger, "publish.stall_check_failed", error=repr(exc)[:200])
+                max_auto = int(os.getenv("AUTO_PUBLISH_MAX_SCHEDULE_PER_TICK", "2").strip() or "2")
+                max_auto = max(1, min(5, max_auto))
+                picked: list[int] = []
+                for _ in range(max_auto):
+                    auto_did = await try_auto_schedule_one_pending(settings, session)
+                    if not auto_did or auto_did in autonomous_publish_ids:
+                        break
+                    picked.append(auto_did)
+                    autonomous_publish_ids.add(auto_did)
+                if picked:
                     await session.commit()
-                    ids = [auto_did]
+                    ids = picked
         except Exception as exc:
             log_event(logger, "auto_publish.schedule_failed", error=repr(exc)[:200])
     if starvation_auto_publish and not ids:
@@ -1633,6 +1927,7 @@ async def _scheduled_publish_step_impl(ctx: PipelineContext) -> None:
                             await schedule_draft_publish(session, did, when=utcnow())
                             await session.commit()
                             ids = [did]
+                            autonomous_publish_ids.add(did)
                             log_event(
                                 logger,
                                 "desk.starvation_auto_publish",
@@ -1649,12 +1944,13 @@ async def _scheduled_publish_step_impl(ctx: PipelineContext) -> None:
         if pending:
             ids = [int(pending[0].id)]
     for did in ids:
+        bypass = publish_bypass or did in autonomous_publish_ids
         res = await execute_admin_publication_flow(
             bot,
             settings,
             did,
-            bypass_cadence=publish_bypass,
-            bypass_leadership=publish_bypass,
+            bypass_cadence=bypass,
+            bypass_leadership=bypass,
         )
         if res.outcome is PublishFlowOutcome.OK:
             ctx.tick_publish_outcome = f"ok:draft_id={did}:message_id={res.channel_message_id}"
@@ -1703,12 +1999,14 @@ async def run_operational_heartbeat(ctx: PipelineContext) -> None:
         from app.reliability.auto_maintenance import evaluate_auto_maintenance
         from app.reliability.failed_draft_recovery import run_failed_draft_retry_batch
         from app.reliability.pipeline_watchdog import run_pipeline_watchdog
+        from app.reliability.stuck_publishing_recovery import recover_stuck_publishing_batch
         from app.reliability.sqlite_ops import run_sqlite_integrity_check
 
         from app.reliability.invariants import run_heartbeat_invariant_checks
 
         await run_heartbeat_invariant_checks(ctx.settings)
         await run_pipeline_watchdog(ctx.settings, collector_enabled=ctx.collector_enabled)
+        await recover_stuck_publishing_batch(ctx.settings, limit=8)
         from app.observability.runtime_protection import retry_batch_limit
 
         await run_failed_draft_retry_batch(

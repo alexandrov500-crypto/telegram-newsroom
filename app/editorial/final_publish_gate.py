@@ -125,10 +125,13 @@ def evaluate_final_publish_gate(
         )
         teaser_block = is_incomplete_teaser(plain_core) and is_incomplete_teaser(quality_text)
         if teaser_block or not informative:
+            # Recoverable, NOT permanent: a render/formatting hiccup must not
+            # silently drain the queue and stall the channel. The draft stays
+            # pending so a later tick (after sanitation) can re-attempt it.
             v = FinalPublishGateVerdict(
                 allowed=False,
-                manual_review_required=False,
-                permanent_block=True,
+                manual_review_required=True,
+                permanent_block=False,
                 reason="incomplete_public_template",
             )
             log_gate_decision(draft_id=draft_id, verdict=v)
