@@ -14,7 +14,8 @@ from typing import Any
 from sqlalchemy import select
 
 from app.sources.registry import breaking_source_handles, load_active_source_handles
-from collector.telethon_client import build_telethon_client, connect_telethon_resilient
+from collector.telethon_client import build_telethon_client
+from collector.telethon_connect import connect_telethon_resilient
 from db.models import RawPost
 from db.session import session_scope
 from utils.structured_log import log_event
