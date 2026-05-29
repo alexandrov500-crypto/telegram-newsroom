@@ -9,7 +9,8 @@ from pathlib import Path
 from sqlalchemy import func, select
 
 from app.analytics.telegram_stats import poll_pending_post_metrics, purge_old_analytics, snapshot_channel_audience
-from collector.telethon_client import build_telethon_client, connect_telethon_resilient
+from collector.telethon_client import build_telethon_client
+from collector.telethon_connect import connect_telethon_resilient
 from db.models import PostPerformance
 from db.session import session_scope
 from utils.structured_log import log_event
