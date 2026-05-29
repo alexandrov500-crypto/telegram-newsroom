@@ -66,10 +66,19 @@ def evaluate_final_publish_gate(
     settings: Settings | None = None,
     operator_approved: bool = False,
     draft_id: int | None = None,
+    safety_only: bool = False,
 ) -> FinalPublishGateVerdict:
     """
     REJECT: low trust, sensational tone, governance auto-block, public output lock violation.
     MANUAL: geopolitics, rumors, soft launch, newsroom_product flag.
+
+    ``safety_only`` (publishing-floor mode): enforce ONLY content-safety checks
+    (real body, advertising, output language, governance, tone, source trust,
+    HTML guards, rumor/contradiction) and skip the editorial/cosmetic/marketing
+    quality gates (template completeness, premium signal policy, discretionary
+    review). This guarantees the channel can keep publishing trustworthy items
+    even when experimental ranking/quality changes would otherwise reject every
+    draft — algorithm tuning can never silence the channel.
     """
     if bypass_final_publish_gate():
         v = FinalPublishGateVerdict(
@@ -98,6 +107,21 @@ def evaluate_final_publish_gate(
         log_gate_decision(draft_id=draft_id, verdict=v)
         return v
 
+    # Output-language safety runs first (applies in safety-only floor mode too):
+    # a CJK leak is a hard content-safety failure, not a cosmetic issue.
+    from app.editorial.source_languages import publish_output_language, text_violates_output_language
+
+    out_lang = publish_output_language(settings)
+    if text_violates_output_language(text, output_language=out_lang):
+        v = FinalPublishGateVerdict(
+            allowed=False,
+            manual_review_required=True,
+            permanent_block=False,
+            reason="output_language_cjk_leak",
+        )
+        log_gate_decision(draft_id=draft_id, verdict=v, extra={"output_language": out_lang})
+        return v
+
     try:
         rendered = build_channel_message_html(text, sources, draft_id=draft_id or 0, runtime_dir=runtime_dir)
         from app.editorial.content_quality import (
@@ -124,31 +148,32 @@ def evaluate_final_publish_gate(
             is_publishably_informative(quality_text, min_chars=90, min_sentences=2)
         )
         teaser_block = is_incomplete_teaser(plain_core) and is_incomplete_teaser(quality_text)
-        if teaser_block or not informative:
-            # Recoverable, NOT permanent: a render/formatting hiccup must not
-            # silently drain the queue and stall the channel. The draft stays
-            # pending so a later tick (after sanitation) can re-attempt it.
-            v = FinalPublishGateVerdict(
-                allowed=False,
-                manual_review_required=True,
-                permanent_block=False,
-                reason="incomplete_public_template",
-            )
-            log_gate_decision(draft_id=draft_id, verdict=v)
-            return v
-        core_informative = is_publishably_informative(plain_core, min_chars=90, min_sentences=2)
-        policy_text = plain_core if core_informative else quality_text
-        if not passes_premium_newsroom_policy(policy_text) and not (
-            policy_text is plain_core and passes_premium_newsroom_policy(quality_text)
-        ):
-            v = FinalPublishGateVerdict(
-                allowed=False,
-                manual_review_required=False,
-                permanent_block=True,
-                reason="premium_policy_low_signal",
-            )
-            log_gate_decision(draft_id=draft_id, verdict=v)
-            return v
+        if not safety_only:
+            if teaser_block or not informative:
+                # Recoverable, NOT permanent: a render/formatting hiccup must not
+                # silently drain the queue and stall the channel. The draft stays
+                # pending so a later tick (after sanitation) can re-attempt it.
+                v = FinalPublishGateVerdict(
+                    allowed=False,
+                    manual_review_required=True,
+                    permanent_block=False,
+                    reason="incomplete_public_template",
+                )
+                log_gate_decision(draft_id=draft_id, verdict=v)
+                return v
+            core_informative = is_publishably_informative(plain_core, min_chars=90, min_sentences=2)
+            policy_text = plain_core if core_informative else quality_text
+            if not passes_premium_newsroom_policy(policy_text) and not (
+                policy_text is plain_core and passes_premium_newsroom_policy(quality_text)
+            ):
+                v = FinalPublishGateVerdict(
+                    allowed=False,
+                    manual_review_required=False,
+                    permanent_block=True,
+                    reason="premium_policy_low_signal",
+                )
+                log_gate_decision(draft_id=draft_id, verdict=v)
+                return v
     except Exception as exc:
         v = FinalPublishGateVerdict(
             allowed=False,
@@ -161,19 +186,6 @@ def evaluate_final_publish_gate(
             verdict=v,
             extra={"error": repr(exc)[:120]},
         )
-        return v
-
-    from app.editorial.source_languages import publish_output_language, text_violates_output_language
-
-    out_lang = publish_output_language(settings)
-    if text_violates_output_language(text, output_language=out_lang):
-        v = FinalPublishGateVerdict(
-            allowed=False,
-            manual_review_required=True,
-            permanent_block=False,
-            reason="output_language_cjk_leak",
-        )
-        log_gate_decision(draft_id=draft_id, verdict=v, extra={"output_language": out_lang})
         return v
 
     chans = _parse_channels(sources)
@@ -198,59 +210,60 @@ def evaluate_final_publish_gate(
     escore = score_story(text=text, sources=chans, runtime_dir=runtime_dir)
     trust = evaluate_editorial_trust(text, escore, sources=chans, runtime_dir=runtime_dir)
 
-    from app.editorial.trust_mode import evaluate_trust_mode
+    if not safety_only:
+        from app.editorial.trust_mode import evaluate_trust_mode
 
-    tm = evaluate_trust_mode(
-        text,
-        sources=chans,
-        runtime_dir=runtime_dir,
-        settings=settings,
-        operator_approved=operator_approved,
-    )
-    if not tm.allowed:
-        v = FinalPublishGateVerdict(
-            allowed=False,
-            manual_review_required=tm.manual_review_required,
-            permanent_block=tm.permanent_block,
-            reason=f"trust_mode:{tm.reason}",
-            trust_score=trust.trust_score,
+        tm = evaluate_trust_mode(
+            text,
+            sources=chans,
+            runtime_dir=runtime_dir,
+            settings=settings,
+            operator_approved=operator_approved,
         )
-        log_gate_decision(draft_id=draft_id, verdict=v, extra={"trust_mode": tm.to_dict()})
-        return v
+        if not tm.allowed:
+            v = FinalPublishGateVerdict(
+                allowed=False,
+                manual_review_required=tm.manual_review_required,
+                permanent_block=tm.permanent_block,
+                reason=f"trust_mode:{tm.reason}",
+                trust_score=trust.trust_score,
+            )
+            log_gate_decision(draft_id=draft_id, verdict=v, extra={"trust_mode": tm.to_dict()})
+            return v
 
-    from app.editorial.publication_risk_score import score_publication_risk
+        from app.editorial.publication_risk_score import score_publication_risk
 
-    risk = score_publication_risk(text, sources=chans, runtime_dir=runtime_dir)
-    if risk.mandatory_review and not operator_approved:
-        v = FinalPublishGateVerdict(
-            allowed=False,
-            manual_review_required=True,
-            permanent_block=False,
-            reason=f"publication_risk:{risk.score:.2f}",
-            trust_score=trust.trust_score,
+        risk = score_publication_risk(text, sources=chans, runtime_dir=runtime_dir)
+        if risk.mandatory_review and not operator_approved:
+            v = FinalPublishGateVerdict(
+                allowed=False,
+                manual_review_required=True,
+                permanent_block=False,
+                reason=f"publication_risk:{risk.score:.2f}",
+                trust_score=trust.trust_score,
+            )
+            log_gate_decision(draft_id=draft_id, verdict=v, extra={"risk": risk.to_dict()})
+            return v
+
+        from app.editorial.staging_mode import evaluate_staging_publish_gate
+
+        staging = evaluate_staging_publish_gate(
+            sources=chans,
+            runtime_dir=runtime_dir,
+            settings=settings,
+            operator_approved=operator_approved,
+            draft_id=draft_id,
         )
-        log_gate_decision(draft_id=draft_id, verdict=v, extra={"risk": risk.to_dict()})
-        return v
-
-    from app.editorial.staging_mode import evaluate_staging_publish_gate
-
-    staging = evaluate_staging_publish_gate(
-        sources=chans,
-        runtime_dir=runtime_dir,
-        settings=settings,
-        operator_approved=operator_approved,
-        draft_id=draft_id,
-    )
-    if not staging.allowed:
-        v = FinalPublishGateVerdict(
-            allowed=False,
-            manual_review_required=staging.manual_review_required,
-            permanent_block=False,
-            reason=f"staging:{staging.reason}",
-            trust_score=trust.trust_score,
-        )
-        log_gate_decision(draft_id=draft_id, verdict=v, extra={"staging": staging.to_dict()})
-        return v
+        if not staging.allowed:
+            v = FinalPublishGateVerdict(
+                allowed=False,
+                manual_review_required=staging.manual_review_required,
+                permanent_block=False,
+                reason=f"staging:{staging.reason}",
+                trust_score=trust.trust_score,
+            )
+            log_gate_decision(draft_id=draft_id, verdict=v, extra={"staging": staging.to_dict()})
+            return v
 
     if trust.rumor_risk >= 0.65 and len(set(chans)) < 2:
         return FinalPublishGateVerdict(
@@ -304,7 +317,7 @@ def evaluate_final_publish_gate(
         or is_soft_launch_mode()
     )
 
-    if manual and not operator_approved:
+    if manual and not operator_approved and not safety_only:
         reason = "manual_review_required"
         if is_soft_launch_mode():
             reason = "soft_launch_manual_review"

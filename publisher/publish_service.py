@@ -72,6 +72,7 @@ async def publish_allowed_final_check(
     draft_id: int,
     idempotency_key: str,
     draft_extras_json: str | None,
+    operator_approved: bool = False,
 ) -> tuple[bool, str]:
     from app.ops.execution_gates import evaluate_publish_gate
     from app.ops.live_rollback import rollback_active
@@ -110,9 +111,9 @@ async def publish_allowed_final_check(
         window_ticks=graph_window,
     )
     graph_ok = float(eg.get("consistency_rate") or 0) >= 1.0 or int(eg.get("trace_samples") or 0) < 3
-    if not graph_ok and not starvation_recovery:
+    if not graph_ok and not starvation_recovery and not operator_approved:
         return False, "execution_graph_inconsistent"
-    if not graph_ok and starvation_recovery:
+    if not graph_ok and (starvation_recovery or operator_approved):
         log_event(
             logger,
             "publish.final_gate_starvation_bypass",
@@ -120,6 +121,7 @@ async def publish_allowed_final_check(
             recovery="execution_graph_check_skipped",
             consistency_rate=eg.get("consistency_rate"),
             trace_samples=eg.get("trace_samples"),
+            operator_approved=operator_approved,
         )
 
     # QA mode safety rule: require moderation chat configured.
@@ -231,6 +233,8 @@ async def execute_admin_publication_flow(
     idempotency_key: str | None = None,
     bypass_cadence: bool = False,
     bypass_leadership: bool = False,
+    floor_publish: bool = False,
+    operator_override: bool = False,
 ) -> AdminPublishDraftResult:
     """Publication entry — enforced via pipeline execution wrapper."""
     from scheduler.runtime_context import get_pipeline_context
@@ -246,6 +250,8 @@ async def execute_admin_publication_flow(
             idempotency_key=idempotency_key,
             bypass_cadence=bypass_cadence,
             bypass_leadership=bypass_leadership,
+            floor_publish=floor_publish,
+            operator_override=operator_override,
         )
 
     out = await execute_pipeline_publish(ctx, draft_id=draft_id, publish_fn=_run)
@@ -265,9 +271,21 @@ async def _execute_admin_publication_flow_impl(
     idempotency_key: str | None = None,
     bypass_cadence: bool = False,
     bypass_leadership: bool = False,
+    floor_publish: bool = False,
+    operator_override: bool = False,
 ) -> AdminPublishDraftResult:
     """
     Worker-ready publication: state transitions, optional idempotency, publish lock, Telegram send.
+
+    ``floor_publish`` is the guaranteed publishing floor: it bypasses cadence /
+    leadership and runs the final gate in safety-only mode so a trustworthy
+    item ships even when editorial/marketing experiments would reject every
+    draft. Content-safety checks (advertising, governance, trust) still apply.
+
+    ``operator_override`` is an explicit human Publish action: the operator is
+    the editor-in-chief, so an editorial rejection must not be a dead end. It
+    re-opens a rejected/failed draft and runs the gate in safety-only mode
+    (advertising/governance/trust still enforced).
     """
     from app.state.pipeline_execution_wrapper import require_pipeline_wrapper_active
 
@@ -284,23 +302,38 @@ async def _execute_admin_publication_flow_impl(
     tx_id = new_publish_tx_id()
     idem_key = idempotency_key or f"draft:{draft_id}"
     publish_attempt = await _publish_attempt_number(draft_id)
+
+    from app.pipeline_debug import debug_bypass_publish_gates, pipeline_debug_active
+    from app.recovery.pipeline_overrides import is_force_publish_bypass, is_minimal_pipeline_mode
+
+    debug_pub = pipeline_debug_active(settings)
+    recovery_pub = is_minimal_pipeline_mode() or is_force_publish_bypass()
+    bypass_cadence = (
+        bypass_cadence or debug_bypass_publish_gates(settings) or recovery_pub or floor_publish or operator_override
+    )
+    bypass_leadership = (
+        bypass_leadership or debug_bypass_publish_gates(settings) or recovery_pub or floor_publish or operator_override
+    )
+    safety_only_gate = floor_publish or operator_override
+
     try:
         from app.reliability.publish_watchdog import check_publish_watchdog
 
-        wd = await check_publish_watchdog(draft_id)
-        if not wd.allowed:
-            log_event(
-                logger,
-                "publish.watchdog_blocked",
-                draft_id=draft_id,
-                reason=wd.reason,
-                retry_count=wd.retry_count,
-            )
-            inc("publish_watchdog_blocked_total")
-            return AdminPublishDraftResult(
-                PublishFlowOutcome.APPROVE_DENIED,
-                error=wd.reason,
-            )
+        if not bypass_cadence:
+            wd = await check_publish_watchdog(draft_id)
+            if not wd.allowed:
+                log_event(
+                    logger,
+                    "publish.watchdog_blocked",
+                    draft_id=draft_id,
+                    reason=wd.reason,
+                    retry_count=wd.retry_count,
+                )
+                inc("publish_watchdog_blocked_total")
+                return AdminPublishDraftResult(
+                    PublishFlowOutcome.APPROVE_DENIED,
+                    error=wd.reason,
+                )
     except Exception:
         pass
     trace_timer = PublishTraceTimer()
@@ -311,12 +344,6 @@ async def _execute_admin_publication_flow_impl(
         idempotency_key=idem_key,
         tx_id=tx_id,
     )
-    from app.recovery.pipeline_overrides import is_force_publish_bypass, is_minimal_pipeline_mode
-
-    debug_pub = pipeline_debug_active(settings)
-    recovery_pub = is_minimal_pipeline_mode() or is_force_publish_bypass()
-    bypass_cadence = bypass_cadence or debug_bypass_publish_gates(settings) or recovery_pub
-    bypass_leadership = bypass_leadership or debug_bypass_publish_gates(settings) or recovery_pub
     if recovery_pub:
         log_event(
             logger,
@@ -486,6 +513,7 @@ async def _execute_admin_publication_flow_impl(
         draft_id=draft_id,
         idempotency_key=idem_key,
         draft_extras_json="",
+        operator_approved=bypass_cadence,
     )
     if not final_ok:
         cnt = _record_final_gate_block(settings.runtime_state_dir, final_reason)
@@ -535,8 +563,29 @@ async def _execute_admin_publication_flow_impl(
             d = await get_draft_by_id(session, draft_id)
             if d is None:
                 return AdminPublishDraftResult(PublishFlowOutcome.MISSING)
-            if d.status == DraftStatus.FAILED.value:
+            if d.status == DraftStatus.REJECTED.value and operator_override:
+                from db.repository import reopen_rejected_draft_to_pending
+
+                await reopen_rejected_draft_to_pending(session, draft_id)
+                log_event(logger, "publish.operator_reopened_rejected", draft_id=draft_id)
+            elif d.status == DraftStatus.FAILED.value:
                 await reset_failed_draft_to_pending(session, draft_id)
+            elif d.status == DraftStatus.PUBLISHING.value and bypass_cadence:
+                from app.reliability.stuck_publishing_recovery import rollback_stale_publishing_draft
+
+                outcome = await rollback_stale_publishing_draft(
+                    session,
+                    draft_id,
+                    force=True,
+                )
+                if outcome == "reconciled":
+                    d2 = await get_draft_by_id(session, draft_id)
+                    if d2 and d2.status == DraftStatus.PUBLISHED.value:
+                        return AdminPublishDraftResult(
+                            PublishFlowOutcome.ALREADY_HANDLED,
+                            draft_content=d.content or "",
+                            draft_sources=d.sources or "",
+                        )
             try:
                 ex_obj = json.loads(d.draft_extras or "{}")
             except json.JSONDecodeError:
@@ -573,6 +622,7 @@ async def _execute_admin_publication_flow_impl(
                 settings=settings,
                 operator_approved=bypass_cadence,
                 draft_id=draft_id,
+                safety_only=safety_only_gate,
             )
             if not gate.allowed:
                 inc("final_publish_gate_blocked_total")
@@ -693,6 +743,7 @@ async def _execute_admin_publication_flow_impl(
                 sources=sources,
                 draft_extras_json=extras_json,
                 publish_attempt=publish_attempt,
+                bypass_rate_limit=bypass_cadence,
             )
         except BaseException as exc:
             logger.exception("Failed to publish draft %s: %s", draft_id, exc)

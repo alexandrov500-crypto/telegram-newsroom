@@ -559,6 +559,7 @@ async def cmd_approve(message: Message, bot: Bot, settings: Settings) -> None:
         draft_id,
         bypass_cadence=True,
         bypass_leadership=True,
+        operator_override=True,
     )
     if res.outcome is _PublishFlowOutcome.MISSING:
         await message.answer("Draft not found.")
@@ -918,6 +919,7 @@ async def on_retry_publish(callback: CallbackQuery, bot: Bot, settings: Settings
         draft_id,
         bypass_cadence=True,
         bypass_leadership=True,
+        operator_override=True,
     )
     if res.outcome is _PublishFlowOutcome.MISSING:
         await callback_ack(callback, "Draft missing", show_alert=True)
@@ -968,6 +970,7 @@ async def on_publish(callback: CallbackQuery, bot: Bot, settings: Settings) -> N
         draft_id,
         bypass_cadence=True,
         bypass_leadership=True,
+        operator_override=True,
     )
 
     if res.outcome is _PublishFlowOutcome.MISSING:
@@ -1258,34 +1261,52 @@ async def notify_admin_new_draft(
     keyboard = draft_actions_keyboard(draft_id, status=DraftStatus.PENDING.value)
     if media and Path(media["local_path"]).is_file():
         upload = FSInputFile(media["local_path"])
-        caption = html_body if len(html_body) <= SAFE_CHUNK else html_body[: SAFE_CHUNK - 20].rstrip() + "…"
+        # Photo/video captions: plain text only (HTML captions break on truncation).
+        short_caption = f"Draft #{draft_id} — на модерации"
         if media["media_type"] == "photo":
             mid = await send_channel_photo(
                 bot,
                 photo=upload,
                 chat_id=notify_chat,
-                caption=caption or None,
+                caption=short_caption,
                 draft_id=draft_id,
-                reply_markup=keyboard,
             )
         else:
             mid = await send_channel_video(
                 bot,
                 video=upload,
                 chat_id=notify_chat,
-                caption=caption or None,
+                caption=short_caption,
                 draft_id=draft_id,
-                reply_markup=keyboard,
             )
         async with session_scope() as session:
             await set_draft_admin_message(session, draft_id, int(mid))
-        if len(html_body) > SAFE_CHUNK:
-            await bot.send_message(
+        if len(html_body) <= SAFE_CHUNK:
+            msg = await bot.send_message(
                 chat_id=notify_chat,
-                text=html_body[SAFE_CHUNK - 20 :],
+                text=html_body,
                 parse_mode=ParseMode.HTML,
+                reply_markup=keyboard,
                 disable_web_page_preview=True,
             )
+            async with session_scope() as session:
+                await set_draft_admin_message(session, draft_id, int(msg.message_id))
+        else:
+            parts = split_telegram_text(html_body, respect_html=True)
+            last_id: int | None = None
+            for idx, part in enumerate(parts):
+                is_last = idx == len(parts) - 1
+                msg = await bot.send_message(
+                    chat_id=notify_chat,
+                    text=part,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=keyboard if is_last else None,
+                    disable_web_page_preview=True,
+                )
+                last_id = int(msg.message_id)
+            if last_id is not None:
+                async with session_scope() as session:
+                    await set_draft_admin_message(session, draft_id, last_id)
         log_event(logger, "draft.admin_notified", draft_id=draft_id, parts=1, with_media=True)
         return
     if len(html_body) <= SAFE_CHUNK:

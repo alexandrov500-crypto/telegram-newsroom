@@ -1943,14 +1943,41 @@ async def _scheduled_publish_step_impl(ctx: PipelineContext) -> None:
             pending = await list_pending_drafts(session, limit=1)
         if pending:
             ids = [int(pending[0].id)]
+    # Guaranteed publishing floor: when every normal path produced nothing and
+    # the channel has been silent past the hard ceiling, force one trustworthy
+    # post in safety-only mode so algorithm/editorial changes can never silence
+    # the channel for a prolonged period.
+    floor_publish_ids: set[int] = set()
+    if not ids:
+        try:
+            from app.ops.autonomous_publish import select_floor_publish_candidate
+
+            async with session_scope() as session:
+                cand = await select_floor_publish_candidate(settings, session)
+            if cand:
+                fid = int(cand["draft_id"])
+                ids = [fid]
+                floor_publish_ids.add(fid)
+                log_event(
+                    logger,
+                    "publish.floor_triggered",
+                    draft_id=fid,
+                    minutes_since_last_published=cand.get("minutes_since"),
+                    pending_backlog=cand.get("pending_backlog"),
+                    incoming_raw_flow_30m=cand.get("incoming_raw_flow_30m"),
+                )
+        except Exception as exc:
+            log_event(logger, "publish.floor_failed", error=repr(exc)[:200])
     for did in ids:
         bypass = publish_bypass or did in autonomous_publish_ids
+        is_floor = did in floor_publish_ids
         res = await execute_admin_publication_flow(
             bot,
             settings,
             did,
-            bypass_cadence=bypass,
-            bypass_leadership=bypass,
+            bypass_cadence=bypass or is_floor,
+            bypass_leadership=bypass or is_floor,
+            floor_publish=is_floor,
         )
         if res.outcome is PublishFlowOutcome.OK:
             ctx.tick_publish_outcome = f"ok:draft_id={did}:message_id={res.channel_message_id}"

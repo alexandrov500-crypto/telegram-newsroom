@@ -22,6 +22,44 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+async def _merge_raw_post_media_extras(
+    session: AsyncSession,
+    *,
+    raw_post_id: int,
+    extras_json: str,
+) -> None:
+    """Backfill media on an existing raw post when collector re-downloads attachments."""
+    try:
+        incoming = json.loads(extras_json or "{}")
+    except (json.JSONDecodeError, TypeError):
+        return
+    if not isinstance(incoming, dict):
+        return
+    new_media = incoming.get("media")
+    if not isinstance(new_media, dict) or not str(new_media.get("local_path") or "").strip():
+        return
+    row = await session.get(RawPost, raw_post_id)
+    if row is None:
+        return
+    try:
+        current = json.loads(row.extras or "{}")
+    except (json.JSONDecodeError, TypeError):
+        current = {}
+    if not isinstance(current, dict):
+        current = {}
+    existing_media = current.get("media")
+    if isinstance(existing_media, dict) and str(existing_media.get("local_path") or "").strip():
+        return
+    current["media"] = new_media
+    row.extras = json.dumps(current, ensure_ascii=False)
+    log_event(
+        logger,
+        "raw_post.media_backfilled",
+        raw_post_id=raw_post_id,
+        message_id=new_media.get("message_id"),
+    )
+
+
 async def upsert_raw_post(
     session: AsyncSession,
     *,
@@ -39,6 +77,11 @@ async def upsert_raw_post(
         )
     )
     if existing is not None:
+        await _merge_raw_post_media_extras(
+            session,
+            raw_post_id=int(existing),
+            extras_json=extras_json,
+        )
         return False
 
     session.add(
@@ -82,6 +125,24 @@ async def fetch_recent_drafts_for_dedupe(
     if not_older_than is not None:
         stmt = stmt.where(Draft.created_at >= not_older_than)
     stmt = stmt.order_by(Draft.created_at.desc()).limit(limit)
+    rows = (await session.execute(stmt)).all()
+    return [(str(c), str(h)) for c, h in rows]
+
+
+async def fetch_recent_published_for_dedupe(
+    session: AsyncSession,
+    *,
+    limit: int = 24,
+    not_older_than: datetime | None = None,
+) -> list[tuple[str, str]]:
+    stmt = (
+        select(Draft.content, Draft.content_hash)
+        .join(PublishedPost, PublishedPost.draft_id == Draft.id)
+        .order_by(PublishedPost.published_at.desc())
+        .limit(limit)
+    )
+    if not_older_than is not None:
+        stmt = stmt.where(PublishedPost.published_at >= not_older_than)
     rows = (await session.execute(stmt)).all()
     return [(str(c), str(h)) for c, h in rows]
 
@@ -445,6 +506,32 @@ async def reset_failed_draft_to_pending(session: AsyncSession, draft_id: int) ->
     if ok:
         log_event(logger, "draft.failed_reset_to_pending", draft_id=draft_id)
     return ok
+
+
+async def reopen_rejected_draft_to_pending(session: AsyncSession, draft_id: int) -> bool:
+    """REJECTED/FAILED -> PENDING for an explicit operator override.
+
+    The operator is the editor-in-chief: an editorial rejection must never be a
+    dead end. This lets a manual Publish action re-open the draft so it can be
+    approved and shipped (safety checks still apply downstream).
+    """
+    for from_status in (DraftStatus.REJECTED.value, DraftStatus.FAILED.value):
+        ok = await try_transition_draft_status(
+            session,
+            draft_id=draft_id,
+            from_status=from_status,
+            to_status=DraftStatus.PENDING.value,
+        )
+        if ok:
+            log_event(
+                logger,
+                "draft.operator_reopened_to_pending",
+                draft_id=draft_id,
+                from_status=from_status,
+            )
+            return True
+    d = await get_draft_by_id(session, draft_id)
+    return d is not None and d.status == DraftStatus.PENDING.value
 
 
 async def mark_draft_failed(session: AsyncSession, draft_id: int, *, reason: str = "") -> bool:
