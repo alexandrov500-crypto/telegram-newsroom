@@ -1242,6 +1242,16 @@ async def notify_admin_new_draft(
     editorial_intelligence: dict[str, object] | None = None,
     draft_extras_json: str | None = None,
 ) -> None:
+    from app.ops.autonomous_publish import autonomous_editorial_mode_enabled
+
+    if autonomous_editorial_mode_enabled():
+        log_event(
+            logger,
+            "draft.autonomous_skip_moderation_notify",
+            draft_id=draft_id,
+        )
+        return
+
     from pathlib import Path
 
     from aiogram.types import FSInputFile

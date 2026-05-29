@@ -1786,33 +1786,62 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
 
     t_no = time.perf_counter()
     try:
-        sources_display = json.dumps(sources_payload, ensure_ascii=False, indent=2)
-        await notify_admin_new_draft(
-            bot,
-            settings,
-            draft_id=draft_id,
-            content=draft_body,
-            sources=sources_display,
-            editorial_intelligence=editorial_intel if isinstance(editorial_intel, dict) else None,
-            draft_extras_json=extras_for_notify,
-        )
-        append_runtime_event(
-            "draft_pending_moderation",
-            message="queued_for_review",
-            draft_id=draft_id,
-        )
-        append_timeline_event(
-            settings.runtime_state_dir,
-            "draft_created",
-            {
-                "draft_id": draft_id,
-                "event_fingerprint": fp,
-                "topic_hint": identity.topic_hint,
-                "relevance_total": pipeline_decision.relevance.total,
-                "escalate": bool(pipeline_decision.escalate_priority),
-                "hold": bool(pipeline_decision.hold_for_review),
-            },
-        )
+        from app.ops.autonomous_publish import autonomous_editorial_mode_enabled, try_immediate_autonomous_publish
+
+        if autonomous_editorial_mode_enabled():
+            async with session_scope() as session:
+                scheduled = await try_immediate_autonomous_publish(
+                    settings,
+                    session,
+                    draft_id,
+                    openai_client=ctx.openai,
+                )
+                if scheduled:
+                    await session.commit()
+                    append_runtime_event(
+                        "draft_ai_approved_scheduled",
+                        message="autonomous_publish",
+                        draft_id=draft_id,
+                    )
+                    append_timeline_event(
+                        settings.runtime_state_dir,
+                        "draft_autonomous_scheduled",
+                        {"draft_id": draft_id},
+                    )
+                else:
+                    append_runtime_event(
+                        "draft_ai_review_pending",
+                        message="not_scheduled",
+                        draft_id=draft_id,
+                    )
+        else:
+            sources_display = json.dumps(sources_payload, ensure_ascii=False, indent=2)
+            await notify_admin_new_draft(
+                bot,
+                settings,
+                draft_id=draft_id,
+                content=draft_body,
+                sources=sources_display,
+                editorial_intelligence=editorial_intel if isinstance(editorial_intel, dict) else None,
+                draft_extras_json=extras_for_notify,
+            )
+            append_runtime_event(
+                "draft_pending_moderation",
+                message="queued_for_review",
+                draft_id=draft_id,
+            )
+            append_timeline_event(
+                settings.runtime_state_dir,
+                "draft_created",
+                {
+                    "draft_id": draft_id,
+                    "event_fingerprint": fp,
+                    "topic_hint": identity.topic_hint,
+                    "relevance_total": pipeline_decision.relevance.total,
+                    "escalate": bool(pipeline_decision.escalate_priority),
+                    "hold": bool(pipeline_decision.hold_for_review),
+                },
+            )
     except Exception as exc:
         logger.exception("Failed to notify admin about draft %s: %s", draft_id, exc)
         inc("admin_notify_failures")

@@ -318,22 +318,27 @@ def evaluate_final_publish_gate(
     )
 
     if manual and not operator_approved and not safety_only:
-        reason = "manual_review_required"
-        if is_soft_launch_mode():
-            reason = "soft_launch_manual_review"
-        elif trust.manual_review_required:
-            reason = f"trust_manual:{','.join(trust.reasons[:2]) or 'low_corroboration'}"
-        elif gov.manual_review:
-            reason = f"governance_manual:{gov.reason}"
-        v = FinalPublishGateVerdict(
-            allowed=False,
-            manual_review_required=True,
-            permanent_block=False,
-            reason=reason,
-            trust_score=trust.trust_score,
-        )
-        log_gate_decision(draft_id=draft_id, verdict=v, extra={"trust": trust.to_dict(), "gov": gov.reason})
-        return v
+        from app.editorial.ai_editorial_reviewer import extras_ai_approves_autonomous_publish
+
+        if extras_ai_approves_autonomous_publish(draft_extras_json):
+            manual = False
+        else:
+            reason = "manual_review_required"
+            if is_soft_launch_mode():
+                reason = "soft_launch_manual_review"
+            elif trust.manual_review_required:
+                reason = f"trust_manual:{','.join(trust.reasons[:2]) or 'low_corroboration'}"
+            elif gov.manual_review:
+                reason = f"governance_manual:{gov.reason}"
+            v = FinalPublishGateVerdict(
+                allowed=False,
+                manual_review_required=True,
+                permanent_block=False,
+                reason=reason,
+                trust_score=trust.trust_score,
+            )
+            log_gate_decision(draft_id=draft_id, verdict=v, extra={"trust": trust.to_dict(), "gov": gov.reason})
+            return v
 
     v = FinalPublishGateVerdict(
         allowed=True,

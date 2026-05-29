@@ -235,11 +235,19 @@ def auto_publish_enabled() -> bool:
 
 
 def settings_force_manual() -> bool:
+    if autonomous_editorial_mode_enabled():
+        return False
     if _env_bool("LIVE_SUPERVISED_APPROVAL", "false"):
         return True
     if _env_bool("FINAL_STAGING_MODE", "false") and not _env_bool("AUTO_PUBLISH_ENABLED", "false"):
         return True
     return False
+
+
+def autonomous_editorial_mode_enabled() -> bool:
+    from app.editorial.ai_editorial_reviewer import autonomous_editorial_mode_enabled as _mode
+
+    return _mode()
 
 
 def evaluate_draft_for_auto_publish(
@@ -299,6 +307,9 @@ def evaluate_draft_for_auto_publish(
     if not isinstance(detail, dict):
         detail = {}
 
+    ai = detail.get("ai_editorial_review") or {}
+    ai_ok = isinstance(ai, dict) and bool(ai.get("approved"))
+
     allowed = _allowed_categories()
     gov = detail.get("editorial_governance") or detail.get("cluster_intelligence") or {}
     if isinstance(gov, dict):
@@ -319,7 +330,9 @@ def evaluate_draft_for_auto_publish(
         except (TypeError, ValueError):
             conf = 0.0
     conf_low = conf < _min_confidence()
-    if conf_low and not (backlog_relief and _backlog_relief_enabled()):
+    if conf_low and not (backlog_relief and _backlog_relief_enabled()) and not (
+        autonomous_editorial_mode_enabled() and ai_ok
+    ):
         return False, f"confidence_below_min:{conf:.2f}"
 
     dup = detail.get("duplicate_intel") or {}
@@ -334,7 +347,7 @@ def evaluate_draft_for_auto_publish(
     hold = bool(detail.get("editorial_hold")) or (
         isinstance(gov, dict) and gov.get("editorial_hold")
     )
-    if hold:
+    if hold and not (ai_ok and autonomous_editorial_mode_enabled()):
         return False, "operator_review_required"
 
     if backlog_relief and _backlog_relief_enabled():
@@ -537,3 +550,80 @@ async def select_floor_publish_candidate(settings: Any, session: Any) -> dict[st
     except Exception as exc:
         log_event(logger, "publish_floor.select_failed", error=repr(exc)[:200])
         return None
+
+
+async def try_immediate_autonomous_publish(
+    settings: Any,
+    session: Any,
+    draft_id: int,
+    *,
+    openai_client: Any | None = None,
+) -> bool:
+    """
+    AI editorial review → approve → schedule for immediate publish.
+    No Telegram moderation message to operator.
+    """
+    from db.repository import approve_draft, get_draft_by_id, merge_draft_extras, reject_draft, schedule_draft_publish, utcnow
+
+    if not autonomous_editorial_mode_enabled() or not auto_publish_enabled():
+        return False
+
+    draft = await get_draft_by_id(session, draft_id)
+    if draft is None:
+        return False
+
+    from app.editorial.ai_editorial_reviewer import ai_editorial_review
+
+    verdict = await ai_editorial_review(
+        str(draft.content or ""),
+        sources=str(draft.sources or "[]"),
+        extras_json=str(draft.draft_extras or "{}"),
+        settings=settings,
+        openai_client=openai_client,
+    )
+    await merge_draft_extras(
+        session,
+        draft_id,
+        {
+            "ai_editorial_review": verdict.to_dict(),
+            "editorial_hold": False,
+        },
+    )
+
+    if not verdict.approved:
+        await reject_draft(session, draft_id, reason=f"ai_editorial:{verdict.reason}")
+        log_event(
+            logger,
+            "autonomous_editorial.rejected",
+            draft_id=draft_id,
+            reason=verdict.reason,
+            source=verdict.source,
+        )
+        return False
+
+    draft = await get_draft_by_id(session, draft_id)
+    if draft is None:
+        return False
+
+    ok, reason = evaluate_draft_for_auto_publish(
+        draft_id=draft_id,
+        content=str(draft.content or ""),
+        extras_json=str(draft.draft_extras or "{}"),
+        sources_json=str(draft.sources or "[]"),
+        runtime_dir=getattr(settings, "runtime_state_dir", None),
+    )
+    if not ok:
+        log_event(logger, "autonomous_editorial.policy_blocked", draft_id=draft_id, reason=reason)
+        return False
+
+    if await approve_draft(session, draft_id):
+        await schedule_draft_publish(session, draft_id, when=utcnow())
+        log_event(
+            logger,
+            "autonomous_editorial.scheduled",
+            draft_id=draft_id,
+            ai_source=verdict.source,
+            confidence=verdict.confidence,
+        )
+        return True
+    return False
