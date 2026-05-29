@@ -472,11 +472,11 @@ async def try_auto_schedule_one_pending(settings: Any, session: Any) -> int | No
 
 def _floor_max_silence_min() -> float:
     """Hard silence ceiling: after this, the publishing floor forces a post."""
-    raw = os.getenv("PUBLISH_FLOOR_MAX_SILENCE_MIN", "90").strip()
+    raw = os.getenv("PUBLISH_FLOOR_MAX_SILENCE_MIN", "45").strip()
     try:
         return max(30.0, min(720.0, float(raw)))
     except ValueError:
-        return 90.0
+        return 45.0
 
 
 def _floor_enabled() -> bool:
