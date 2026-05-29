@@ -289,3 +289,61 @@ class GrowthDigestRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     extras_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+
+
+class EditorialStyleMemory(Base):
+    """Successful content patterns for identity consistency."""
+
+    __tablename__ = "editorial_style_memory"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    vertical: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    headline_pattern: Mapped[str] = mapped_column(String(48), nullable=False, default="")
+    style_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    insight_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    avg_engagement: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    sample_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+
+class EditorialIdentityVector(Base):
+    """Compressed long-term editorial fingerprint."""
+
+    __tablename__ = "editorial_identity_vectors"
+    __table_args__ = (UniqueConstraint("key", name="uq_editorial_identity_key"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    key: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    vector_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    sample_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class CohortMemory(Base):
+    """Aggregate audience cohort affinity (macro/crypto/geo)."""
+
+    __tablename__ = "cohort_memory"
+    __table_args__ = (UniqueConstraint("cohort", name="uq_cohort_memory_cohort"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    cohort: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    affinity_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.33)
+    engagement_sum: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    sample_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    extras_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+
+class DistributionFlywheelLog(Base):
+    """Cross-post and routing audit trail."""
+
+    __tablename__ = "distribution_flywheel_log"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    draft_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    surface: Mapped[str] = mapped_column(String(24), nullable=False, index=True)
+    channel_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    reason: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    content_hash: Mapped[str] = mapped_column(String(24), nullable=False, default="", index=True)
+    mirrored_digest: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)

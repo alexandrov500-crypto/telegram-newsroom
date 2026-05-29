@@ -673,6 +673,36 @@ async def _execute_admin_publication_flow_impl(
                     draft_sources=d.sources or "",
                     error=";".join(reasons)[:500],
                 )
+
+            try:
+                from app.flywheel.pipeline import evaluate_pre_publish_editorial
+
+                topic_bucket = str(ex_obj.get("category") or topic_hint or "general")
+                w3 = evaluate_pre_publish_editorial(
+                    d.content or "",
+                    settings=settings,
+                    runtime_dir=settings.runtime_state_dir,
+                    vertical=topic_bucket,
+                    is_breaking=is_breaking,
+                )
+                if not w3.allowed and not bypass_cadence and not operator_override:
+                    inc("editorial_identity_blocked_total")
+                    log_event(
+                        logger,
+                        "publish.w3_editorial_blocked",
+                        draft_id=draft_id,
+                        reason=w3.reason,
+                        routing=w3.routing_reason,
+                    )
+                    return AdminPublishDraftResult(
+                        PublishFlowOutcome.APPROVE_DENIED,
+                        draft_content=d.content or "",
+                        draft_sources=d.sources or "",
+                        error=f"w3:{w3.reason}",
+                    )
+            except Exception as w3_exc:
+                log_event(logger, "publish.w3_check_skipped", draft_id=draft_id, error=repr(w3_exc)[:120])
+
             approved = await approve_draft(session, draft_id)
             if not approved:
                 d3 = await get_draft_by_id(session, draft_id)
@@ -955,6 +985,89 @@ async def _execute_admin_publication_flow_impl(
                 )
             except Exception:
                 pass
+            try:
+                from app.flywheel.cross_post_orchestrator import (
+                    execute_digest_mirror,
+                    log_distribution_event,
+                    plan_cross_post,
+                    record_cross_post,
+                )
+                from app.flywheel.distribution_router import route_distribution_surface
+                from app.flywheel.memory_compression import record_style_memory
+                from app.flywheel.pipeline import content_hash
+                from app.flywheel.retention_habit import active_habit_slot, record_habit_touch
+                from app.identity.differentiation import record_published_structure
+                from app.identity.insight_layer import score_insight_depth
+                from app.identity.style_guide import detect_vertical, score_style_alignment
+                from publisher.publish_formatting import build_channel_message_html
+
+                vertical = detect_vertical(content, topic_bucket)
+                style_v = score_style_alignment(content, vertical=vertical)
+                insight_v = score_insight_depth(content)
+                ch = content_hash(content)
+                brk_flag = False
+                w3_signal = 0.55
+                try:
+                    ex_w3 = json.loads(extras_json or "{}")
+                    brk_flag = bool((ex_w3.get("breaking") or {}).get("is_breaking"))
+                    pub_intel = ex_w3.get("publication_intel") or {}
+                    if isinstance(pub_intel, dict):
+                        pri = pub_intel.get("publication_priority") or {}
+                        if isinstance(pri, dict):
+                            raw_pri = float(pri.get("score") or w3_signal)
+                            w3_signal = raw_pri / 100.0 if raw_pri > 1 else raw_pri
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    pass
+
+                route = route_distribution_surface(
+                    settings,
+                    is_breaking=brk_flag,
+                    insight_score=insight_v,
+                    style_score=style_v.score,
+                    signal_score=w3_signal,
+                )
+                plan = plan_cross_post(
+                    settings,
+                    route,
+                    runtime_dir=settings.runtime_state_dir,
+                    content_hash=ch,
+                )
+                digest_mid: int | None = None
+                if plan.mirror_digest and plan.digest_channel_id and not plan.skip:
+                    html = build_channel_message_html(content, sources, draft_id=draft_id)
+                    digest_mid = await execute_digest_mirror(
+                        bot,
+                        digest_channel_id=int(plan.digest_channel_id),
+                        html=html,
+                    )
+                if not plan.skip:
+                    record_cross_post(settings.runtime_state_dir, ch)
+                    record_published_structure(content, runtime_dir=settings.runtime_state_dir)
+                    headline_pattern = (content.split("\n", 1)[0] or "")[:48]
+                    await record_style_memory(
+                        vertical=vertical,
+                        headline_pattern=headline_pattern,
+                        style_score=style_v.score,
+                        insight_score=insight_v,
+                    )
+                    await log_distribution_event(
+                        draft_id=int(draft_id),
+                        decision=route,
+                        content_hash=ch,
+                        mirrored_digest=digest_mid is not None,
+                    )
+                    slot = active_habit_slot(tz)
+                    if slot:
+                        record_habit_touch(settings.runtime_state_dir, slot.key)
+                    log_event(
+                        logger,
+                        "publish.w3_flywheel_recorded",
+                        draft_id=draft_id,
+                        surface=route.surface.value,
+                        digest_mirror=bool(digest_mid),
+                    )
+            except Exception as w3_post_exc:
+                logger.warning("W3 post-publish hook skipped: %s", w3_post_exc)
         except Exception as exc:
             logger.warning("analytics/cadence post-publish hook skipped: %s", exc)
         try:

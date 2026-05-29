@@ -261,6 +261,20 @@ def polish_channel_post(body: str, *, max_chars: int = 2800) -> str:
             clean = " ".join(parts[:-1]).strip()
             clean = _finish_thought(clean)
     clean = clean.strip()
+    if os.getenv("W3_EDITORIAL_PIPELINE_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on"):
+        try:
+            from app.flywheel.pipeline import enrich_for_publish
+
+            runtime_dir = os.getenv("RUNTIME_STATE_DIR", "var/runtime")
+            tz = os.getenv("NEWSROOM_TIMEZONE", "Europe/Moscow")
+            enriched = enrich_for_publish(
+                clean,
+                runtime_dir=runtime_dir,
+                newsroom_tz=tz,
+            )
+            clean = enriched.content
+        except Exception:
+            pass
     if os.getenv("HEADLINE_ENGINE_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on"):
         try:
             from app.editorial.headline_engine import apply_headline_to_content, pick_best_headline

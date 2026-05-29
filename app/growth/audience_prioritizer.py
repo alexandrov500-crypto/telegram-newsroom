@@ -111,6 +111,30 @@ def score_draft_for_audience(
     novelty = fatigue.novelty
     momentum_boost = max(0.0, feedback.momentum) * 0.15
 
+    try:
+        from app.flywheel.explore_exploit import decide_explore_exploit
+
+        explore = decide_explore_exploit(
+            runtime_dir=runtime_dir,
+            topic_bucket=topic_bucket,
+            novelty=novelty,
+            cohort_affinity=cohort_affinity,
+            newsroom_tz=newsroom_tz,
+        )
+        explore_boost = explore.boost
+    except Exception:
+        explore_boost = 1.0
+
+    habit_boost = 1.0
+    try:
+        from app.flywheel.retention_habit import active_habit_slot
+
+        slot = active_habit_slot(newsroom_tz)
+        if slot:
+            habit_boost = slot.cadence_boost
+    except Exception:
+        pass
+
     score = (
         0.28 * signal_score
         + 0.22 * topic_aff
@@ -119,7 +143,7 @@ def score_draft_for_audience(
         + 0.10 * slot_aff
         + 0.08 * novelty
         + momentum_boost
-    )
+    ) * explore_boost * habit_boost
     if feedback.low_engagement_streak >= 4 and topic_aff < feedback.global_engagement:
         score *= 0.85
 
@@ -131,6 +155,8 @@ def score_draft_for_audience(
         "slot": round(slot_aff, 4),
         "novelty": round(novelty, 4),
         "momentum": round(momentum_boost, 4),
+        "explore_boost": round(explore_boost, 4),
+        "habit_boost": round(habit_boost, 4),
     }
     return AudiencePriorityScore(
         draft_id=draft_id,
