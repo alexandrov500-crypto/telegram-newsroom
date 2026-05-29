@@ -766,6 +766,35 @@ async def _execute_admin_publication_flow_impl(
                 draft_content=content,
                 draft_sources=sources,
             )
+        w5_mon: object | None = None
+        try:
+            from app.identity.insight_layer import score_insight_depth
+            from app.identity.style_guide import detect_vertical, score_style_alignment
+            from app.monetization.pipeline import enrich_with_monetization
+
+            w5_vertical = "general"
+            w5_signal = 0.55
+            try:
+                ex_m = json.loads(extras_json or "{}")
+                w5_vertical = str(ex_m.get("category") or w5_vertical)
+            except (json.JSONDecodeError, TypeError):
+                pass
+            w5_tz = getattr(settings, "newsroom_timezone", None) or "Europe/Moscow"
+            w5_style = score_style_alignment(content, vertical=w5_vertical)
+            w5_insight = score_insight_depth(content)
+            w5_mon = await enrich_with_monetization(
+                content,
+                vertical=w5_vertical,
+                insight_score=w5_insight,
+                style_score=w5_style.score,
+                signal_score=w5_signal,
+                runtime_dir=settings.runtime_state_dir,
+                newsroom_tz=w5_tz,
+            )
+            content = w5_mon.content
+        except Exception as w5_enrich_exc:
+            log_event(logger, "publish.w5_enrich_skipped", draft_id=draft_id, error=repr(w5_enrich_exc)[:120])
+
         try:
             first_id = await publish_draft_to_channel(
                 bot,
@@ -1068,6 +1097,81 @@ async def _execute_admin_publication_flow_impl(
                     )
             except Exception as w3_post_exc:
                 logger.warning("W3 post-publish hook skipped: %s", w3_post_exc)
+            try:
+                from datetime import UTC, datetime
+
+                from app.monetization.financial_feedback import record_revenue_event
+                from app.monetization.pipeline import record_monetized_publish
+                from app.monetization.revenue_engine import route_revenue_stream, score_monetization_eligibility
+                from db.models import PremiumContentLog
+
+                elig = score_monetization_eligibility(
+                    content,
+                    vertical=vertical,
+                    insight_score=insight_v,
+                    style_score=style_v.score,
+                    signal_score=w3_signal,
+                )
+                routing = route_revenue_stream(elig)
+                est_amount = routing.estimated_cpm_usd / 1000.0
+                await record_revenue_event(
+                    draft_id=int(draft_id),
+                    stream=routing.stream.value,
+                    surface=route.surface.value,
+                    amount_usd=est_amount,
+                    topic_bucket=topic_bucket,
+                    eligibility_score=elig.score,
+                    extras={"reason": routing.eligibility.reason},
+                )
+                sponsor_flag = bool(getattr(w5_mon, "sponsor_injected", False)) if w5_mon else False
+                premium_flag = bool(getattr(w5_mon, "is_premium", False)) if w5_mon else False
+                record_monetized_publish(
+                    settings.runtime_state_dir,
+                    sponsor_injected=sponsor_flag,
+                    is_premium=premium_flag,
+                )
+                if premium_flag and getattr(w5_mon, "premium_body", ""):
+                    prem_ch_raw = __import__("os").getenv("TELEGRAM_PREMIUM_CHANNEL_ID", "").strip()
+                    if prem_ch_raw:
+                        from app.flywheel.cross_post_orchestrator import execute_digest_mirror
+                        from publisher.publish_formatting import build_channel_message_html
+
+                        prem_html = build_channel_message_html(
+                            str(w5_mon.premium_body),
+                            sources,
+                            draft_id=draft_id,
+                        )
+                        await execute_digest_mirror(
+                            bot,
+                            digest_channel_id=int(prem_ch_raw),
+                            html=prem_html,
+                        )
+                    try:
+                        from app.monetization.premium_layer import content_hash as prem_hash
+
+                        async with session_scope() as session:
+                            session.add(
+                                PremiumContentLog(
+                                    draft_id=int(draft_id),
+                                    tier="premium",
+                                    insight_score=insight_v,
+                                    free_preview_hash=prem_hash(content)[:24],
+                                    premium_channel_id=int(prem_ch_raw) if prem_ch_raw else None,
+                                    published_at=datetime.now(UTC),
+                                    created_at=datetime.now(UTC),
+                                )
+                            )
+                    except Exception:
+                        pass
+                log_event(
+                    logger,
+                    "publish.w5_revenue_recorded",
+                    draft_id=draft_id,
+                    stream=routing.stream.value,
+                    amount_usd=round(est_amount, 6),
+                )
+            except Exception as w5_post_exc:
+                logger.warning("W5 post-publish hook skipped: %s", w5_post_exc)
         except Exception as exc:
             logger.warning("analytics/cadence post-publish hook skipped: %s", exc)
         try:

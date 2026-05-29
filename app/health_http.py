@@ -145,7 +145,13 @@ async def _handle_client(
         writer.write(_http_response(200 if alive else 503, body))
     else:
         try:
-            if path_only.startswith("/runtime"):
+            from app.monetization.api_handlers import dispatch_w5_http
+
+            w5 = await dispatch_w5_http(path_only, query, headers)
+            if w5 is not None:
+                code, ctype, body = w5
+                writer.write(_http_response(code, body, content_type=ctype))
+            elif path_only.startswith("/runtime"):
                 from app.ops_http_routes import ops_token_authorized
                 from ops.runtime_api import dispatch_runtime_http
 

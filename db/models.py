@@ -347,3 +347,82 @@ class DistributionFlywheelLog(Base):
     content_hash: Mapped[str] = mapped_column(String(24), nullable=False, default="", index=True)
     mirrored_digest: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+
+class RevenueEvent(Base):
+    """Monetization revenue attribution per publish/surface."""
+
+    __tablename__ = "revenue_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    draft_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    stream: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    surface: Mapped[str] = mapped_column(String(24), nullable=False, default="main")
+    amount_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    topic_bucket: Mapped[str] = mapped_column(String(32), nullable=False, default="general", index=True)
+    eligibility_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    extras_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+
+class SponsorSlot(Base):
+    """Active sponsor inventory slots."""
+
+    __tablename__ = "sponsor_slots"
+    __table_args__ = (UniqueConstraint("slot_key", name="uq_sponsor_slot_key"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    slot_key: Mapped[str] = mapped_column(String(48), nullable=False, index=True)
+    sponsor_name: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    verticals_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    copy_template: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    cpm_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    daily_cap: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
+    used_today: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    active: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+
+class ConversionEvent(Base):
+    """Funnel conversion tracking (aggregate, no per-user PII)."""
+
+    __tablename__ = "conversion_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    funnel_stage: Mapped[str] = mapped_column(String(24), nullable=False, default="awareness")
+    cohort: Mapped[str] = mapped_column(String(32), nullable=False, default="general", index=True)
+    draft_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    value_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    extras_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+
+class TopicProfitabilityMemory(Base):
+    """Rolling topic ROI for financial feedback into editorial."""
+
+    __tablename__ = "topic_profitability_memory"
+    __table_args__ = (UniqueConstraint("topic_bucket", name="uq_topic_profitability_bucket"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    topic_bucket: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    revenue_sum: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    engagement_sum: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    roi_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    sample_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+
+class PremiumContentLog(Base):
+    """Premium-tier content gating audit."""
+
+    __tablename__ = "premium_content_log"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    draft_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    tier: Mapped[str] = mapped_column(String(16), nullable=False, default="premium")
+    insight_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    free_preview_hash: Mapped[str] = mapped_column(String(24), nullable=False, default="")
+    premium_channel_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)

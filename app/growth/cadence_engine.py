@@ -90,6 +90,18 @@ def evaluate_growth_cadence_gate(
         reasons.append(f"growth_timing_{timing.reason}")
 
     min_interval = dyn.min_interval_sec
+    try:
+        from app.monetization.financial_feedback import load_topic_roi_weights_sync, profitability_boost
+
+        roi_weights = load_topic_roi_weights_sync(runtime_dir)
+        roi_boost = profitability_boost(topic_bucket, roi_weights)
+        if roi_boost < 0.92 and not reasons:
+            min_interval = int(min_interval * 1.08)
+        elif roi_boost > 1.08 and not reasons:
+            min_interval = max(45, int(min_interval * 0.92))
+    except Exception:
+        pass
+
     if feedback.momentum > 0.08 and not reasons:
         min_interval = max(45, int(min_interval * 0.85))
     if feedback.low_engagement_streak >= 3:

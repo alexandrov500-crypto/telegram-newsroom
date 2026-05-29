@@ -144,6 +144,15 @@ def score_draft_for_audience(
         + 0.08 * novelty
         + momentum_boost
     ) * explore_boost * habit_boost
+
+    try:
+        from app.monetization.audience_value import score_audience_value
+
+        av = score_audience_value(topic_bucket=topic_bucket, runtime_dir=runtime_dir)
+        score *= round(0.92 + av.ltv_score * 0.12, 4)
+    except Exception:
+        pass
+
     if feedback.low_engagement_streak >= 4 and topic_aff < feedback.global_engagement:
         score *= 0.85
 

@@ -426,6 +426,20 @@ async def main() -> None:
             )
             logger.info("W3 flywheel maintenance every %s hours", flywheel_h)
 
+        if os.getenv("W5_MONETIZATION_MAINTENANCE_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on"):
+            from app.monetization.scheduler_jobs import run_monetization_maintenance_tick
+
+            w5_h = max(1, int(os.getenv("W5_MONETIZATION_MAINTENANCE_INTERVAL_HOURS", "12")))
+            scheduler.add_job(
+                run_monetization_maintenance_tick,
+                "interval",
+                hours=w5_h,
+                args=[ctx],
+                id="monetization_maintenance",
+                replace_existing=True,
+            )
+            logger.info("W5 monetization maintenance every %s hours", w5_h)
+
         # 5–6) Lane workers (fast/standard) then start scheduler pipeline
         if execution_profile.lane_workers_enabled:
             try:
