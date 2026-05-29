@@ -1968,6 +1968,7 @@ async def _scheduled_publish_step_impl(ctx: PipelineContext) -> None:
                 )
         except Exception as exc:
             log_event(logger, "publish.floor_failed", error=repr(exc)[:200])
+    published_ok = False
     for did in ids:
         bypass = publish_bypass or did in autonomous_publish_ids
         is_floor = did in floor_publish_ids
@@ -1980,6 +1981,7 @@ async def _scheduled_publish_step_impl(ctx: PipelineContext) -> None:
             floor_publish=is_floor,
         )
         if res.outcome is PublishFlowOutcome.OK:
+            published_ok = True
             ctx.tick_publish_outcome = f"ok:draft_id={did}:message_id={res.channel_message_id}"
             logger.info("publish succeeded: draft_id=%s channel_message_id=%s", did, res.channel_message_id)
             inc("scheduled_publish_fired")
@@ -1995,6 +1997,57 @@ async def _scheduled_publish_step_impl(ctx: PipelineContext) -> None:
         else:
             ctx.tick_publish_outcome = f"{res.outcome.value}:draft_id={did}"
             logger.info("publish not sent: draft_id=%s outcome=%s", did, res.outcome.value)
+    # Guaranteed floor (post-attempt): the pre-loop floor only fires when no draft
+    # was *selected*. But the autonomous path may select a fresh draft every tick
+    # that the editorial gate then denies (e.g. "low-signal" fallback summaries),
+    # which would keep the channel silent indefinitely. So if nothing actually
+    # published and silence has passed the hard ceiling, ship one safe item in
+    # safety-only mode (which also re-uses the freshest just-denied draft).
+    if not published_ok and not floor_publish_ids:
+        try:
+            from app.ops.autonomous_publish import select_floor_publish_candidate
+
+            async with session_scope() as session:
+                cand = await select_floor_publish_candidate(settings, session)
+            if cand:
+                fid = int(cand["draft_id"])
+                log_event(
+                    logger,
+                    "publish.floor_triggered",
+                    draft_id=fid,
+                    recovery="post_denied",
+                    minutes_since_last_published=cand.get("minutes_since"),
+                    pending_backlog=cand.get("pending_backlog"),
+                    incoming_raw_flow_30m=cand.get("incoming_raw_flow_30m"),
+                )
+                res = await execute_admin_publication_flow(
+                    bot,
+                    settings,
+                    fid,
+                    bypass_cadence=True,
+                    bypass_leadership=True,
+                    floor_publish=True,
+                )
+                if res.outcome is PublishFlowOutcome.OK:
+                    published_ok = True
+                    ctx.tick_publish_outcome = (
+                        f"ok:draft_id={fid}:message_id={res.channel_message_id}"
+                    )
+                    logger.info(
+                        "publish floor succeeded: draft_id=%s channel_message_id=%s",
+                        fid,
+                        res.channel_message_id,
+                    )
+                    inc("scheduled_publish_fired")
+                    append_runtime_event(
+                        "scheduled_publish_ok", message="floor_published", draft_id=fid
+                    )
+                else:
+                    logger.info(
+                        "publish floor not sent: draft_id=%s outcome=%s", fid, res.outcome.value
+                    )
+        except Exception as exc:
+            log_event(logger, "publish.floor_failed", error=repr(exc)[:200])
     if ctx.tick_publish_outcome == "not_reached":
         _log_pipeline_idle("publish", "no_due_drafts_or_no_pending")
     ctx.tick_timings["scheduled_publish_sec"] = time.perf_counter() - t0
