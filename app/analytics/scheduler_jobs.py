@@ -64,5 +64,13 @@ async def run_analytics_tick(ctx: object) -> dict[str, int | str]:
     except Exception:
         pass
 
+    try:
+        from app.growth.feedback_job import run_growth_feedback_tick
+
+        growth_result = await run_growth_feedback_tick(ctx)
+        result["growth_feedback"] = growth_result
+    except Exception as exc:
+        log_event(logger, "growth.feedback_tick_failed", error=repr(exc)[:120])
+
     log_event(logger, "analytics.tick_complete", **{k: v for k, v in result.items()})
     return result

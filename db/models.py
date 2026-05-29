@@ -232,3 +232,60 @@ class SourceRegistryEntry(Base):
     extras_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class NarrativeTrack(Base):
+    """Long-lived narrative arcs for continuation detection and digest carryover."""
+
+    __tablename__ = "narrative_tracks"
+    __table_args__ = (UniqueConstraint("narrative_id", name="uq_narrative_tracks_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    narrative_id: Mapped[str] = mapped_column(String(48), nullable=False, index=True)
+    cluster_key: Mapped[str] = mapped_column(String(64), nullable=False, default="", index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    vertical: Mapped[str] = mapped_column(String(32), nullable=False, default="general", index=True)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="active", index=True)
+    momentum_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    importance_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    publish_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    parent_narrative_id: Mapped[str] = mapped_column(String(48), nullable=False, default="")
+    context_tokens_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    extras_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class PerformanceArchetypeMemory(Base):
+    """Learned post archetype / headline / slot performance."""
+
+    __tablename__ = "performance_archetype_memory"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    archetype: Mapped[str] = mapped_column(String(48), nullable=False, index=True)
+    headline_pattern: Mapped[str] = mapped_column(String(48), nullable=False, default="")
+    topic_bucket: Mapped[str] = mapped_column(String(32), nullable=False, default="general", index=True)
+    publish_hour_local: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    sample_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    avg_engagement: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    avg_virality: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    last_draft_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    extras_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+
+class GrowthDigestRun(Base):
+    """Retention digests — morning briefing, evening recap, weekly key events."""
+
+    __tablename__ = "growth_digest_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    digest_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="pending", index=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    item_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    diversity_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    telegram_message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    extras_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")

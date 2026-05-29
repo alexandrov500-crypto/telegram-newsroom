@@ -399,6 +399,19 @@ async def main() -> None:
             )
             logger.info("Breaking lane tick every %s minutes", breaking_min)
 
+        if os.getenv("GROWTH_DIGEST_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on"):
+            from app.digest.scheduler_jobs import run_digest_tick
+
+            scheduler.add_job(
+                run_digest_tick,
+                "interval",
+                minutes=max(30, int(os.getenv("GROWTH_DIGEST_CHECK_INTERVAL_MIN", "60"))),
+                args=[ctx],
+                id="growth_digest",
+                replace_existing=True,
+            )
+            logger.info("Growth digest check every %s minutes", os.getenv("GROWTH_DIGEST_CHECK_INTERVAL_MIN", "60"))
+
         # 5–6) Lane workers (fast/standard) then start scheduler pipeline
         if execution_profile.lane_workers_enabled:
             try:

@@ -189,6 +189,17 @@ async def run_breaking_tick(ctx: Any) -> dict[str, Any]:
         return result
 
     summary = _lightweight_summarize(str(candidate.get("text") or ""))
+    from app.growth.breaking_collapse import evaluate_breaking_collapse, record_breaking_event
+
+    collapse = evaluate_breaking_collapse(
+        runtime_dir=runtime_dir,
+        text=summary,
+        source_handle=str(candidate.get("channel") or ""),
+    )
+    if collapse.collapse:
+        result["reason"] = f"breaking_collapsed:{collapse.reason}"
+        return result
+
     from app.ops.floor_eligibility import evaluate_floor_eligibility
 
     sources = json.dumps([{"channel": candidate["channel"], "message_id": candidate["message_id"]}])
@@ -220,6 +231,13 @@ async def run_breaking_tick(ctx: Any) -> dict[str, Any]:
     state["recent_hashes"] = list(recent_hashes)[-50:]
     state["last_publish_ts"] = now
     _save_state(runtime_dir, state)
+    record_breaking_event(
+        runtime_dir=runtime_dir,
+        text=summary,
+        event_id=collapse.event_id,
+        source_handle=str(candidate.get("channel") or ""),
+        message_id=int(msg_id),
+    )
 
     try:
         from app.analytics.telegram_stats import enqueue_post_for_tracking

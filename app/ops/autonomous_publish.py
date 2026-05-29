@@ -432,6 +432,9 @@ async def try_auto_schedule_one_pending(settings: Any, session: Any) -> int | No
         except Exception:
             backlog_relief = False
         pending = await list_pending_drafts(session, limit=pending_limit)
+        from app.growth.audience_prioritizer import rank_pending_drafts_for_publish
+
+        pending = rank_pending_drafts_for_publish(pending, settings=settings)
         for draft in pending:
             ok, reason = evaluate_draft_for_auto_publish(
                 draft_id=int(draft.id),
@@ -505,10 +508,11 @@ async def select_floor_publish_candidate(settings: Any, session: Any) -> dict[st
         if minutes_since < _floor_max_silence_min():
             return None
         pending = await list_pending_drafts(session, limit=40)
-        candidates = sorted(pending, key=lambda d: int(getattr(d, "id", 0)), reverse=True)
+        from app.growth.audience_prioritizer import rank_pending_drafts_for_publish
+
+        candidates = rank_pending_drafts_for_publish(pending, settings=settings)
         if not candidates:
-            log_event(logger, "publish_floor.no_eligible_candidate", minutes_since=minutes_since)
-            return None
+            candidates = sorted(pending, key=lambda d: int(getattr(d, "id", 0)), reverse=True)
         best: dict[str, Any] | None = None
         best_score = -1.0
         for draft in candidates:

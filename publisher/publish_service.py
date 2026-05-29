@@ -884,10 +884,12 @@ async def _execute_admin_publication_flow_impl(
         )
         try:
             from app.analytics.telegram_stats import enqueue_post_for_tracking
-            from app.editorial.cadence_dynamic import record_publish_for_cadence
+            from app.growth.cadence_engine import record_growth_cadence_publish
+            from editorial.cadence import topic_dedupe_key, record_publish
 
             primary_source = ""
             topic_bucket = "general"
+            narrative_id = ""
             try:
                 src_parsed = json.loads(sources or "[]")
                 if isinstance(src_parsed, list) and src_parsed:
@@ -904,6 +906,7 @@ async def _execute_admin_publication_flow_impl(
                         or (ex.get("editorial_tags") or {}).get("category")
                         or topic_bucket
                     )
+                    narrative_id = str((ex.get("narrative_intelligence") or {}).get("narrative_id") or "")
             except (json.JSONDecodeError, TypeError):
                 pass
             tz = getattr(settings, "newsroom_timezone", None) or "Europe/Moscow"
@@ -914,6 +917,7 @@ async def _execute_admin_publication_flow_impl(
                 hour_local = datetime.now(ZoneInfo(tz)).hour
             except Exception:
                 pass
+            tk = topic_dedupe_key(topic_bucket)
             await enqueue_post_for_tracking(
                 draft_id=int(draft_id),
                 telegram_post_id=int(first_id),
@@ -922,11 +926,35 @@ async def _execute_admin_publication_flow_impl(
                 topic_bucket=topic_bucket,
                 publish_hour_local=hour_local,
             )
-            record_publish_for_cadence(
+            record_publish(settings.runtime_state_dir, topic_key=tk)
+            record_growth_cadence_publish(
                 runtime_dir=settings.runtime_state_dir,
+                topic_key=tk,
+                content=content,
                 topic_bucket=topic_bucket,
+                narrative_id=narrative_id,
                 newsroom_tz=tz,
             )
+            try:
+                from app.growth.narrative_tracker import record_narrative_publish
+
+                if narrative_id:
+                    await record_narrative_publish(narrative_id)
+            except Exception:
+                pass
+            try:
+                from app.growth.performance_memory import record_performance_memory
+
+                await record_performance_memory(
+                    draft_id=int(draft_id),
+                    content=content,
+                    topic_bucket=topic_bucket,
+                    publish_hour_local=hour_local,
+                    engagement_score=0.0,
+                    virality_score=0.0,
+                )
+            except Exception:
+                pass
         except Exception as exc:
             logger.warning("analytics/cadence post-publish hook skipped: %s", exc)
         try:

@@ -141,4 +141,22 @@ def evaluate_publish_gate(
     if intel_block:
         reasons.extend(intel_reasons)
         return True, reasons
+
+    try:
+        from app.growth.cadence_engine import evaluate_growth_cadence_gate
+
+        growth = evaluate_growth_cadence_gate(
+            settings,
+            runtime_dir,
+            topic_key=topic_key,
+            content=content or topic_key,
+            is_breaking=is_breaking,
+            now_unix=now,
+        )
+        if growth.block:
+            reasons.extend(growth.reasons)
+            return True, reasons
+    except Exception:
+        pass
+
     return False, reasons
