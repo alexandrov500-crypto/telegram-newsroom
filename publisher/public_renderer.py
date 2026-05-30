@@ -82,6 +82,10 @@ def extract_why_it_matters(text: str) -> tuple[str, str]:
     why = " ".join(why_lines).strip()
     if len(why) > 480:
         why = why[:477].rstrip() + "…"
+    from app.editorial.content_quality import is_generic_insight
+
+    if why and is_generic_insight(why):
+        why = ""
     return body, why
 
 

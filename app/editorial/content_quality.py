@@ -69,6 +69,20 @@ _SIGNATURE_PREFIX = re.compile(
     r"^(5-Minute Macro|Market Pulse|Closing Bell|Alpha Flow)\s+",
     re.I,
 )
+# Rule-based insight layer fallbacks — must not ship as reader-facing analysis.
+_GENERIC_INSIGHT = re.compile(
+    r"(?:"
+    r"Событие\s+может\s+сдвинуть\s+краткосрочные\s+ожидания\s+участников\s+рынка"
+    r"|Движение\s+может\s+усилить\s+волатильность\s+и\s+перераспределение\s+ликвидности\s+между\s+биржами"
+    r"|Сигнал\s+влияет\s+на\s+ожидания\s+по\s+ставкам\s+и\s+переоценку\s+риск[\-\s]?премий"
+    r"|Событие\s+повышает\s+неопредел[её]нность\s+для\s+торговых\s+и\s+энергетических\s+потоков"
+    r")\.?",
+    re.I,
+)
+_GENERIC_WHY_BLOCK = re.compile(
+    r"\n?\n?Почему\s+это\s+важно\s*:\s*" + _GENERIC_INSIGHT.pattern,
+    re.I,
+)
 _ENGAGEMENT_HOOK = re.compile(
     r"(Главное для экономики|Ключевой сигнал(?: для крипторынка)?|Ключевой факт|"
     r"Что важно в геоповестке|Что это значит для рынка)\s*:\s*[^.!?]+[.!?]\s*",
@@ -88,9 +102,30 @@ _BRAND_CTA = re.compile(
 )
 
 
+def is_generic_insight(text: str) -> bool:
+    """True when «why it matters» is a canned fallback, not content-specific analysis."""
+    return bool(_GENERIC_INSIGHT.search((text or "").strip()))
+
+
+def strip_generic_why_it_matters(text: str) -> str:
+    """Drop boilerplate «Почему это важно» blocks from draft or published copy."""
+    t = (text or "").strip()
+    if not t:
+        return ""
+    t = _GENERIC_WHY_BLOCK.sub("", t).strip()
+    t = re.sub(
+        r"Почему\s+это\s+важно\s*:\s*" + _GENERIC_INSIGHT.pattern + r"\.?\s*",
+        "",
+        t,
+        flags=re.I,
+    ).strip()
+    return re.sub(r"\n{3,}", "\n\n", t).strip()
+
+
 def strip_public_template_metadata(text: str) -> str:
     """Remove growth/template chrome before editorial quality checks."""
-    t = re.sub(r"\s+", " ", (text or "").strip())
+    t = strip_generic_why_it_matters(text or "")
+    t = re.sub(r"\s+", " ", t).strip()
     t = _SIGNATURE_PREFIX.sub("", t).strip()
     t = _ENGAGEMENT_HOOK.sub("", t)
     t = _OPEN_LOOP.sub("", t).strip()

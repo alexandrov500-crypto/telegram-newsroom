@@ -61,18 +61,11 @@ def extract_insight(body: str, *, vertical: str = "general") -> InsightResult:
             break
 
     if not insight:
-        if vertical == "crypto":
-            insight = "Движение может усилить волатильность и перераспределение ликвидности между биржами."
-        elif vertical in ("macro", "finance"):
-            insight = "Сигнал влияет на ожидания по ставкам и переоценку риск-премий."
-        elif vertical == "geopolitics":
-            insight = "Событие повышает неопределённость для торговых и энергетических потоков."
-        else:
-            insight = "Событие может сдвинуть краткосрочные ожидания участников рынка."
+        # No keyword-matched implication — do not invent a generic market line.
+        return InsightResult(t, 0.35, False, "none")
 
     enriched = f"{t}\n\nПочему это важно: {insight}"
-    depth = 0.65 if rule_id != "none" else 0.52
-    return InsightResult(enriched, depth, True, rule_id)
+    return InsightResult(enriched, 0.65, True, rule_id)
 
 
 def score_insight_depth(text: str) -> float:

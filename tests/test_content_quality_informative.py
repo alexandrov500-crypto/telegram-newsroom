@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from app.editorial.content_quality import (
     has_hidden_advertising,
+    is_generic_insight,
     is_incomplete_teaser,
     is_publishably_informative,
     passes_premium_newsroom_policy,
+    strip_generic_why_it_matters,
 )
 from app.editorial.public_post_formatter import format_public_post_html
 
@@ -101,3 +103,22 @@ def test_clean_market_news_not_hidden_ad():
         "вероятность продажи до конца 2026 года в 84%, что усилило давление на крипторынок."
     )
     assert not has_hidden_advertising(text)
+
+
+def test_generic_insight_boilerplate_detected_and_stripped():
+    text = (
+        "АТОР: самый дорогой тур в Россию купили американские туристы. "
+        "Его стоимость составила $15 тысяч.\n\n"
+        "Почему это важно: Событие может сдвинуть краткосрочные ожидания участников рынка."
+    )
+    assert is_generic_insight("Событие может сдвинуть краткосрочные ожидания участников рынка.")
+    cleaned = strip_generic_why_it_matters(text)
+    assert "Почему это важно" not in cleaned
+    assert "$15 тысяч" in cleaned
+
+
+def test_specific_insight_not_stripped():
+    why = "Изменение ставки перестраивает стоимость капитала и волатильность активов."
+    text = f"ФРС сигнализирует о снижении ключевой ставки.\n\nПочему это важно: {why}"
+    assert not is_generic_insight(why)
+    assert why in strip_generic_why_it_matters(text)

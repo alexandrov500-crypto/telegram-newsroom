@@ -30,6 +30,17 @@ def test_insight_layer_adds_why_it_matters() -> None:
     assert result.depth_score >= 0.5
 
 
+def test_insight_layer_skips_generic_fallback_for_off_topic() -> None:
+    body = (
+        "В Китае набирают популярность рестораны для интровертов. "
+        "Посетители сидят в отдельных маленьких кабинках, куда им приносят всю еду "
+        "с минимальным контактом даже с сотрудниками."
+    )
+    result = extract_insight(body, vertical="general")
+    assert "Почему это важно" not in result.text
+    assert not result.has_insight
+
+
 def test_style_alignment_rejects_generic_opener() -> None:
     generic = "По данным СМИ сообщается что рынки выросли сегодня утром."
     verdict = score_style_alignment(generic, vertical="macro")

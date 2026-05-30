@@ -112,7 +112,11 @@ def format_public_story(
     if dup and s:
         s = s[len(h) :].lstrip(" .—-\n") if s.lower().startswith(h.lower()) else s
     read = _readability(f"{h}\n{s}")
+    from app.editorial.content_quality import is_generic_insight
+
     why = (why_it_matters or "").strip()
+    if why and is_generic_insight(why):
+        why = ""
     if include_why is None:
         tuning = get_editorial_tuning()
         include_why = (
