@@ -195,6 +195,17 @@ def _log_desk_decision(
         pass
 
 
+def _hard_content_violation(text: str) -> str | None:
+    """Safety rejects that must never be bypassed (debug/recovery/starvation)."""
+    from app.editorial.content_quality import has_hidden_advertising, is_incomplete_teaser
+
+    if has_hidden_advertising(text or ""):
+        return "hidden_advertising_or_native_ad"
+    if is_incomplete_teaser(text or ""):
+        return "incomplete_teaser_no_body"
+    return None
+
+
 def evaluate_desk_filter(
     text: str,
     escore: EditorialScore,
@@ -217,6 +228,23 @@ def evaluate_desk_filter(
         escore.breaking_score > _BREAKING_OVERRIDE_SCORE
         or escore.urgency_score > _URGENCY_OVERRIDE
     ) and not _MEME_NOISE.search(text or "")
+
+    def _finish(decision: DeskDecision) -> DeskDecision:
+        _log_desk_decision(decision, escore=escore, sources=sources)
+        record_desk_decision(
+            runtime_dir,
+            publish=decision.publish,
+            reason=decision.reason,
+            quality_score=q,
+            threshold_ctx=ctx,
+        )
+        return decision
+
+    hard = _hard_content_violation(text or "")
+    if hard:
+        return _finish(
+            _reject(hard, "reject", q, ctx, breakdown, runtime_dir=runtime_dir)
+        )
 
     if bypass:
         decision = DeskDecision(
@@ -241,24 +269,7 @@ def evaluate_desk_filter(
     macro_floor = ctx.min_macro_market_score
     rel_floor = ctx.relevance_floor
 
-    def _finish(decision: DeskDecision) -> DeskDecision:
-        _log_desk_decision(decision, escore=escore, sources=sources)
-        record_desk_decision(
-            runtime_dir,
-            publish=decision.publish,
-            reason=decision.reason,
-            quality_score=q,
-            threshold_ctx=ctx,
-        )
-        return decision
-
     # Hard rejects
-    from app.editorial.content_quality import has_hidden_advertising, is_incomplete_teaser
-
-    if has_hidden_advertising(text or ""):
-        return _finish(
-            _reject("hidden_advertising_or_native_ad", "reject", q, ctx, breakdown, runtime_dir=runtime_dir)
-        )
     if _MEME_NOISE.search(text or "") and not breaking_override:
         return _finish(_reject("meme_or_joke_content", "noise", q, ctx, breakdown, runtime_dir=runtime_dir))
     if _INCIDENT_NOISE.search(text or ""):
@@ -278,10 +289,6 @@ def evaluate_desk_filter(
         min_text_len = 12
     if len((text or "").strip()) < min_text_len:
         return _finish(_reject("low_information_density", "noise", q, ctx, breakdown, runtime_dir=runtime_dir))
-    if is_incomplete_teaser(text or ""):
-        return _finish(
-            _reject("incomplete_teaser_no_body", "noise", q, ctx, breakdown, runtime_dir=runtime_dir)
-        )
     if _UNSAFE_PUBLIC_TOPIC.search(text or ""):
         return _finish(_reject("unsafe_public_topic", "reject", q, ctx, breakdown, runtime_dir=runtime_dir))
     if _TABLOID_BAIT.search(text or "") and escore.credibility_score < 0.72:

@@ -39,6 +39,11 @@ def apply_light_framing(body: str, *, vertical: str = "general") -> OpinionFrame
     t = " ".join((body or "").split()).strip()
     if not t or _FORBIDDEN_OPINION.search(t):
         return OpinionFrame(t, 0.0, False)
+
+    from app.editorial.content_quality import _SIGNAL_DOMAIN, is_consumer_fraud_story
+
+    if is_consumer_fraud_story(t) or not _SIGNAL_DOMAIN.search(t):
+        return OpinionFrame(t, 0.0, True)
     if _UNCERTAINTY.search(t):
         return OpinionFrame(t, 0.25, True)
 

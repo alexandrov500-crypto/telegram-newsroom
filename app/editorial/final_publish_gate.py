@@ -91,6 +91,32 @@ def evaluate_final_publish_gate(
     even when experimental ranking/quality changes would otherwise reject every
     draft — algorithm tuning can never silence the channel.
     """
+    text = (content or "").strip()
+    runtime_dir = getattr(settings, "runtime_state_dir", None) if settings else None
+    from app.editorial.content_quality import has_hidden_advertising, is_incomplete_teaser
+    from app.publisher.draft_builder import polish_channel_post
+
+    quality_text = polish_channel_post(text, max_chars=8000)
+    for candidate in (text, quality_text):
+        if has_hidden_advertising(candidate):
+            v = FinalPublishGateVerdict(
+                allowed=False,
+                manual_review_required=False,
+                permanent_block=True,
+                reason="hidden_advertising",
+            )
+            log_gate_decision(draft_id=draft_id, verdict=v)
+            return v
+        if is_incomplete_teaser(candidate):
+            v = FinalPublishGateVerdict(
+                allowed=False,
+                manual_review_required=False,
+                permanent_block=True,
+                reason="incomplete_teaser_no_body",
+            )
+            log_gate_decision(draft_id=draft_id, verdict=v)
+            return v
+
     if bypass_final_publish_gate():
         v = FinalPublishGateVerdict(
             allowed=True,
@@ -99,23 +125,6 @@ def evaluate_final_publish_gate(
             reason="recovery_bypass",
         )
         log_gate_decision(draft_id=draft_id, verdict=v, extra={"recovery_bypass": True})
-        return v
-
-    text = (content or "").strip()
-    runtime_dir = getattr(settings, "runtime_state_dir", None) if settings else None
-    from app.editorial.content_quality import is_incomplete_teaser
-    from app.publisher.draft_builder import polish_channel_post
-
-    quality_text = polish_channel_post(text, max_chars=8000)
-
-    if is_incomplete_teaser(quality_text):
-        v = FinalPublishGateVerdict(
-            allowed=False,
-            manual_review_required=False,
-            permanent_block=True,
-            reason="incomplete_teaser_no_body",
-        )
-        log_gate_decision(draft_id=draft_id, verdict=v)
         return v
 
     # Output-language safety runs first (applies in safety-only floor mode too):
@@ -136,7 +145,6 @@ def evaluate_final_publish_gate(
     try:
         rendered = build_channel_message_html(text, sources, draft_id=draft_id or 0, runtime_dir=runtime_dir)
         from app.editorial.content_quality import (
-            has_hidden_advertising,
             is_publishably_informative,
             passes_premium_newsroom_policy,
             strip_public_template_metadata,
@@ -145,15 +153,6 @@ def evaluate_final_publish_gate(
 
         plain_rendered = strip_telegram_markdown(re.sub(r"<[^>]+>", " ", rendered or ""))
         plain_rendered = re.sub(r"\s+", " ", plain_rendered).strip()
-        if has_hidden_advertising(plain_rendered):
-            v = FinalPublishGateVerdict(
-                allowed=False,
-                manual_review_required=False,
-                permanent_block=True,
-                reason="hidden_advertising",
-            )
-            log_gate_decision(draft_id=draft_id, verdict=v)
-            return v
         plain_core = strip_public_template_metadata(plain_rendered)
         informative = is_publishably_informative(plain_core, min_chars=90, min_sentences=2) or (
             is_publishably_informative(quality_text, min_chars=90, min_sentences=2)

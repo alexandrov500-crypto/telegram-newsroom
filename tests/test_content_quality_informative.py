@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from app.editorial.content_quality import (
     has_hidden_advertising,
+    is_consumer_fraud_story,
     is_generic_insight,
     is_incomplete_teaser,
     is_publishably_informative,
     passes_premium_newsroom_policy,
+    strip_editorial_template_noise,
     strip_generic_why_it_matters,
 )
+from app.flywheel.pipeline import enrich_for_publish
+from app.identity.opinion_layer import apply_light_framing
 from app.editorial.public_post_formatter import format_public_post_html
 
 
@@ -122,3 +126,47 @@ def test_specific_insight_not_stripped():
     text = f"ФРС сигнализирует о снижении ключевой ставки.\n\nПочему это важно: {why}"
     assert not is_generic_insight(why)
     assert why in strip_generic_why_it_matters(text)
+
+
+def test_decenter_kaliningrad_fraud_not_market_news():
+    text = (
+        "🚬 Жительница Калининграда поверила «криптоконсультанту» из мессенджера и потеряла "
+        "6 300 000 рублей — при этом часть денег она заняла у… "
+        "Полный разбор — в premium-канале."
+    )
+    assert is_consumer_fraud_story(text)
+    assert has_hidden_advertising(text)
+    assert is_incomplete_teaser(text)
+    frame = apply_light_framing(text, vertical="macro")
+    assert "При текущих условиях рынок" not in frame.text
+    enriched = enrich_for_publish(text, vertical="macro")
+    assert "Крипторынок реагирует" not in enriched.content
+    assert "При текущих условиях рынок" not in enriched.content
+
+
+def test_decenter_telegram_rates_teaser_rejected():
+    text = (
+        "update → markets 📊 Актуальные курсы теперь всегда под рукой — прямо в списке чатов "
+        "Telegram. Добавьте нужные каналы в отдельную папку или… "
+        "Полный разбор — в premium-канале."
+    )
+    assert has_hidden_advertising(text)
+    assert is_incomplete_teaser(text)
+    cleaned = strip_editorial_template_noise(text)
+    assert not cleaned.lower().startswith("update →")
+    assert "premium-канале" in text
+    assert "premium-канале" in cleaned
+
+
+def test_strip_opinion_prefix_and_generic_why():
+    polluted = (
+        "При текущих условиях рынок, вероятно, переоценит жительница калининграда поверила "
+        "«криптоконсультанту».\n\n"
+        "Жительница Калининграда потеряла 6,3 млн рублей.\n\n"
+        "Почему это важно: Крипторынок реагирует на ликвидность и регуляторные сигналы "
+        "быстрее традиционных активов."
+    )
+    cleaned = strip_editorial_template_noise(polluted)
+    assert "При текущих условиях рынок" not in cleaned
+    assert "Почему это важно" not in cleaned
+    assert "6,3 млн" in cleaned

@@ -237,8 +237,12 @@ def _strip_broken_quote_tail(text: str, *, had_ellipsis: bool) -> str:
 
 def polish_channel_post(body: str, *, max_chars: int = 2800) -> str:
     """Reader-facing post: no sources, full sentences, no lazy trailing ellipsis."""
+    from app.editorial.content_quality import strip_editorial_template_noise
+    from app.identity.style_guide import detect_vertical
+
     clean = strip_source_attribution(normalize_legacy_bullet_lines(body))
     clean = strip_telegram_markdown(clean)
+    clean = strip_editorial_template_noise(clean)
     clean = _normalize_colon_attribution(clean)
     if not clean:
         return "News update."
@@ -275,11 +279,12 @@ def polish_channel_post(body: str, *, max_chars: int = 2800) -> str:
             clean = enriched.content
         except Exception:
             pass
+    clean = strip_editorial_template_noise(clean)
     if os.getenv("HEADLINE_ENGINE_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on"):
         try:
             from app.editorial.headline_engine import apply_headline_to_content, pick_best_headline
 
-            headline = pick_best_headline(clean, vertical="macro")
+            headline = pick_best_headline(clean, vertical=detect_vertical(clean))
             clean = apply_headline_to_content(clean, headline)
         except Exception:
             pass

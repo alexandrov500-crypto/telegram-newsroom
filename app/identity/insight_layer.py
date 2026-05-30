@@ -12,7 +12,7 @@ _IMPLICATION_RULES: list[tuple[re.Pattern[str], str]] = [
      "Санкционный контур меняет логистику поставок и ценовые премии на риск."),
     (re.compile(r"\b(oil|нефт|OPEC|gas|газ)", re.I),
      "Энергетический шок быстро передаётся в инфляцию и транспортные издержки."),
-    (re.compile(r"\b(BTC|Bitcoin|ETH|crypto|крипт)", re.I),
+    (re.compile(r"\b(BTC|Bitcoin|ETH|crypto)\b|крипторынок|криптовалют", re.I),
      "Крипторынок реагирует на ликвидность и регуляторные сигналы быстрее традиционных активов."),
     (re.compile(r"\b(Putin|Trump|NATO|войн|war|conflict)", re.I),
      "Геополитический риск повышает премию за защитные активы и усложняет торговые маршруты."),
@@ -36,6 +36,11 @@ def extract_insight(body: str, *, vertical: str = "general") -> InsightResult:
     t = " ".join((body or "").split()).strip()
     if not t:
         return InsightResult("", 0.0, False, "empty")
+
+    from app.editorial.content_quality import is_consumer_fraud_story
+
+    if is_consumer_fraud_story(t):
+        return InsightResult(t, 0.35, False, "none")
 
     has_marker = any(
         m in t

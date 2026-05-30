@@ -85,6 +85,23 @@ def test_final_gate_blocks_hidden_advertising() -> None:
     assert verdict.reason in {"hidden_advertising", "premium_policy_low_signal"}
 
 
+def test_final_gate_blocks_premium_funnel_even_with_recovery_bypass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FORCE_PUBLISH_BYPASS", "true")
+    verdict = evaluate_final_publish_gate(
+        content=(
+            "Жительница Калининграда поверила «криптоконсультанту» из мессенджера и потеряла "
+            "6 300 000 рублей — при этом часть денег она заняла у… "
+            "Полный разбор — в premium-канале."
+        ),
+        sources='[{"channel":"@DeCenter"}]',
+        operator_approved=False,
+    )
+    assert not verdict.allowed
+    assert verdict.reason == "hidden_advertising"
+
+
 def test_final_gate_allows_ai_approved_autonomous_despite_publication_risk(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -96,7 +113,8 @@ def test_final_gate_allows_ai_approved_autonomous_despite_publication_risk(
     verdict = evaluate_final_publish_gate(
         content=(
             "Минтранс подготовил проект приказа о реестре автоперевозчиков на платформе Гослог. "
-            "С 2027 года данные о перевозчиках и транспорте будут вестись в электронной форме."
+            "С 2027 года данные о перевозчиках и транспорте будут вестись в электронной форме, "
+            "что может изменить логистику и издержки грузоперевозок на рынке."
         ),
         sources='[{"channel":"@vedofon"}]',
         draft_extras_json=extras,

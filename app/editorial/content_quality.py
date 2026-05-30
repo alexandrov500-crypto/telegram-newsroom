@@ -13,7 +13,7 @@ _INCOMPLETE_TEASER = re.compile(
 )
 _DEICTIC_STUB = re.compile(r"\b(так|ниже|выше)\s*\.?\s*$", re.I)
 _UNFINISHED_ENDING = re.compile(
-    r"(\.\.\.|…|[,;:]\s*|[-–—]\s*|и\s*$|или\s*$|а\s*$|но\s*$)\s*$",
+    r"(\.\.\.|…|[,;:]\s*|[-–—]\s*|\s+(?:и|или|а|но)\.?\s*)\s*$",
     re.I,
 )
 # Model/source cut-off disguised as a full sentence (… stripped → «для армянского.»).
@@ -76,6 +76,7 @@ _GENERIC_INSIGHT = re.compile(
     r"|Движение\s+может\s+усилить\s+волатильность\s+и\s+перераспределение\s+ликвидности\s+между\s+биржами"
     r"|Сигнал\s+влияет\s+на\s+ожидания\s+по\s+ставкам\s+и\s+переоценку\s+риск[\-\s]?премий"
     r"|Событие\s+повышает\s+неопредел[её]нность\s+для\s+торговых\s+и\s+энергетических\s+потоков"
+    r"|Крипторынок\s+реагирует\s+на\s+ликвидность\s+и\s+регуляторные\s+сигналы\s+быстрее\s+традиционных\s+активов"
     r")\.?",
     re.I,
 )
@@ -100,11 +101,56 @@ _BRAND_CTA = re.compile(
     r"\s*(Follow for high-signal[^.!?]*[.!?]?|Подписывайтесь[^.!?]*[.!?]?)\s*$",
     re.I,
 )
+_OPINION_PREFIX = re.compile(
+    r"^(?:"
+    r"При\s+текущих\s+условиях\s+рынок,\s+вероятно,\s+переоценит"
+    r"|Участники\s+рынка,\s+скорее\s+всего,\s+интерпретируют\s+это\s+как"
+    r"|Геополитический\s+контур\s+может\s+усилить"
+    r"|Инвесторы,\s+вероятно,\s+пересмотрят"
+    r"|Энергетический\s+баланс\s+может\s+сместиться\s+в\s+сторону"
+    r"|Сектор,\s+вероятно,\s+отреагирует\s+на"
+    r")\s+[^.\n]+[.\n]+",
+    re.I | re.MULTILINE,
+)
+_SOURCE_CHANNEL_CHROME = re.compile(
+    r"^(?:update|breaking|news|markets)\s*→\s*\w+\s*",
+    re.I,
+)
+_CONSUMER_FRAUD = re.compile(
+    r"(?:"
+    r"криптоконсульт|"
+    r"мошенн|"
+    r"обманул|"
+    r"потерял[аи]?|"
+    r"занял[аи]?\s+у|"
+    r"верьте\s+«|"
+    r"консультант.*мессендж|"
+    r"из\s+мессенджера"
+    r")",
+    re.I,
+)
+_MID_ELLIPSIS_TEASER = re.compile(r"[а-яёa-z]\s*…", re.I)
 
 
 def is_generic_insight(text: str) -> bool:
     """True when «why it matters» is a canned fallback, not content-specific analysis."""
     return bool(_GENERIC_INSIGHT.search((text or "").strip()))
+
+
+def is_consumer_fraud_story(text: str) -> bool:
+    """Consumer scam / messenger fraud — not market news."""
+    return bool(_CONSUMER_FRAUD.search((text or "").strip()))
+
+
+def strip_editorial_template_noise(text: str) -> str:
+    """Remove opinion-layer prefixes and source-channel chrome from draft body."""
+    t = (text or "").strip()
+    if not t:
+        return ""
+    t = _OPINION_PREFIX.sub("", t).strip()
+    t = _SOURCE_CHANNEL_CHROME.sub("", t).strip()
+    t = strip_generic_why_it_matters(t)
+    return re.sub(r"\n{3,}", "\n\n", t).strip()
 
 
 def strip_generic_why_it_matters(text: str) -> str:
@@ -119,12 +165,18 @@ def strip_generic_why_it_matters(text: str) -> str:
         t,
         flags=re.I,
     ).strip()
+    t = re.sub(
+        r"\n?\n?Почему\s+это\s+важно\s*:\s*" + _GENERIC_INSIGHT.pattern + r"\.?\s*",
+        "",
+        t,
+        flags=re.I,
+    ).strip()
     return re.sub(r"\n{3,}", "\n\n", t).strip()
 
 
 def strip_public_template_metadata(text: str) -> str:
     """Remove growth/template chrome before editorial quality checks."""
-    t = strip_generic_why_it_matters(text or "")
+    t = strip_editorial_template_noise(text or "")
     t = re.sub(r"\s+", " ", t).strip()
     t = _SIGNATURE_PREFIX.sub("", t).strip()
     t = _ENGAGEMENT_HOOK.sub("", t)
@@ -194,6 +246,8 @@ def is_incomplete_teaser(text: str) -> bool:
     if not t:
         return True
     if is_truncated_mid_thought(t):
+        return True
+    if _MID_ELLIPSIS_TEASER.search(t):
         return True
     if _INCOMPLETE_TEASER.search(t):
         return True

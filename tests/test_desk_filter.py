@@ -113,6 +113,18 @@ def test_rejects_premium_channel_native_ad():
     assert desk.reason == "hidden_advertising_or_native_ad"
 
 
+def test_bypass_still_rejects_premium_funnel():
+    text = (
+        "🚬 Жительница Калининграда поверила «криптоконсультанту» из мессенджера и потеряла "
+        "6 300 000 рублей — при этом часть денег она заняла у… "
+        "Полный разбор — в premium-канале."
+    )
+    escore = score_story(text=text, sources=["@DeCenter"])
+    desk = evaluate_desk_filter(text, escore, sources=["@DeCenter"], bypass=True)
+    assert not desk.publish
+    assert desk.reason == "hidden_advertising_or_native_ad"
+
+
 def test_persist_rejection_writes_jsonl(tmp_path: Path):
     text = "лол мем"
     escore = score_story(text=text, sources=["@decenter"])
