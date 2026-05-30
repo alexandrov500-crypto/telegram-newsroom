@@ -1,4 +1,5 @@
 .env
 .env.vps
+vpn_sub_url.txt
 *.session
 *.db

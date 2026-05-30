@@ -1,0 +1,36 @@
+# Copy to docker-compose.override.yml on VPS (not committed — contains local paths).
+# Gram VPN Xray client + YandexGPT relay.
+services:
+  y2o:
+    image: yandexgpt2openai:local
+    container_name: y2o
+    restart: unless-stopped
+    environment:
+      - Y2O_SecretKey=${YANDEX_API_KEY}
+      - Y2O_CatalogID=${YANDEX_FOLDER_ID}
+      - Y2O_BringYourOwnKey=false
+      - Y2O_Host=0.0.0.0
+      - Y2O_Port=8520
+      - Y2O_ServerURL=http://y2o:8520
+      - Y2O_LogFile=logs/y2o.log
+      - Y2O_LogLevel=INFO
+    volumes:
+      - ./y2o-data:/app/data
+      - ./y2o-logs:/app/logs
+
+  xray:
+    image: ghcr.io/xtls/xray-core:latest
+    container_name: xray
+    restart: unless-stopped
+    command: ["run", "-c", "/etc/xray/config.json"]
+    volumes:
+      # Mount directory (not single file) — avoids Docker creating a directory stub.
+      - ${NEWSROOM_XRAY_DATA:-/opt/newsroom/xray-data}:/etc/xray:ro
+
+networks:
+  default:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.30.0.0/16
+        - subnet: fd4e:7773:726f::/64
