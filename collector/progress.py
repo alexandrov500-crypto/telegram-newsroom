@@ -17,7 +17,7 @@ class CollectProgress:
     planned_total: int = 0
     processed_channels: list[str] = field(default_factory=list)
 
-    def record_channel(self, channel: str, new_rows: int) -> None:
+    def record_channel(self, channel: str, new_rows: int, *, commit_sec: float = 0.0) -> None:
         self.channels_processed += 1
         self.new_rows_total += int(new_rows)
         self.processed_channels.append(channel)
@@ -36,6 +36,7 @@ class CollectProgress:
                 channel=channel,
                 new_rows=int(new_rows),
                 total_new_rows=self.new_rows_total,
+                commit_sec=round(commit_sec, 4),
             )
 
     def channels_skipped_count(self) -> int:

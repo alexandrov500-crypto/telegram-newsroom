@@ -4,13 +4,16 @@ import asyncio
 import json
 import logging
 import os
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterable
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from telethon import TelegramClient
 from telethon.errors import RPCError
 
+from collector.channel_profile import ChannelCollectStats
 from collector.retry import ensure_connected, with_telethon_retries
 from collector.telethon_client import to_utc_aware
 from collector.telethon_media import (
@@ -18,6 +21,7 @@ from collector.telethon_media import (
     download_message_media,
     message_plain_text,
 )
+from db.models import RawPost
 from db.repository import upsert_raw_post
 from utils.structured_log import log_event
 
@@ -65,6 +69,8 @@ async def collect_channel_messages(
         return 0
 
     label = _channel_label(entity)
+    stats = ChannelCollectStats(channel=label)
+    stats.emit_start()
 
     def _media_skip_channels() -> set[str]:
         raw = os.getenv("COLLECTOR_MEDIA_SKIP_CHANNELS", "")
@@ -82,15 +88,27 @@ async def collect_channel_messages(
         channel_key = label.lower().lstrip("@")
         skip_media = channel_key in _media_skip_channels()
         async for message in client.iter_messages(entity, limit=limit):
+            stats.record_scan()
             text = message_plain_text(message)
             has_media = detect_media_type(message) != "none"
             if not text and not has_media:
                 continue
+            stats.record_fetched()
             extras: dict[str, object] = {}
-            if collect_media and has_media and not skip_media:
+            msg_id = int(message.id)
+            already_stored = await session.scalar(
+                select(RawPost.id).where(
+                    RawPost.channel_name == label,
+                    RawPost.message_id == msg_id,
+                )
+            )
+            if collect_media and has_media and not skip_media and already_stored is None:
+                stats.media_downloads += 1
                 media_payload = await download_message_media(client, message, media_cache)
                 if media_payload:
                     extras["media"] = media_payload
+            elif collect_media and has_media and not skip_media and already_stored is not None:
+                stats.media_skipped_existing += 1
             from app.editorial.source_languages import language_for_channel
 
             src_lang = language_for_channel(label)
@@ -100,12 +118,13 @@ async def collect_channel_messages(
             was_new = await upsert_raw_post(
                 session,
                 channel_name=label,
-                message_id=int(message.id),
+                message_id=msg_id,
                 text=text or " ",
                 created_at=created,
                 extras_json=json.dumps(extras, ensure_ascii=False),
             )
             if was_new:
+                stats.record_new()
                 count += 1
                 try:
                     from ops.pipeline.ingest_hooks import on_raw_post_inserted
@@ -113,18 +132,22 @@ async def collect_channel_messages(
                     meta = on_raw_post_inserted(
                         runtime_dir=os.getenv("RUNTIME_STATE_DIR", "var/runtime"),
                         channel_name=label,
-                        message_id=int(message.id),
+                        message_id=msg_id,
                         text=text or " ",
                     )
                     if meta.get("duplicate"):
                         count = max(0, count - 1)
+                        stats.new_rows_written = max(0, stats.new_rows_written - 1)
                 except Exception as exc:
+                    stats.record_exception()
                     log_event(
                         logger,
                         "collector.ops_hook_failed",
                         channel=label,
                         error=repr(exc)[:200],
                     )
+            else:
+                stats.record_dedup()
         return count
 
     try:
@@ -134,13 +157,21 @@ async def collect_channel_messages(
             max_attempts=telethon_max_attempts,
         )
     except RPCError as exc:
+        stats.record_exception()
+        stats.emit_runtime()
+        stats.emit_summary()
         log_event(logger, "collector.iter_failed", channel=label, error=str(exc))
         return 0
     except Exception as exc:
+        stats.record_exception()
+        stats.emit_runtime()
+        stats.emit_summary()
         log_event(logger, "collector.iter_failed", channel=label, error=repr(exc))
         return 0
 
-    log_event(logger, "collector.channel_done", channel=label, new_rows=inserted)
+    stats.emit_runtime()
+    stats.emit_summary()
+    log_event(logger, "collector.channel_done", channel=label, new_rows=inserted, runtime_sec=round(stats.runtime_sec, 3))
     return inserted
 
 
@@ -151,9 +182,11 @@ async def _commit_after_channel(
     new_rows: int,
     progress: CollectProgress | None,
 ) -> None:
+    t0 = time.perf_counter()
     await session.commit()
+    commit_sec = time.perf_counter() - t0
     if progress is not None:
-        progress.record_channel(channel, new_rows)
+        progress.record_channel(channel, new_rows, commit_sec=commit_sec)
 
 
 async def collect_all_channels(
