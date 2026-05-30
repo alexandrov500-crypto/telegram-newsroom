@@ -23,7 +23,7 @@ def upgrade() -> None:
         return
     placeholders = ", ".join(f":h{i}" for i in range(len(_BROKEN)))
     params = {f"h{i}": h for i, h in enumerate(_BROKEN)}
-    op.execute(
+    bind.execute(
         sa.text(
             f"""
             UPDATE source_registry
@@ -41,7 +41,7 @@ def downgrade() -> None:
         return
     placeholders = ", ".join(f":h{i}" for i in range(len(_BROKEN)))
     params = {f"h{i}": h for i, h in enumerate(_BROKEN)}
-    op.execute(
+    bind.execute(
         sa.text(
             f"""
             UPDATE source_registry
