@@ -38,7 +38,11 @@ _MACRO_RE = re.compile(
     re.I,
 )
 _CRYPTO_RE = re.compile(r"(bitcoin|btc|ethereum|eth|крипт|defi|etf)", re.I)
-_GEO_RE = re.compile(r"(санкци|войн|атака|nato|parliament|президент|геополит)", re.I)
+_GEO_RE = re.compile(
+    r"(санкци|войн|атака|nato|parliament|президент|геополит|"
+    r"путин|казахстан|переговор|государственн\w*\s+визит|дипломат)",
+    re.I,
+)
 _MARKET_RE = re.compile(r"(акци|индекс|рынок|бирж|доходност|облигац|нефт|oil|fx)", re.I)
 
 _STRIP_SOURCE_LINE = re.compile(r"^(Источник|Source|via)\s*:", re.I)
@@ -162,10 +166,10 @@ def _story_bucket(text: str) -> str:
     t = (text or "").lower()
     if _CRYPTO_RE.search(t):
         return "crypto"
-    if _MACRO_RE.search(t):
-        return "macro"
     if _GEO_RE.search(t):
         return "geo"
+    if _MACRO_RE.search(t):
+        return "macro"
     if _MARKET_RE.search(t):
         return "market"
     return "general"
@@ -306,11 +310,9 @@ def _open_loop_line(
     runtime_dir: str | None = None,
     text: str = "",
 ) -> str:
-    # Off by default: these were English templated lines that broke the
-    # reading flow on a Russian channel and often had no link to the story.
     if not _flag("NEWSROOM_OPEN_LOOP_ENABLED", False):
         return ""
-    if engagement_score < 0.62:
+    if engagement_score < 0.55:
         return ""
     if runtime_dir:
         try:
@@ -321,40 +323,49 @@ def _open_loop_line(
                 return ""
             key = str(strat.get("cluster_key") or "")
             if key == "ai_boom":
-                return "AI rally continues: traders now focus on capex signals and guidance."
+                return "Следующий шаг: инвесторы смотрят на guidance и расходы на AI-инфраструктуру."
             if key == "macro_stress":
-                return "Macro stress continues: traders now focus on the next policy and inflation signals."
+                return "Дальше — новые данные по инфляции и сигналы центробанков."
             if key == "geopolitical_escalation":
-                return "Geopolitical pressure continues: traders now focus on energy and risk repricing."
+                return "Следите за энергетикой и переоценкой риска в ближайших сессиях."
             if key == "crypto_risk_on":
-                return "Crypto risk-on continues: traders now focus on ETF flows and liquidity."
+                return "Дальше — потоки ETF и ликвидность на крипторынке."
         except Exception:
             pass
     if bucket == "macro":
-        return "Traders now focus on the next inflation print and policy path."
+        return "Дальше — свежие данные по инфляции и траектория ставок."
     if bucket == "crypto":
-        return "Traders now focus on liquidity flows and ETF demand in the next sessions."
+        return "Следующий фокус — ликвидность и потоки в ETF."
     if bucket == "geo":
-        return "Watch closely: next geopolitical headlines can reprice risk fast."
+        return "Следующие заголовки могут быстро переоценить риск — держим на радаре."
     if bucket == "market":
-        return "Traders now focus on follow-through: whether this move confirms a broader trend."
-    return "Watch closely: the next sessions will define whether this narrative extends."
+        return "Важно, закрепится ли движение в следующих сессиях."
+    return "Продолжение темы — в ближайших выпусках канала."
 
 
 def _adaptive_brand_footer(text: str, engagement_score: float) -> str:
-    # Off by default: English brand taglines added noise without reader value.
     if not _flag("NEWSROOM_BRAND_FOOTER_ENABLED", False):
         return ""
-    if engagement_score < 0.72:
+    if engagement_score < 0.58:
         return ""
     if _stable_mod(text, 3) != 0:
         return ""
     opts = [
-        "Follow for high-signal market intelligence.",
-        "Daily macro & markets briefing.",
-        "Real-time financial narratives.",
+        "Экономика и рынки — каждый день, без шума.",
+        "Канал для тех, кто следит за деньгами и решениями регуляторов.",
+        "Коротко о главном — подключайте коллег, так канал быстрее находит аудиторию.",
     ]
     return opts[_stable_mod(text + "brand", len(opts))]
+
+
+def _share_nudge_line(bucket: str) -> str:
+    if not _flag("NEWSROOM_SHARE_NUDGE_ENABLED", False):
+        return ""
+    if bucket == "macro":
+        return "Перешлите коллеге из финансов — так мы быстрее находим свою аудиторию."
+    if bucket == "market":
+        return "Сохраните или перешлите — полезно тем, кто следит за рынком."
+    return "Перешлите тем, кому актуально — так канал быстрее растёт."
 
 
 def format_public_post_plain(
@@ -421,6 +432,10 @@ def format_public_post_plain(
     if use_cta:
         parts.append("")
         parts.append(_adaptive_cta_line(bucket))
+    share = _share_nudge_line(bucket)
+    if share and _stable_mod(story_text, 2) == 0:
+        parts.append("")
+        parts.append(share)
     out = _dedupe_source_lines("\n".join(parts).strip())
     log_event(
         logger,
@@ -492,6 +507,7 @@ def format_public_post_html(
         cta_line=_adaptive_cta_line(bucket),
         hashtags_line=" ".join(tags) if tags else "",
         brand_footer_line=brand_footer,
+        share_nudge_line=_share_nudge_line(bucket) if _stable_mod(polished, 2) == 0 else "",
     )
     log_event(
         logger,

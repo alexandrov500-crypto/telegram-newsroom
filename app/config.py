@@ -238,8 +238,10 @@ def load_settings() -> Settings:
         raise RuntimeError("SOURCE_CHANNELS must contain at least one channel")
 
     from app.editorial.reference_model import apply_reference_model_env_defaults, filter_source_channels
+    from app.editorial.growth_profile import apply_growth_profile_defaults
 
     apply_reference_model_env_defaults()
+    apply_growth_profile_defaults()
     filtered = filter_source_channels(list(channels))
     if filtered != channels:
         import logging

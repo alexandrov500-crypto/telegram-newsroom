@@ -40,6 +40,8 @@ def _save_state(runtime_dir: str, state: dict) -> None:
 def _target_daily_cap() -> int:
     try:
         phase = os.getenv("GROWTH_PHASE", "d30").strip().lower()
+        if phase in {"d7", "d14"}:
+            return max(18, min(50, int(os.getenv("GROWTH_CADENCE_DAILY_CAP", "35"))))
         if phase == "d90":
             return max(20, min(60, int(os.getenv("GROWTH_CADENCE_DAILY_CAP", "40"))))
         return max(12, min(30, int(os.getenv("GROWTH_CADENCE_DAILY_CAP", "20"))))
@@ -95,7 +97,11 @@ def evaluate_dynamic_cadence(
         return CadenceDecision(False, "daily_cap", cap, 0, min_interval)
 
     hour = now_local.hour
-    if autonomous_relaxed:
+    from app.editorial.growth_profile import aggressive_growth_enabled
+
+    if aggressive_growth_enabled():
+        session_cap = 8 if 7 <= hour < 23 else 3
+    elif autonomous_relaxed:
         session_cap = 6 if 8 <= hour < 22 else 2
     else:
         session_cap = 3 if 8 <= hour < 22 else 1

@@ -2,8 +2,17 @@ from __future__ import annotations
 
 import re
 
+import pytest
+
 from app.editorial.public_post_formatter import format_public_post_html, format_public_post_plain
 from app.editorial.source_attribution import resolve_source_attribution
+
+
+@pytest.fixture(autouse=True)
+def _stable_public_formatter_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Formatter tests assert layout on source text, not W3 enrich side effects."""
+    monkeypatch.setenv("W3_EDITORIAL_PIPELINE_ENABLED", "false")
+    monkeypatch.setenv("HEADLINE_ENGINE_ENABLED", "false")
 
 
 def test_tier2_attribution_footer() -> None:

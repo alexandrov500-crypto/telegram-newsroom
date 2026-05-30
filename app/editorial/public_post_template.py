@@ -43,6 +43,7 @@ def render_public_post_html(
     cta_line: str = "Подписывайтесь на канал — главные новости без шума.",
     hashtags_line: str | None = None,
     brand_footer_line: str | None = None,
+    share_nudge_line: str | None = None,
 ) -> str:
     """
     Standard channel HTML:
@@ -105,4 +106,7 @@ def render_public_post_html(
         parts.append(f"<i>{escape_telegram_html(brand)}</i>")
     if include_cta and cta_line.strip():
         parts.append(f"<i>{escape_telegram_html(cta_line.strip())}</i>")
+    share = (share_nudge_line or "").strip()
+    if share:
+        parts.append(f"<i>{escape_telegram_html(share)}</i>")
     return sanitize_telegram_html_output("\n\n".join(p for p in parts if p))

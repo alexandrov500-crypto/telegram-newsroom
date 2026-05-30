@@ -158,11 +158,18 @@ def apply_reference_model_env_defaults() -> None:
         "EDITORIAL_OPINION_LAYER_ENABLED": "false",
         "NEWSROOM_PRIMARY_NICHES": "macro,business,finance",
         "NEWSROOM_EXCLUDE_GENERAL_FEED": "true",
-        "GROWTH_SIGNATURE_ENABLED": "false",
-        "NEWSROOM_ENGAGEMENT_HOOK_ENABLED": "false",
-        "NEWSROOM_OPEN_LOOP_ENABLED": "false",
         "AUTO_PUBLISH_ALLOWED_CATEGORIES": "macro,market,breaking,analysis",
     }
+    from app.editorial.growth_profile import aggressive_growth_enabled
+
+    if not aggressive_growth_enabled():
+        defaults.update(
+            {
+                "GROWTH_SIGNATURE_ENABLED": "false",
+                "NEWSROOM_ENGAGEMENT_HOOK_ENABLED": "false",
+                "NEWSROOM_OPEN_LOOP_ENABLED": "false",
+            }
+        )
     fastlane = os.getenv("AUTO_PUBLISH_FASTLANE_SOURCES", "").strip()
     if not fastlane:
         peers = sorted({h for h in reference_source_handles() if h.startswith("@")})
