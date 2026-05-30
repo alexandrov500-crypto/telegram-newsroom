@@ -40,6 +40,17 @@ def _parse_channels(sources: str) -> list[str]:
         return []
 
 
+def _discretionary_review_cleared(draft_extras_json: str | None, operator_approved: bool) -> bool:
+    if operator_approved:
+        return True
+    try:
+        from app.editorial.ai_editorial_reviewer import extras_ai_approves_autonomous_publish
+
+        return extras_ai_approves_autonomous_publish(draft_extras_json)
+    except Exception:
+        return False
+
+
 def _extras_require_manual(extras_json: str | None) -> bool:
     if not extras_json:
         return False
@@ -189,6 +200,7 @@ def evaluate_final_publish_gate(
         return v
 
     chans = _parse_channels(sources)
+    review_cleared = _discretionary_review_cleared(draft_extras_json, operator_approved)
     gov = evaluate_advanced_governance(text)
     if gov.auto_block:
         return FinalPublishGateVerdict(
@@ -220,7 +232,7 @@ def evaluate_final_publish_gate(
             settings=settings,
             operator_approved=operator_approved,
         )
-        if not tm.allowed:
+        if not tm.allowed and not review_cleared:
             v = FinalPublishGateVerdict(
                 allowed=False,
                 manual_review_required=tm.manual_review_required,
@@ -234,7 +246,7 @@ def evaluate_final_publish_gate(
         from app.editorial.publication_risk_score import score_publication_risk
 
         risk = score_publication_risk(text, sources=chans, runtime_dir=runtime_dir)
-        if risk.mandatory_review and not operator_approved:
+        if risk.mandatory_review and not review_cleared:
             v = FinalPublishGateVerdict(
                 allowed=False,
                 manual_review_required=True,
@@ -254,7 +266,7 @@ def evaluate_final_publish_gate(
             operator_approved=operator_approved,
             draft_id=draft_id,
         )
-        if not staging.allowed:
+        if not staging.allowed and not review_cleared:
             v = FinalPublishGateVerdict(
                 allowed=False,
                 manual_review_required=staging.manual_review_required,
@@ -317,7 +329,7 @@ def evaluate_final_publish_gate(
         or is_soft_launch_mode()
     )
 
-    if manual and not operator_approved and not safety_only:
+    if manual and not review_cleared and not safety_only:
         from app.editorial.ai_editorial_reviewer import extras_ai_approves_autonomous_publish
 
         if extras_ai_approves_autonomous_publish(draft_extras_json):

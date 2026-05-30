@@ -65,6 +65,7 @@ def evaluate_dynamic_cadence(
     is_breaking: bool = False,
     topic_bucket: str = "general",
     now: datetime | None = None,
+    autonomous_relaxed: bool = False,
 ) -> CadenceDecision:
     """
     Pseudocode:
@@ -94,7 +95,10 @@ def evaluate_dynamic_cadence(
         return CadenceDecision(False, "daily_cap", cap, 0, min_interval)
 
     hour = now_local.hour
-    session_cap = 3 if 8 <= hour < 22 else 1
+    if autonomous_relaxed:
+        session_cap = 6 if 8 <= hour < 22 else 2
+    else:
+        session_cap = 3 if 8 <= hour < 22 else 1
     if topic_count >= max(2, cap // 4):
         session_cap = max(1, session_cap - 1)
 

@@ -128,3 +128,19 @@ def test_backlog_relief_medium_blocks_tier2(monkeypatch: pytest.MonkeyPatch, tmp
     )
     assert not ok
     assert "confidence_below_min" in reason
+
+
+def test_stale_pending_detection(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datetime import UTC, datetime, timedelta
+    from types import SimpleNamespace
+
+    monkeypatch.setenv("AUTO_PUBLISH_STALE_PENDING_HOURS", "24")
+    old = SimpleNamespace(created_at=datetime.now(UTC) - timedelta(hours=30))
+    fresh = SimpleNamespace(created_at=datetime.now(UTC) - timedelta(hours=1))
+    assert ap._is_stale_pending(old)
+    assert not ap._is_stale_pending(fresh)
+
+
+def test_missing_ai_review_detection() -> None:
+    assert ap._missing_ai_editorial_review("{}")
+    assert ap._missing_ai_editorial_review('{"ai_editorial_review": {"approved": true, "source": "rules"}}') is False

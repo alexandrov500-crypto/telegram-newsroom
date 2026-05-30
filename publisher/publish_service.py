@@ -112,9 +112,20 @@ async def publish_allowed_final_check(
         window_ticks=graph_window,
     )
     graph_ok = float(eg.get("consistency_rate") or 0) >= 1.0 or int(eg.get("trace_samples") or 0) < 3
-    if not graph_ok and not starvation_recovery and not operator_approved:
+    autonomous_bypass = False
+    try:
+        from app.editorial.ai_editorial_reviewer import (
+            autonomous_editorial_mode_enabled,
+            extras_ai_approves_autonomous_publish,
+        )
+
+        if autonomous_editorial_mode_enabled() and extras_ai_approves_autonomous_publish(draft_extras_json):
+            autonomous_bypass = True
+    except Exception:
+        pass
+    if not graph_ok and not starvation_recovery and not operator_approved and not autonomous_bypass:
         return False, "execution_graph_inconsistent"
-    if not graph_ok and (starvation_recovery or operator_approved):
+    if not graph_ok and (starvation_recovery or operator_approved or autonomous_bypass):
         log_event(
             logger,
             "publish.final_gate_starvation_bypass",
@@ -309,8 +320,20 @@ async def _execute_admin_publication_flow_impl(
 
     debug_pub = pipeline_debug_active(settings)
     recovery_pub = is_minimal_pipeline_mode() or is_force_publish_bypass()
+    starvation_recovery = False
+    try:
+        from app.editorial.desk_starvation import desk_threshold_context
+
+        starvation_recovery = desk_threshold_context().publish_starvation_detected
+    except Exception:
+        pass
     bypass_cadence = (
-        bypass_cadence or debug_bypass_publish_gates(settings) or recovery_pub or floor_publish or operator_override
+        bypass_cadence
+        or debug_bypass_publish_gates(settings)
+        or recovery_pub
+        or floor_publish
+        or operator_override
+        or starvation_recovery
     )
     bypass_leadership = (
         bypass_leadership or debug_bypass_publish_gates(settings) or recovery_pub or floor_publish or operator_override
@@ -421,6 +444,7 @@ async def _execute_admin_publication_flow_impl(
             return AdminPublishDraftResult(PublishFlowOutcome.MISSING)
         content = draft.content or ""
         sources = draft.sources or ""
+        draft_extras_json = draft.draft_extras or "{}"
 
     finalized = find_finalized_for_draft(settings.runtime_state_dir, draft_id)
     if finalized and int(finalized.get("channel_message_id") or 0):
@@ -514,7 +538,7 @@ async def _execute_admin_publication_flow_impl(
         settings=settings,
         draft_id=draft_id,
         idempotency_key=idem_key,
-        draft_extras_json="",
+        draft_extras_json=draft_extras_json,
         operator_approved=bypass_cadence,
     )
     if not final_ok:

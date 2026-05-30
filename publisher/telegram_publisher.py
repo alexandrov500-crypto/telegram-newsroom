@@ -33,7 +33,17 @@ _TELEGRAM_CAPTION_LIMIT = 1024
 
 
 def _publish_fallback_media_enabled() -> bool:
-    return os.getenv("PUBLISH_FALLBACK_MEDIA", "true").strip().lower() in {"1", "true", "yes", "on"}
+    explicit = os.getenv("PUBLISH_FALLBACK_MEDIA", "").strip().lower()
+    if explicit in {"1", "true", "yes", "on"}:
+        return True
+    if explicit in {"0", "false", "no", "off"}:
+        return False
+    return os.getenv("MEDIA_BRANDED_FALLBACK_ENABLED", "false").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 def _video_strict_adapt_enabled() -> bool:

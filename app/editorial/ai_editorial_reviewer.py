@@ -36,6 +36,20 @@ def _min_ai_confidence() -> float:
         return 0.68
 
 
+def _rules_fallback_verdict(rules: AiEditorialVerdict, *, reason_code: str) -> AiEditorialVerdict:
+    """
+    When rule-based review already passed, autonomous mode must not block publish
+    because OpenAI returned empty/invalid JSON or is temporarily unavailable.
+    """
+    if not rules.approved:
+        return AiEditorialVerdict(False, rules.confidence, "openai_error_rules_insufficient", "", "rules")
+    min_conf = _min_ai_confidence()
+    if autonomous_editorial_mode_enabled() or rules.confidence >= min_conf:
+        conf = round(min(0.92, max(rules.confidence, min_conf if autonomous_editorial_mode_enabled() else rules.confidence)), 4)
+        return AiEditorialVerdict(True, conf, reason_code, rules.expert_notes, "rules")
+    return AiEditorialVerdict(False, rules.confidence, "openai_error_rules_insufficient", "", "rules")
+
+
 def _ai_review_enabled() -> bool:
     return os.getenv("AI_EDITORIAL_REVIEW_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on")
 
@@ -109,14 +123,15 @@ def rule_based_editorial_review(
                 sources=sources,
                 draft_extras_json=extras_json,
                 settings=settings,
-                operator_approved=False,
+                operator_approved=autonomous_editorial_mode_enabled(),
                 draft_id=None,
                 safety_only=False,
             )
             if not gate.allowed:
-                if gate.manual_review_required:
+                if gate.permanent_block:
+                    return AiEditorialVerdict(False, 0.25, gate.reason, "", "rules")
+                if gate.manual_review_required and not autonomous_editorial_mode_enabled():
                     return AiEditorialVerdict(False, 0.45, f"manual:{gate.reason}", "", "rules")
-                return AiEditorialVerdict(False, 0.25, gate.reason, "", "rules")
         except Exception as exc:
             log_event(logger, "ai_editorial.rule_gate_skipped", error=repr(exc)[:120])
 
@@ -155,7 +170,7 @@ async def ai_editorial_review(
     if not _ai_review_enabled() or openai_client is None:
         if rules.confidence >= _min_ai_confidence():
             return rules
-        return AiEditorialVerdict(False, rules.confidence, "below_min_confidence_rules_only", "", "rules")
+        return _rules_fallback_verdict(rules, reason_code="rules_autonomous_no_openai")
 
     try:
         from app.config import Settings as AppSettings
@@ -185,6 +200,8 @@ async def ai_editorial_review(
             response_format={"type": "json_object"},
         )
         raw = (resp.choices[0].message.content or "").strip()
+        if not raw:
+            raise ValueError("empty_openai_response")
         data = json.loads(raw)
         approved = bool(data.get("approved"))
         conf = float(data.get("confidence") or 0.0)
@@ -201,12 +218,4 @@ async def ai_editorial_review(
         return v
     except Exception as exc:
         log_event(logger, "ai_editorial.openai_failed", error=repr(exc)[:200])
-        if rules.confidence >= _min_ai_confidence():
-            return AiEditorialVerdict(
-                True,
-                rules.confidence,
-                "rules_fallback_openai_error",
-                rules.expert_notes,
-                "rules",
-            )
-        return AiEditorialVerdict(False, rules.confidence, "openai_error_rules_insufficient", "", "rules")
+        return _rules_fallback_verdict(rules, reason_code="rules_fallback_openai_error")

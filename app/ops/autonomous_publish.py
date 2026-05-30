@@ -109,6 +109,49 @@ def _stall_thresholds() -> tuple[float, float]:
     return 20.0, 45.0
 
 
+def _stale_pending_hours() -> float:
+    raw = os.getenv("AUTO_PUBLISH_STALE_PENDING_HOURS", "72").strip()
+    try:
+        return max(6.0, min(168.0, float(raw)))
+    except ValueError:
+        return 72.0
+
+
+def _default_pending_scan_limit() -> int:
+    raw = os.getenv("AUTO_PUBLISH_PENDING_SCAN_LIMIT", "24").strip()
+    try:
+        return max(3, min(60, int(raw)))
+    except ValueError:
+        return 24
+
+
+def _draft_age_hours(draft: Any) -> float:
+    anchor = getattr(draft, "created_at", None)
+    if anchor is None:
+        return 0.0
+    dt = anchor
+    if getattr(dt, "tzinfo", None) is None:
+        dt = dt.replace(tzinfo=UTC)
+    return max(0.0, (datetime.now(UTC) - dt.astimezone(UTC)).total_seconds() / 3600.0)
+
+
+def _is_stale_pending(draft: Any) -> bool:
+    return _draft_age_hours(draft) >= _stale_pending_hours()
+
+
+def _missing_ai_editorial_review(extras_json: str | None) -> bool:
+    if not extras_json:
+        return True
+    try:
+        detail = json.loads(extras_json)
+    except (json.JSONDecodeError, TypeError):
+        return True
+    if not isinstance(detail, dict):
+        return True
+    ai = detail.get("ai_editorial_review")
+    return not isinstance(ai, dict) or not str(ai.get("source") or "").strip()
+
+
 def _is_active_market_session(*, newsroom_tz: str | None = None) -> bool:
     try:
         from app.editorial.growth_cadence import resolve_cadence_session
@@ -413,6 +456,75 @@ def evaluate_draft_for_auto_publish(
     return True, "auto_publish_approved"
 
 
+async def expire_stale_pending_drafts(session: Any, *, limit: int = 30) -> int:
+    """Reject ancient pending drafts so they do not block the auto-publish queue."""
+    from db.repository import list_pending_drafts, reject_draft
+
+    expired = 0
+    try:
+        pending = await list_pending_drafts(session, limit=max(1, min(int(limit), 100)))
+        for draft in pending:
+            if not _is_stale_pending(draft):
+                continue
+            did = int(draft.id)
+            if await reject_draft(session, did, reason="stale_pending_expired"):
+                expired += 1
+                log_event(
+                    logger,
+                    "auto_publish.stale_expired",
+                    draft_id=did,
+                    age_hours=round(_draft_age_hours(draft), 1),
+                )
+    except Exception as exc:
+        log_event(logger, "auto_publish.stale_expire_failed", error=repr(exc)[:200])
+    return expired
+
+
+async def sweep_pending_autonomous_backlog(
+    settings: Any,
+    session: Any,
+    *,
+    openai_client: Any | None = None,
+    limit: int = 4,
+) -> list[int]:
+    """
+    Run AI editorial review on pending drafts created before autonomous mode
+    (or otherwise missing ai_editorial_review). Newest first.
+    """
+    from db.repository import list_pending_drafts
+
+    if not autonomous_editorial_mode_enabled() or not auto_publish_enabled():
+        return []
+    cap = max(1, min(int(limit), 8))
+    try:
+        pending = await list_pending_drafts(session, limit=_default_pending_scan_limit())
+        candidates = [
+            d
+            for d in pending
+            if not _is_stale_pending(d)
+            and _missing_ai_editorial_review(
+                str(getattr(d, "draft_extras", None) or getattr(d, "extras", None) or "{}")
+            )
+        ]
+        candidates.sort(key=lambda d: int(getattr(d, "id", 0)), reverse=True)
+        scheduled: list[int] = []
+        for draft in candidates[:cap]:
+            did = int(draft.id)
+            if await try_immediate_autonomous_publish(
+                settings,
+                session,
+                did,
+                openai_client=openai_client,
+            ):
+                scheduled.append(did)
+        if scheduled:
+            log_event(logger, "autonomous_editorial.backlog_sweep", draft_ids=scheduled, count=len(scheduled))
+        return scheduled
+    except Exception as exc:
+        log_event(logger, "autonomous_editorial.backlog_sweep_failed", error=repr(exc)[:200])
+        return []
+
+
 async def try_auto_schedule_one_pending(settings: Any, session: Any) -> int | None:
     """
     Approve + schedule one pending draft if policy allows.
@@ -424,14 +536,14 @@ async def try_auto_schedule_one_pending(settings: Any, session: Any) -> int | No
         log_event(logger, "auto_publish_rejected", reason="disabled")
         return None
     try:
-        pending_limit = 3
+        pending_limit = _default_pending_scan_limit()
         backlog_relief = False
         stall = {"level": "low", "should_recover": False}
         try:
             stall = await detect_publish_stall_risk(settings, session)
             backlog_relief = _backlog_relief_enabled() and bool(stall.get("should_recover"))
             if backlog_relief:
-                pending_limit = 12 if str(stall.get("level")) == "high" else 6
+                pending_limit = max(pending_limit, 12 if str(stall.get("level")) == "high" else 8)
                 log_event(
                     logger,
                     "auto_publish.backlog_relief_mode",
@@ -449,6 +561,8 @@ async def try_auto_schedule_one_pending(settings: Any, session: Any) -> int | No
 
         pending = rank_pending_drafts_for_publish(pending, settings=settings)
         for draft in pending:
+            if _is_stale_pending(draft):
+                continue
             ok, reason = evaluate_draft_for_auto_publish(
                 draft_id=int(draft.id),
                 content=str(draft.content or ""),

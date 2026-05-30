@@ -112,17 +112,35 @@ def test_enrich_source_from_collector_cache(tmp_path: Path) -> None:
     assert res.media_path == str(img.resolve())
 
 
-def test_enrich_fallback_when_no_source(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_enrich_text_only_when_no_source(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("MEDIA_AI_IMAGE_ENABLED", "false")
+    monkeypatch.delenv("MEDIA_BRANDED_FALLBACK_ENABLED", raising=False)
+    res = asyncio.run(
+        enrich_draft_media(
+            runtime_dir=str(tmp_path),
+            draft_body="Only text",
+            headline="No photo headline",
+            category="news",
+            used_posts=[],
+            sources_payload=[],
+        )
+    )
+    assert res.media_status == MEDIA_STATUS_SKIPPED
+    assert res.media_generation_reason == "no_source_media"
+    assert not res.extras_patch
+
+
+def test_enrich_fallback_when_explicitly_enabled(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("MEDIA_AI_IMAGE_ENABLED", "false")
     monkeypatch.setenv("MEDIA_BRANDED_FALLBACK_ENABLED", "true")
     res = asyncio.run(
         enrich_draft_media(
-        runtime_dir=str(tmp_path),
-        draft_body="Only text",
-        headline="Fallback headline",
-        category="news",
-        used_posts=[],
-        sources_payload=[],
+            runtime_dir=str(tmp_path),
+            draft_body="Only text",
+            headline="Fallback headline",
+            category="news",
+            used_posts=[],
+            sources_payload=[],
         )
     )
     assert res.media_status in (MEDIA_STATUS_FALLBACK, MEDIA_STATUS_FAILED)

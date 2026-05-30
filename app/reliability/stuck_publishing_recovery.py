@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import UTC
 from typing import Any
 
 from sqlalchemy import select
@@ -33,7 +34,13 @@ def _draft_age_sec(draft: Draft) -> float:
     anchor = draft.moderated_at or draft.created_at
     if anchor is None:
         return 0.0
-    return max(0.0, (utcnow() - anchor).total_seconds())
+    now = utcnow()
+    dt = anchor
+    if getattr(dt, "tzinfo", None) is None:
+        dt = dt.replace(tzinfo=UTC)
+    if getattr(now, "tzinfo", None) is None:
+        now = now.replace(tzinfo=UTC)
+    return max(0.0, (now - dt).total_seconds())
 
 
 async def _published_message_id(session, draft_id: int) -> int | None:

@@ -69,3 +69,16 @@ def test_signature_line_matches_session_when_enabled(monkeypatch) -> None:
     tz = ZoneInfo("Europe/Moscow")
     sig = signature_line_for_now(now_local=datetime(2026, 5, 28, 20, 0, tzinfo=tz))
     assert sig == "Closing Bell"
+
+
+def test_autonomous_mode_lowers_session_priority_threshold(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("AUTONOMOUS_EDITORIAL_MODE", "true")
+    tz = ZoneInfo("Europe/Moscow")
+    now = datetime(2026, 5, 28, 13, 0, tzinfo=tz)
+    allowed, reason, _ = allow_story_for_current_session(
+        runtime_dir=str(tmp_path),
+        priority_score=55.0,
+        is_breaking=False,
+        now_local=now,
+    )
+    assert allowed, reason

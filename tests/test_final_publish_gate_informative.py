@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from app.editorial.content_quality import strip_public_template_metadata
 from app.editorial.final_publish_gate import evaluate_final_publish_gate
 
@@ -81,3 +83,23 @@ def test_final_gate_blocks_hidden_advertising() -> None:
     )
     assert not verdict.allowed
     assert verdict.reason in {"hidden_advertising", "premium_policy_low_signal"}
+
+
+def test_final_gate_allows_ai_approved_autonomous_despite_publication_risk(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AUTONOMOUS_EDITORIAL_MODE", "true")
+    extras = (
+        '{"ai_editorial_review": {"approved": true, "confidence": 0.68, "source": "rules", '
+        '"reason": "rules_fallback_openai_error"}}'
+    )
+    verdict = evaluate_final_publish_gate(
+        content=(
+            "Минтранс подготовил проект приказа о реестре автоперевозчиков на платформе Гослог. "
+            "С 2027 года данные о перевозчиках и транспорте будут вестись в электронной форме."
+        ),
+        sources='[{"channel":"@vedofon"}]',
+        draft_extras_json=extras,
+        operator_approved=False,
+    )
+    assert verdict.allowed, verdict.reason

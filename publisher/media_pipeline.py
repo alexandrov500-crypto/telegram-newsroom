@@ -67,11 +67,16 @@ def _newsroom_visual_style() -> str:
 
 
 def _branded_fallback_enabled() -> bool:
-    # Explicit emergency switch only; default is always-on to keep posts visual.
+    """Off by default — publish text-only when the source has no photo."""
     force_off = os.getenv("MEDIA_FORCE_NO_FALLBACK", "").strip().lower()
     if force_off in ("1", "true", "yes", "on"):
         return False
-    return True
+    return os.getenv("MEDIA_BRANDED_FALLBACK_ENABLED", "false").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
 
 
 def _cache_dir(runtime_dir: str | None) -> Path:
@@ -371,7 +376,7 @@ async def enrich_draft_media(
             media_type="none",
             media_path=None,
             media_source_url=None,
-            media_generation_reason="fallback_disabled",
+            media_generation_reason="no_source_media",
             media_fallback_used=False,
             extras_patch={},
         )

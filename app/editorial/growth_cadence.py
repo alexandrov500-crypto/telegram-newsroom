@@ -106,7 +106,19 @@ def allow_story_for_current_session(
     session = resolve_cadence_session(now_local=now_ref, newsroom_tz=newsroom_tz)
     if is_breaking:
         return True, "breaking_immediate", session
-    if priority_score < session.min_priority_score:
+
+    min_priority = session.min_priority_score
+    max_items = session.max_items
+    try:
+        from app.editorial.ai_editorial_reviewer import autonomous_editorial_mode_enabled
+
+        if autonomous_editorial_mode_enabled():
+            min_priority = max(48.0, min_priority - 12.0)
+            max_items = max_items + 2
+    except Exception:
+        pass
+
+    if priority_score < min_priority:
         return False, "below_session_priority_threshold", session
 
     p = _state_path(runtime_dir)
@@ -132,7 +144,7 @@ def allow_story_for_current_session(
 
     if total >= _daily_cap():
         return False, "daily_cap_reached", session
-    if cur_count >= session.max_items:
+    if cur_count >= max_items:
         return False, "session_cap_reached", session
 
     sess_counts[session.key] = cur_count + 1

@@ -56,6 +56,14 @@ def evaluate_growth_cadence_gate(
     if is_breaking:
         return GrowthCadenceVerdict(False, [], 30, 24, 0.0)
 
+    autonomous_relaxed = False
+    try:
+        from app.editorial.ai_editorial_reviewer import autonomous_editorial_mode_enabled
+
+        autonomous_relaxed = autonomous_editorial_mode_enabled()
+    except Exception:
+        pass
+
     reasons: list[str] = []
     tz = str(getattr(settings, "newsroom_timezone", "Europe/Moscow") or "Europe/Moscow")
     topic_bucket = _topic_bucket_from_key(topic_key, content)
@@ -66,6 +74,7 @@ def evaluate_growth_cadence_gate(
         newsroom_tz=tz,
         is_breaking=False,
         topic_bucket=topic_bucket,
+        autonomous_relaxed=autonomous_relaxed,
     )
     if not dyn.allowed:
         reasons.append(f"growth_cadence_{dyn.reason}")
@@ -86,7 +95,7 @@ def evaluate_growth_cadence_gate(
         hour = datetime.now(ZoneInfo("Europe/Moscow")).hour
 
     timing = evaluate_publish_timing(runtime_dir, hour_local=hour, topic_bucket=topic_bucket)
-    if timing.defer:
+    if timing.defer and not autonomous_relaxed:
         reasons.append(f"growth_timing_{timing.reason}")
 
     min_interval = dyn.min_interval_sec
@@ -104,7 +113,7 @@ def evaluate_growth_cadence_gate(
 
     if feedback.momentum > 0.08 and not reasons:
         min_interval = max(45, int(min_interval * 0.85))
-    if feedback.low_engagement_streak >= 3:
+    if feedback.low_engagement_streak >= 3 and not autonomous_relaxed:
         min_interval = int(min_interval * 1.25)
         if feedback.global_engagement < 0.28:
             reasons.append("growth_low_engagement_slowdown")

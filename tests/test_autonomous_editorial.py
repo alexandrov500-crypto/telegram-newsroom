@@ -72,3 +72,32 @@ def test_notify_skipped_in_autonomous_mode(monkeypatch) -> None:
 def test_rule_based_rejects_empty() -> None:
     v = rule_based_editorial_review("", settings=SimpleNamespace(runtime_state_dir="var/runtime"))
     assert not v.approved
+
+
+def test_rules_fallback_when_openai_empty(monkeypatch) -> None:
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock
+
+    monkeypatch.setenv("AUTONOMOUS_EDITORIAL_MODE", "true")
+    monkeypatch.setenv("AI_EDITORIAL_REVIEW_ENABLED", "true")
+    monkeypatch.setenv("AI_EDITORIAL_MIN_CONFIDENCE", "0.68")
+
+    async def _run() -> None:
+        from app.editorial.ai_editorial_reviewer import ai_editorial_review
+
+        client = AsyncMock()
+        choice = MagicMock()
+        choice.message.content = ""
+        client.chat.completions.create = AsyncMock(return_value=MagicMock(choices=[choice]))
+        extras = '{"editorial_confidence": {"confidence_score": 0.56}}'
+        v = await ai_editorial_review(
+            _rich_body(),
+            sources='[{"channel":"@cb_economics"}]',
+            extras_json=extras,
+            settings=SimpleNamespace(runtime_state_dir="var/runtime", openai_model="gpt-4.1"),
+            openai_client=client,
+        )
+        assert v.approved, v.reason
+        assert v.reason == "rules_fallback_openai_error"
+
+    asyncio.run(_run())
