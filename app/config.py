@@ -237,6 +237,20 @@ def load_settings() -> Settings:
     if not channels:
         raise RuntimeError("SOURCE_CHANNELS must contain at least one channel")
 
+    from app.editorial.reference_model import apply_reference_model_env_defaults, filter_source_channels
+
+    apply_reference_model_env_defaults()
+    filtered = filter_source_channels(list(channels))
+    if filtered != channels:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "reference_model filtered SOURCE_CHANNELS %s -> %s",
+            channels,
+            filtered,
+        )
+        channels = filtered
+
     from app.editorial.source_languages import (
         LANG_RU,
         LANG_ZH,

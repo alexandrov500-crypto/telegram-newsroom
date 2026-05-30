@@ -39,6 +39,12 @@ def _allowed_categories() -> frozenset[str] | None:
 
 
 def _auto_publish_fastlane_sources() -> frozenset[str]:
+    from app.editorial.reference_model import reference_fastlane_handles, reference_model_enabled
+
+    if reference_model_enabled():
+        ref = reference_fastlane_handles()
+        if ref:
+            return ref
     raw = os.getenv("AUTO_PUBLISH_FASTLANE_SOURCES", "@cb_economics").strip()
     out: set[str] = set()
     for p in raw.replace(";", ",").split(","):

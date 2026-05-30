@@ -10,8 +10,6 @@ _CURATED_HANDLES = frozenset(
         "cb_economics",
         "@tnews365",
         "tnews365",
-        "@decenter",
-        "decenter",
         "@rbc_news",
         "rbc_news",
         "@vedomosti",

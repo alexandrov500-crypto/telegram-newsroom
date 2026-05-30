@@ -246,6 +246,14 @@ def evaluate_desk_filter(
             _reject(hard, "reject", q, ctx, breakdown, runtime_dir=runtime_dir)
         )
 
+    from app.editorial.reference_model import reference_model_desk_reject
+
+    ref_reject = reference_model_desk_reject(text or "", sources, category)
+    if ref_reject:
+        return _finish(
+            _reject(ref_reject, "reject", q, ctx, breakdown, runtime_dir=runtime_dir)
+        )
+
     if bypass:
         decision = DeskDecision(
             publish=True,

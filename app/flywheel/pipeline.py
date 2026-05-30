@@ -60,9 +60,12 @@ def enrich_for_publish(
         "yes",
         "on",
     ):
-        frame = apply_light_framing(text, vertical=v)
-        if frame.safe:
-            text = frame.text
+        from app.editorial.reference_model import reference_model_enabled
+
+        if not reference_model_enabled():
+            frame = apply_light_framing(text, vertical=v)
+            if frame.safe:
+                text = frame.text
 
     slot = active_habit_slot(newsroom_tz)
     hook = ""
