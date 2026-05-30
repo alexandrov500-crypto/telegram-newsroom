@@ -99,6 +99,20 @@ def test_rejects_hidden_native_advertising():
     assert desk.reason == "hidden_advertising_or_native_ad"
 
 
+def test_rejects_premium_channel_native_ad():
+    text = (
+        "update → markets Strategy внесли 411.5 BTC ($30.3 млн) на Coinbase Prime — "
+        "на Polymarket вероятность продажи до 31 декабря 2026 года достигла 84%. "
+        "Ранее Сейлор дал понять, что компания будет продавать монеты время от… "
+        "Полный разбор — в premium-канале. Почему это важно: Крипторынок реагирует "
+        "на ликвидность и регуляторные сигналы быстрее традиционных активов."
+    )
+    escore = score_story(text=text, sources=["@DeCenter"])
+    desk = evaluate_desk_filter(text, escore, sources=["@DeCenter"])
+    assert not desk.publish
+    assert desk.reason == "hidden_advertising_or_native_ad"
+
+
 def test_persist_rejection_writes_jsonl(tmp_path: Path):
     text = "лол мем"
     escore = score_story(text=text, sources=["@decenter"])

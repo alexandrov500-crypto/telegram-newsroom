@@ -77,3 +77,27 @@ def test_hidden_advertising_detected():
         "для скидки на подписку. https://example.com/?utm_source=telegram"
     )
     assert has_hidden_advertising(text)
+
+
+def test_hidden_advertising_premium_channel_funnel():
+    """Native ad: news teaser redirecting to undisclosed premium channel."""
+    text = (
+        "Strategy внесли 411.5 BTC на Coinbase Prime — на Polymarket вероятность продажи "
+        "до 31 декабря 2026 года достигла 84%. Ранее Сейлор дал понять, что компания "
+        "будет продавать монеты время от… Полный разбор — в premium-канале. "
+        "Почему это важно: Крипторынок реагирует на ликвидность быстрее традиционных активов."
+    )
+    assert has_hidden_advertising(text)
+
+
+def test_hidden_advertising_paywall_teaser_after_ellipsis():
+    text = "Компания объявила о сделке… Подробности — в закрытом канале для подписчиков."
+    assert has_hidden_advertising(text)
+
+
+def test_clean_market_news_not_hidden_ad():
+    text = (
+        "Strategy перевела 411.5 BTC на Coinbase Prime. Аналитики Polymarket оценивают "
+        "вероятность продажи до конца 2026 года в 84%, что усилило давление на крипторынок."
+    )
+    assert not has_hidden_advertising(text)

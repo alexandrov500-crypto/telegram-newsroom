@@ -44,6 +44,26 @@ _AD_MARKER = re.compile(
     r"переходите\s+по\s+ссылке|подписывайтесь\s+на\s+наш\s+канал|купить\s+сейчас|buy\s+now)",
     re.I,
 )
+# Undisclosed native ads: news-shaped teaser that funnels to paid/premium channels.
+_PREMIUM_FUNNEL = re.compile(
+    r"(?:"
+    r"полный\s+разбор\s*[—–\-:]?\s*в\s+(?:premium|платн|закрыт|vip|private)"
+    r"|premium[\-\s]?канал(?:е|а)?"
+    r"|(?:в\s+)?(?:premium|vip|закрыт(?:ом|ый)?|платн(?:ом|ый)?)\s+канал(?:е|а)?"
+    r"|продолжение\s+(?:читайте\s+)?(?:в\s+)?(?:premium|vip|закрыт|платн)"
+    r"|подробност(?:и|ь)\s*[—–\-]\s*(?:в\s+)?(?:premium|закрыт|платн|vip|telegram\s+premium)"
+    r"|full\s+(?:analysis|breakdown|story)\s*[—\-:]\s*(?:in\s+)?(?:premium|paid|private)"
+    r"|read\s+(?:more|the\s+rest)\s+(?:in\s+)?(?:premium|paid|private|members)"
+    r"|(?:exclusive|members\s+only)\s+(?:in\s+)?(?:premium|paid|private)"
+    r"|(?:subscribe|подпиш(?:итесь|ись))\s+(?:to\s+)?(?:premium|vip|закрыт)"
+    r")",
+    re.I,
+)
+_PAYWALL_TEASER = re.compile(
+    r"(?:\.\.\.|…)\s*(?:полный|продолжение|подробност|читайте|details|full\s+story).{0,100}"
+    r"(?:premium|закрыт|vip|платн|подпис)",
+    re.I | re.DOTALL,
+)
 _URL_WITH_TRACKING = re.compile(r"https?://\S*(?:utm_|ref=|aff|partner)\S*", re.I)
 _SIGNATURE_PREFIX = re.compile(
     r"^(5-Minute Macro|Market Pulse|Closing Bell|Alpha Flow)\s+",
@@ -178,6 +198,10 @@ def has_hidden_advertising(text: str) -> bool:
     if not t:
         return False
     if _AD_MARKER.search(t):
+        return True
+    if _PREMIUM_FUNNEL.search(t):
+        return True
+    if _PAYWALL_TEASER.search(t):
         return True
     if _URL_WITH_TRACKING.search(t):
         return True
