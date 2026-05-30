@@ -7,6 +7,9 @@ ARG GIT_SHA=unknown
 ARG BUILD_TIMESTAMP=unknown
 ARG BUILD_BRANCH=unknown
 ARG BUILD_VERSION=unknown
+# Optional PyPI mirror (Timeweb VPS: files.pythonhosted.org often times out).
+ARG PIP_INDEX_URL=
+ARG PIP_TRUSTED_HOST=
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -26,7 +29,12 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
+RUN if [ -n "${PIP_INDEX_URL}" ]; then \
+      pip install --no-cache-dir -r /app/requirements.txt \
+        --index-url "${PIP_INDEX_URL}" --trusted-host "${PIP_TRUSTED_HOST}"; \
+    else \
+      pip install --no-cache-dir -r /app/requirements.txt; \
+    fi
 
 COPY alembic.ini /app/alembic.ini
 COPY alembic /app/alembic

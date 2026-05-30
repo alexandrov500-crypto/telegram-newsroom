@@ -13,6 +13,8 @@ services:
         BUILD_TIMESTAMP: ${BUILD_TIMESTAMP:-unknown}
         BUILD_BRANCH: ${BUILD_BRANCH:-unknown}
         BUILD_VERSION: ${BUILD_VERSION:-unknown}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-pypi.tuna.tsinghua.edu.cn}
     image: telegram-newsroom:timeweb-production
     container_name: telegram-newsroom
     restart: unless-stopped
