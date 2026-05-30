@@ -48,6 +48,11 @@ CURATED_25: list[dict[str, str | int | float]] = [
     {"handle": "techcrunch", "tier": "T2", "vertical": "corporate", "poll_interval_sec": 900, "trust_score": 0.85},
 ]
 
+# Telethon resolve failures on production — keep seeded but never poll when expand=true.
+BROKEN_REGISTRY_HANDLES: frozenset[str] = frozenset(
+    {"reutersbiz", "ft", "energyworldnews", "macro_alerts"}
+)
+
 
 @dataclass(frozen=True)
 class SourceSpec:
@@ -71,6 +76,10 @@ def parse_source_channels_env(raw: str) -> list[str]:
     return out
 
 
+def _registry_expand_enabled(settings: Any) -> bool:
+    return bool(getattr(settings, "source_registry_expand", False))
+
+
 async def seed_registry_if_empty() -> int:
     """Idempotent seed of curated 25 into source_registry."""
     now = datetime.now(UTC)
@@ -81,6 +90,10 @@ async def seed_registry_if_empty() -> int:
             return 0
         for row in CURATED_25:
             handle = _normalize_handle(str(row["handle"]))
+            status = "inactive" if handle in BROKEN_REGISTRY_HANDLES else "active"
+            extras: dict[str, object] = {"seed": "curated_25"}
+            if status == "inactive":
+                extras["deactivated_reason"] = "broken_telegram_handle_p0"
             session.add(
                 SourceRegistryEntry(
                     handle=handle,
@@ -88,8 +101,8 @@ async def seed_registry_if_empty() -> int:
                     vertical=str(row["vertical"]),
                     poll_interval_sec=int(row["poll_interval_sec"]),
                     trust_score=float(row["trust_score"]),
-                    status="active",
-                    extras_json=json.dumps({"seed": "curated_25"}),
+                    status=status,
+                    extras_json=json.dumps(extras),
                     created_at=now,
                     updated_at=now,
                 )
@@ -98,9 +111,45 @@ async def seed_registry_if_empty() -> int:
     return inserted
 
 
+async def deactivate_broken_registry_sources() -> int:
+    """Mark known-broken handles inactive (idempotent; does not delete rows)."""
+    now = datetime.now(UTC)
+    updated = 0
+    async with session_scope() as session:
+        rows = list(
+            (
+                await session.execute(
+                    select(SourceRegistryEntry).where(SourceRegistryEntry.handle.in_(BROKEN_REGISTRY_HANDLES))
+                )
+            ).scalars()
+        )
+        for row in rows:
+            if row.status == "inactive":
+                continue
+            row.status = "inactive"
+            row.updated_at = now
+            try:
+                extras = json.loads(row.extras_json or "{}")
+            except json.JSONDecodeError:
+                extras = {}
+            if not isinstance(extras, dict):
+                extras = {}
+            extras["deactivated_reason"] = "broken_telegram_handle_p0"
+            row.extras_json = json.dumps(extras, ensure_ascii=False)
+            updated += 1
+    return updated
+
+
+async def ensure_registry_maintenance() -> None:
+    await seed_registry_if_empty()
+    await deactivate_broken_registry_sources()
+
+
 async def load_active_source_handles(settings: Any) -> list[str]:
-    """Merge env SOURCE_CHANNELS with registry (probation/disabled filtered)."""
+    """Env SOURCE_CHANNELS; merge registry only when source_registry_expand is true."""
     env_handles = {_normalize_handle(h) for h in settings.source_channels}
+    if not _registry_expand_enabled(settings):
+        return [f"@{h}" for h in sorted(env_handles)]
     async with session_scope() as session:
         rows = list(
             (await session.execute(select(SourceRegistryEntry).where(SourceRegistryEntry.status == "active"))).scalars()
@@ -117,7 +166,7 @@ def breaking_source_handles(settings: Any) -> list[str]:
         return parse_source_channels_env(override)
     t0 = [_normalize_handle(str(r["handle"])) for r in CURATED_25 if str(r.get("tier")) == "T0"]
     env = {_normalize_handle(h) for h in settings.source_channels}
-    handles = [h for h in t0 if h in env or os.getenv("SOURCE_REGISTRY_EXPAND", "false").lower() in ("1", "true", "yes")]
+    handles = [h for h in t0 if h in env or _registry_expand_enabled(settings)]
     return [f"@{h}" for h in handles] or [f"@{h}" for h in t0[:3]]
 
 

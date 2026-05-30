@@ -66,6 +66,7 @@ def minimal_test_settings(**overrides: object) -> Settings:
         moderation_chat_id=None,
         target_channel_id=-1001234567890,
         source_channels=("@testchannel",),
+        source_registry_expand=False,
         database_url="sqlite+aiosqlite:///:memory:",
         database_pool_size=5,
         database_max_overflow=10,

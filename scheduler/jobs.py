@@ -167,6 +167,9 @@ async def _collect_step(ctx: PipelineContext) -> None:
     inserted_total = 0
     collect_ok = False
     collect_err = ""
+    from collector.progress import CollectProgress
+
+    collect_progress = CollectProgress()
     t0 = time.perf_counter()
     begin_collect(tick_id=current_tick_id() or "")
     emit_lifecycle("collector.batch.started", channel_count=len(settings.source_channels))
@@ -194,12 +197,13 @@ async def _collect_step(ctx: PipelineContext) -> None:
             return
         channel_list = list(settings.source_channels)
         try:
-            from app.sources.registry import load_active_source_handles, seed_registry_if_empty
+            from app.sources.registry import ensure_registry_maintenance, load_active_source_handles
 
-            await seed_registry_if_empty()
+            await ensure_registry_maintenance()
             channel_list = await load_active_source_handles(settings)
         except Exception:
             pass
+        collect_progress.planned_total = len(channel_list)
         use_sharded = __import__("os").getenv("COLLECT_PARALLEL_ENABLED", "true").strip().lower() in (
             "1",
             "true",
@@ -217,6 +221,7 @@ async def _collect_step(ctx: PipelineContext) -> None:
                     limit_per_channel=settings.collect_messages_per_channel,
                     telethon_max_attempts=settings.telethon_op_max_attempts,
                     channel_delay_seconds=settings.channel_collect_delay_seconds,
+                    progress=collect_progress,
                 )
             else:
                 from collector.service import collect_all_channels
@@ -228,6 +233,7 @@ async def _collect_step(ctx: PipelineContext) -> None:
                     limit_per_channel=settings.collect_messages_per_channel,
                     telethon_max_attempts=settings.telethon_op_max_attempts,
                     channel_delay_seconds=settings.channel_collect_delay_seconds,
+                    progress=collect_progress,
                 )
         inc("posts_collected", inserted_total)
         if inserted_total > 0:
@@ -265,7 +271,30 @@ async def _collect_step(ctx: PipelineContext) -> None:
         else:
             await _collect_body()
     except asyncio.TimeoutError:
+        cap = collect_timeout_sec()
         collect_err = f"collect_cycle_timeout:{cap}s"
+        inserted_total = collect_progress.new_rows_total
+        skipped = collect_progress.channels_skipped_count()
+        log_event(
+            logger,
+            "collector.channels_skipped",
+            count=skipped,
+            planned=collect_progress.planned_total,
+            processed=collect_progress.channels_processed,
+        )
+        if inserted_total > 0:
+            from app.runtime_activity import record_collect_success
+
+            record_collect_success(new_rows=inserted_total)
+            log_event(
+                logger,
+                "collector.timeout_preserved",
+                new_rows=inserted_total,
+                channels_processed=collect_progress.channels_processed,
+                channels_skipped=skipped,
+                timeout_sec=cap,
+                tick_id=current_tick_id(),
+            )
         from app.runtime_activity import record_collect_failure
 
         record_collect_failure(reason=collect_err)

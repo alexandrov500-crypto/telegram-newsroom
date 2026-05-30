@@ -5,7 +5,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Iterable
+from typing import TYPE_CHECKING, Iterable
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from telethon import TelegramClient
@@ -20,6 +20,9 @@ from collector.telethon_media import (
 )
 from db.repository import upsert_raw_post
 from utils.structured_log import log_event
+
+if TYPE_CHECKING:
+    from collector.progress import CollectProgress
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +144,18 @@ async def collect_channel_messages(
     return inserted
 
 
+async def _commit_after_channel(
+    session: AsyncSession,
+    *,
+    channel: str,
+    new_rows: int,
+    progress: CollectProgress | None,
+) -> None:
+    await session.commit()
+    if progress is not None:
+        progress.record_channel(channel, new_rows)
+
+
 async def collect_all_channels(
     client: TelegramClient,
     session: AsyncSession,
@@ -149,17 +164,20 @@ async def collect_all_channels(
     limit_per_channel: int,
     telethon_max_attempts: int,
     channel_delay_seconds: float,
+    progress: CollectProgress | None = None,
 ) -> int:
     total = 0
     channel_list = list(channels)
     for idx, channel in enumerate(channel_list):
-        total += await collect_channel_messages(
+        new_rows = await collect_channel_messages(
             client,
             session,
             channel=channel,
             limit=limit_per_channel,
             telethon_max_attempts=telethon_max_attempts,
         )
+        total += new_rows
+        await _commit_after_channel(session, channel=channel, new_rows=new_rows, progress=progress)
         if idx < len(channel_list) - 1 and channel_delay_seconds > 0:
             await asyncio.sleep(channel_delay_seconds)
     log_event(logger, "collector.batch_done", channel_count=len(channel_list), new_rows_total=total)

@@ -5,13 +5,16 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from typing import Iterable
+from typing import TYPE_CHECKING, Iterable
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from telethon import TelegramClient
 
-from collector.service import collect_channel_messages
+from collector.service import _commit_after_channel, collect_all_channels, collect_channel_messages
 from utils.structured_log import log_event
+
+if TYPE_CHECKING:
+    from collector.progress import CollectProgress
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +49,7 @@ async def collect_channels_sharded(
     limit_per_channel: int,
     telethon_max_attempts: int,
     channel_delay_seconds: float,
+    progress: CollectProgress | None = None,
 ) -> int:
     """
     Gather collection by shard groups; semaphore limits concurrent shards (backpressure).
@@ -54,8 +58,6 @@ async def collect_channels_sharded(
     if not channel_list:
         return 0
     if not _parallel_enabled() or len(channel_list) <= 1:
-        from collector.service import collect_all_channels
-
         return await collect_all_channels(
             client,
             session,
@@ -63,6 +65,7 @@ async def collect_channels_sharded(
             limit_per_channel=limit_per_channel,
             telethon_max_attempts=telethon_max_attempts,
             channel_delay_seconds=channel_delay_seconds,
+            progress=progress,
         )
 
     shards = _chunked(channel_list, _shard_size())
@@ -73,13 +76,15 @@ async def collect_channels_sharded(
         async with sem:
             sub = 0
             for idx, ch in enumerate(shard):
-                sub += await collect_channel_messages(
+                new_rows = await collect_channel_messages(
                     client,
                     session,
                     channel=ch,
                     limit=limit_per_channel,
                     telethon_max_attempts=telethon_max_attempts,
                 )
+                sub += new_rows
+                await _commit_after_channel(session, channel=ch, new_rows=new_rows, progress=progress)
                 if idx < len(shard) - 1 and channel_delay_seconds > 0:
                     await asyncio.sleep(channel_delay_seconds * 0.5)
             return sub

@@ -63,6 +63,7 @@ class Settings:
     moderation_chat_id: int | None
     target_channel_id: int
     source_channels: tuple[str, ...]
+    source_registry_expand: bool
     database_url: str
     database_pool_size: int
     database_max_overflow: int
@@ -446,6 +447,7 @@ def load_settings() -> Settings:
         moderation_chat_id=moderation_chat_id,
         target_channel_id=target_channel_id,
         source_channels=channels,
+        source_registry_expand=_env_bool("SOURCE_REGISTRY_EXPAND", "false"),
         database_url=database_url,
         database_pool_size=max(1, min(db_pool, 64)),
         database_max_overflow=max(0, min(db_overflow, 128)),
