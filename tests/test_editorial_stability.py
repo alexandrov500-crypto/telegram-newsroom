@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta, timezone
 
+import pytest
+
 from app.editorial.stability.anti_pause import evaluate_anti_pause
 from app.editorial.stability.elastic_fill import (
     build_context_post_from_buffer,
@@ -72,6 +74,16 @@ def test_growth_decision_rejects_low_intel(ephemeral_newsroom_settings) -> None:
 def test_growth_decision_anti_pause_overrides_reject(ephemeral_newsroom_settings) -> None:
     dec = evaluate_growth_decision("Кратко.", quality_score=30.0, publishing_mode="elastic_fill")
     assert dec.reject is False
+
+
+def test_growth_decision_soft_pass_medium_quality_intel(
+    ephemeral_newsroom_settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("EDITORIAL_GROWTH_INTEL_SOFT_QUALITY", "48")
+    body = "ЦБ сохранил ключевую ставку на текущем уровне после заседания."
+    dec = evaluate_growth_decision(body, quality_score=52.0, publishing_mode="core")
+    assert dec.reject is False
+    assert dec.decision_reason == "medium_quality_intel_soft_pass"
 
 
 def test_packaging_adds_rubric_tag() -> None:

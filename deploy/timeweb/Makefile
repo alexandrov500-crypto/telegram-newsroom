@@ -28,7 +28,7 @@ rebuild:
 	BUILD_BRANCH=$$(git -C ../.. rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown) \
 	BUILD_VERSION=$$(python3 -c "from newsroom._version import VERSION; print(VERSION)" 2>/dev/null || echo unknown) \
 	$(COMPOSE) build --no-cache $(SERVICE)
-	$(COMPOSE) up -d $(SERVICE)
+	$(COMPOSE) up -d --no-deps $(SERVICE)
 
 restart:
 	$(COMPOSE) restart $(SERVICE)

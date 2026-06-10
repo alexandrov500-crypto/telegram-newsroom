@@ -148,9 +148,16 @@ def evaluate_growth_decision(
         reject = True
         reason = "low_quality_reject"
     elif not intel_ok and publishing_mode == "core" and post_type == PostType.NEWS:
-        growth = GrowthPotential.LOW
-        reject = True
-        reason = "missing_intelligence_constraint"
+        from app.editorial.stability.config import growth_intel_soft_quality_floor
+
+        soft_floor = growth_intel_soft_quality_floor()
+        if quality_score >= soft_floor and wh:
+            growth = GrowthPotential.MEDIUM
+            reason = "medium_quality_intel_soft_pass"
+        else:
+            growth = GrowthPotential.LOW
+            reject = True
+            reason = "missing_intelligence_constraint"
 
     if growth == GrowthPotential.HIGH and retention == RetentionImpact.VIRAL:
         immediate = True

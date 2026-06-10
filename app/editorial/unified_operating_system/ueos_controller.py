@@ -7,7 +7,11 @@ from typing import Any
 from app.editorial.stability.anti_pause import evaluate_anti_pause
 from app.editorial.unified_operating_system.arbitration import arbitrate_layer_conflicts
 from app.editorial.unified_operating_system.audience_replacement import evaluate_channel_replacement
-from app.editorial.unified_operating_system.config import ueos_enabled
+from app.editorial.unified_operating_system.config import (
+    ueos_digest_threshold,
+    ueos_enabled,
+    ueos_publish_threshold,
+)
 from app.editorial.unified_operating_system.content_principle import enrich_content_principle, evaluate_content_principle
 from app.editorial.unified_operating_system.cross_source_intelligence_merger import merge_world_signal
 from app.editorial.unified_operating_system.daily_autopilot import AutopilotMode, resolve_autopilot_mode
@@ -142,11 +146,14 @@ def enrich_draft_with_ueos(
     priority = ueos.action == UEOSAction.PUBLISH_FLAGSHIP or autopilot.immediate_publish
     flagship = ueos.action == UEOSAction.PUBLISH_FLAGSHIP
 
+    publish_thr = float(ueos_publish_threshold())
+    digest_thr = float(ueos_digest_threshold())
+
     if not replacement.replaces_external_channels and not layer_arb.stability_override:
-        if ueos.total < 78:
+        if ueos.total < publish_thr:
             reject = publishing_mode == "core"
             force_digest = True
-        if ueos.total < 65 and publishing_mode == "core":
+        if ueos.total < digest_thr and publishing_mode == "core":
             reject = True
 
     if layer_arb.stability_override and reject:

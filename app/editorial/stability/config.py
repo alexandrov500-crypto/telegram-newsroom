@@ -62,3 +62,10 @@ def governance_bypass_on_anti_pause() -> bool:
 
 def skip_cadence_cap_on_anti_pause() -> bool:
     return _env_bool("EDITORIAL_STABILITY_SKIP_CADENCE_ON_ANTI_PAUSE", "true")
+
+
+def growth_intel_soft_quality_floor() -> float:
+    try:
+        return max(40.0, min(60.0, float(os.getenv("EDITORIAL_GROWTH_INTEL_SOFT_QUALITY", "48"))))
+    except ValueError:
+        return 48.0
