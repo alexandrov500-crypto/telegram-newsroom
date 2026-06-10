@@ -79,14 +79,18 @@ def rule_based_editorial_review(
     sources: str = "[]",
     extras_json: str = "{}",
     settings: Any | None = None,
+    min_chars: int | None = None,
+    min_sentences: int | None = None,
 ) -> AiEditorialVerdict:
-    text = (content or "").strip()
+    from app.editorial.content_quality import is_publishably_informative, strip_public_template_metadata
+
+    text = strip_public_template_metadata((content or "").strip())
     if not text:
         return AiEditorialVerdict(False, 0.0, "empty_content", "", "rules")
 
-    from app.editorial.content_quality import is_publishably_informative
-
-    if not is_publishably_informative(text, min_chars=80, min_sentences=2):
+    chars_floor = 80 if min_chars is None else min_chars
+    sents_floor = 2 if min_sentences is None else min_sentences
+    if not is_publishably_informative(text, min_chars=chars_floor, min_sentences=sents_floor):
         return AiEditorialVerdict(False, 0.2, "not_informative", "", "rules")
 
     runtime_dir = getattr(settings, "runtime_state_dir", None) if settings else os.getenv("RUNTIME_STATE_DIR", "var/runtime")

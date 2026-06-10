@@ -271,18 +271,19 @@ def is_publishably_informative(
     Channel post must be a finished thought: no trailing ellipsis, enough substance.
     Premium baseline: at least two meaningful sentences.
     """
-    t = strip_dangling_ellipsis(text or "")
+    t = strip_dangling_ellipsis(strip_public_template_metadata(text or ""))
     if not t:
+        return False
+    if has_dangling_conjunction_tail(t) or has_series_continuation_filler(t):
         return False
     if _UNFINISHED_ENDING.search(t):
         return False
-    if not _SENTENCE_END.search(t):
+    parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", t) if len(p.strip()) > 12]
+    complete = [p for p in parts if re.search(r"[.!?]\s*$", p)]
+    if len(complete) < max(1, min_sentences):
         return False
-    sents = _sentence_count(t)
-    if sents < max(1, min_sentences):
-        # Premium newsroom baseline: at least two meaningful sentences.
-        return False
-    return len(t) >= min_chars
+    substantive_len = max(len(" ".join(complete)), len(t))
+    return substantive_len >= min_chars
 
 
 def is_truncated_mid_thought(text: str) -> bool:
@@ -416,3 +417,53 @@ def strip_source_channel_promos(text: str) -> str:
     ).strip()
     t = _CONTINUATION_SERIES.sub("", t).strip()
     return re.sub(r"\n{3,}", "\n\n", t).strip()
+
+
+def _env_int(name: str, default: int, *, lo: int, hi: int) -> int:
+    raw = os.getenv(name, str(default)).strip()
+    try:
+        return max(lo, min(hi, int(raw)))
+    except ValueError:
+        return default
+
+
+def resolve_publishable_thresholds(
+    *,
+    publishing_mode: str = "core",
+    anti_pause_active: bool = False,
+) -> tuple[int, int]:
+    """Core feed is strict; anti-pause / elastic fill allows shorter single-sentence posts."""
+    relaxed = anti_pause_active or publishing_mode in {"elastic_fill", "editorial_synthesis"}
+    if relaxed:
+        return (
+            _env_int("EDITORIAL_INFORMATIVE_MIN_CHARS_ANTI_PAUSE", 45, lo=30, hi=90),
+            _env_int("EDITORIAL_INFORMATIVE_MIN_SENTENCES_ANTI_PAUSE", 1, lo=1, hi=2),
+        )
+    return (
+        _env_int("EDITORIAL_INFORMATIVE_MIN_CHARS", 60, lo=40, hi=120),
+        _env_int("EDITORIAL_INFORMATIVE_MIN_SENTENCES", 2, lo=1, hi=3),
+    )
+
+
+def passes_summarize_informative_gate(
+    text: str,
+    *,
+    publishing_mode: str = "core",
+    anti_pause_active: bool = False,
+) -> bool:
+    """Pre-draft guard in summarize: strip growth chrome, keep hard truncation blocks."""
+    t = " ".join(strip_public_template_metadata(text or "").split()).strip()
+    if not t or len(t) < 20:
+        return False
+    if has_series_continuation_filler(t) or has_dangling_conjunction_tail(t):
+        return False
+    if is_truncated_mid_thought(t):
+        return False
+    relaxed = anti_pause_active or publishing_mode in {"elastic_fill", "editorial_synthesis"}
+    if not relaxed and is_incomplete_teaser(t):
+        return False
+    min_chars, min_sents = resolve_publishable_thresholds(
+        publishing_mode=publishing_mode,
+        anti_pause_active=anti_pause_active,
+    )
+    return is_publishably_informative(t, min_chars=min_chars, min_sentences=min_sents)

@@ -1322,12 +1322,17 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
     cadence_decision_reason = ""
 
     # Guardrail: never send placeholder/empty or truncated teasers to moderation.
-    from app.editorial.content_quality import has_series_continuation_filler, is_publishably_informative
+    from app.editorial.content_quality import passes_summarize_informative_gate
+    from app.editorial.stability.anti_pause import evaluate_anti_pause
 
     normalized_body = " ".join(str(draft_body or "").split()).strip()
-    if has_series_continuation_filler(normalized_body) or not is_publishably_informative(
-        normalized_body, min_chars=60, min_sentences=2
-    ):
+    _anti_pause = evaluate_anti_pause(newsroom_tz=settings.newsroom_timezone)
+    _informative_ok = passes_summarize_informative_gate(
+        normalized_body,
+        publishing_mode=_publishing_mode,
+        anti_pause_active=_anti_pause.anti_pause_active or _anti_pause.max_gap_exceeded,
+    )
+    if not _informative_ok:
         if raw_post_ids_for_db:
             try:
                 async with session_scope() as session:

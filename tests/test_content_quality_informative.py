@@ -8,6 +8,7 @@ from app.editorial.content_quality import (
     is_incomplete_teaser,
     is_publishably_informative,
     passes_premium_newsroom_policy,
+    passes_summarize_informative_gate,
     strip_editorial_template_noise,
     strip_generic_why_it_matters,
 )
@@ -40,6 +41,19 @@ def test_single_long_russian_sentence_passes():
         "Роскомнадзора за 2025 год, говорится в отчёте компании."
     )
     assert not is_publishably_informative(text)
+
+
+def test_anti_pause_gate_accepts_single_sentence_with_template_noise() -> None:
+    text = (
+        "ЦБ сохранил ключевую ставку на текущем уровне после заседания совета директоров. "
+        "Главное для экономики #Макро"
+    )
+    assert not is_publishably_informative(text, min_chars=60, min_sentences=2)
+    assert passes_summarize_informative_gate(
+        text,
+        publishing_mode="elastic_fill",
+        anti_pause_active=True,
+    )
 
 
 def test_strip_dangling_ellipsis_removes_trailing_colon() -> None:

@@ -34,24 +34,6 @@ def evaluate_editorial_autonomy_v2(
 
     safety = evaluate_safety_envelope(body, is_breaking=is_breaking)
 
-    rules_approved = False
-    ai_confidence = 0.0
-    ai_verdict_dict: dict[str, Any] = {}
-    try:
-        from app.editorial.ai_editorial_reviewer import rule_based_editorial_review
-
-        verdict = rule_based_editorial_review(
-            body,
-            extras_json=_extras_json_stub(layer_extras),
-            settings=settings,
-        )
-        rules_approved = verdict.approved
-        ai_confidence = float(verdict.confidence)
-        ai_verdict_dict = verdict.to_dict()
-    except Exception:
-        rules_approved = len(body or "") >= 80
-        ai_confidence = 0.65
-
     gap = float(flow.get("gap_minutes") or 0)
     anti_pause_active = False
     silence_recovery = False
@@ -64,6 +46,32 @@ def evaluate_editorial_autonomy_v2(
     except Exception:
         pass
     starvation = bool(flow.get("starvation") or flow.get("inserted_synthesis"))
+
+    rules_approved = False
+    ai_confidence = 0.0
+    ai_verdict_dict: dict[str, Any] = {}
+    try:
+        from app.editorial.ai_editorial_reviewer import rule_based_editorial_review
+        from app.editorial.content_quality import resolve_publishable_thresholds, strip_public_template_metadata
+
+        review_body = strip_public_template_metadata(body)
+        min_chars, min_sents = resolve_publishable_thresholds(
+            publishing_mode=publishing_mode,
+            anti_pause_active=anti_pause_active or silence_recovery,
+        )
+        verdict = rule_based_editorial_review(
+            review_body,
+            extras_json=_extras_json_stub(layer_extras),
+            settings=settings,
+            min_chars=min_chars,
+            min_sentences=min_sents,
+        )
+        rules_approved = verdict.approved
+        ai_confidence = float(verdict.confidence)
+        ai_verdict_dict = verdict.to_dict()
+    except Exception:
+        rules_approved = len(body or "") >= 80
+        ai_confidence = 0.65
     continuity_ok = gap < 90 or anti_pause_active or silence_recovery or starvation
 
     autonomy = resolve_autonomy_decision(
