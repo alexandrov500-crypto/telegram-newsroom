@@ -252,6 +252,8 @@ def enrich_draft_for_stability(
                 runtime_dir=runtime_dir,
                 layer_extras=dom_extras,
                 is_breaking=is_breaking,
+                publishing_mode=publishing_mode,
+                newsroom_tz=newsroom_tz,
             )
             dom_extras = {**dom_extras, **eaa_extras}
             if eaa_extras.get("eaa_reject") and publishing_mode == "core":

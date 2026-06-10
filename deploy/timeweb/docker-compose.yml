@@ -54,3 +54,8 @@ services:
         max-file: "5"
     working_dir: /app
 
+networks:
+  default:
+    name: telegram-newsroom-timeweb_default
+    external: true
+

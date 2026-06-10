@@ -16,6 +16,8 @@ def evaluate_editorial_autonomy_v2(
     runtime_dir: str | None,
     layer_extras: dict[str, Any],
     is_breaking: bool = False,
+    publishing_mode: str = "core",
+    newsroom_tz: str = "Europe/Moscow",
     settings: Any | None = None,
 ) -> tuple[str, dict[str, Any]]:
     if not eaa_enabled():
@@ -51,7 +53,18 @@ def evaluate_editorial_autonomy_v2(
         ai_confidence = 0.65
 
     gap = float(flow.get("gap_minutes") or 0)
-    continuity_ok = gap < 90
+    anti_pause_active = False
+    silence_recovery = False
+    try:
+        from app.editorial.stability.anti_pause import evaluate_anti_pause
+
+        ap = evaluate_anti_pause(newsroom_tz=newsroom_tz)
+        anti_pause_active = ap.anti_pause_active
+        silence_recovery = ap.max_gap_exceeded
+    except Exception:
+        pass
+    starvation = bool(flow.get("starvation") or flow.get("inserted_synthesis"))
+    continuity_ok = gap < 90 or anti_pause_active or silence_recovery or starvation
 
     autonomy = resolve_autonomy_decision(
         control_tower_publish=tower_publish,
@@ -87,7 +100,7 @@ def evaluate_editorial_autonomy_v2(
         },
     }
 
-    if tower_publish and not autonomy.autonomous_publish:
+    if tower_publish and not autonomy.autonomous_publish and publishing_mode == "core":
         out["eaa_reject"] = True
         out["stability_reject"] = True
     else:

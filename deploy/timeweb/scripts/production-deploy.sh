@@ -127,6 +127,11 @@ run_newsroom_fallback() {
     "${COMPOSE_IMAGE}"
 }
 
+shared_network_sidecars_present() {
+  docker network inspect "${COMPOSE_NETWORK}" --format '{{range .Containers}}{{.Name}} {{end}}' 2>/dev/null \
+    | grep -qE '(^| )(xray|y2o)( |$)'
+}
+
 recreate_newsroom_only() {
   log "docker compose config"
   docker compose -f "${COMPOSE_FILE}" config >/dev/null
@@ -139,6 +144,12 @@ recreate_newsroom_only() {
   docker rm telegram-newsroom 2>/dev/null || true
 
   ensure_compose_network
+
+  if shared_network_sidecars_present; then
+    log "xray/y2o detected on ${COMPOSE_NETWORK} — using docker run (compose skips network teardown)"
+    run_newsroom_fallback
+    return 0
+  fi
 
   log "docker compose up -d --no-deps --force-recreate ${COMPOSE_SERVICE}"
   if ! docker compose -f "${COMPOSE_FILE}" up -d --no-deps --force-recreate "${COMPOSE_SERVICE}"; then

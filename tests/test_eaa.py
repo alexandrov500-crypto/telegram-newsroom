@@ -55,6 +55,27 @@ def test_zero_human_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     assert aut.autonomous_publish is True
 
 
+def test_zero_human_allows_silence_recovery(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("EDITORIAL_ZERO_HUMAN_IN_LOOP", "true")
+    text = (
+        "Central bank signals inflation risk. Bond yields moved higher across major markets. "
+        "Почему важно: portfolio duration decisions shift for the quarter."
+    )
+    layers = {
+        "final_editorial_decision": {"publish": True},
+        "ugsol": {"imri": {"score": 72}, "content_flow": {"gap_minutes": 260, "starvation": True}},
+        "eml": {"attention_value": {"cognitive_value_score": 0.72}},
+    }
+    _, extras = evaluate_editorial_autonomy_v2(
+        text,
+        runtime_dir=None,
+        layer_extras=layers,
+        publishing_mode="elastic_fill",
+    )
+    assert extras.get("eaa_reject") is not True
+    assert extras.get("autonomous_publish_approved") is True
+
+
 def test_autonomy_rejects_low_confidence() -> None:
     from app.editorial.eaa.safety_envelope import SafetyEnvelopeResult
 
