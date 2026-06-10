@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.editorial.content_quality import (
     has_hidden_advertising,
+    has_series_continuation_filler,
     is_consumer_fraud_story,
     is_generic_insight,
     is_incomplete_teaser,
@@ -170,3 +171,15 @@ def test_strip_opinion_prefix_and_generic_why():
     assert "При текущих условиях рынок" not in cleaned
     assert "Почему это важно" not in cleaned
     assert "6,3 млн" in cleaned
+
+
+def test_pashinyan_truncated_with_series_filler_rejected() -> None:
+    text = (
+        "Пашинян: Товары, которые запретили к экспорту в Россию, уже отправились в Евросоюз. "
+        "Ряд бизнес-делегаций уже работает, первая партия роз и -\n\n"
+        "Продолжение темы — в ближайших выпусках канала.\n\n"
+        "Источник: @cb_economics"
+    )
+    assert is_incomplete_teaser(text)
+    assert has_series_continuation_filler(text)
+    assert not is_publishably_informative(text)

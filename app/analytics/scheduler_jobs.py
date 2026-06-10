@@ -72,5 +72,13 @@ async def run_analytics_tick(ctx: object) -> dict[str, int | str]:
     except Exception as exc:
         log_event(logger, "growth.feedback_tick_failed", error=repr(exc)[:120])
 
+    try:
+        from app.growth_layer.validation.scheduler_jobs import run_growth_validation_tick
+
+        validation_result = await run_growth_validation_tick(ctx)
+        result["growth_validation"] = validation_result
+    except Exception as exc:
+        log_event(logger, "growth.validation_tick_failed", error=repr(exc)[:120])
+
     log_event(logger, "analytics.tick_complete", **{k: v for k, v in result.items()})
     return result

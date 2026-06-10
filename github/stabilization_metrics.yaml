@@ -1,0 +1,18 @@
+# ADR-037 stabilization metrics — feedback loop for bounded autonomy.
+schema_version: 1
+updated_at: null
+totals:
+  stabilization_attempts: 0
+  successes: 0
+  failures: 0
+  auto_stabilize_count: 0
+  human_intervention_count: 0
+  false_positives: 0
+rates:
+  success_rate: 0.0
+  false_positive_rate: 0.0
+  auto_vs_human_ratio: 0.0
+mttr:
+  mean_time_to_recovery_sec: null
+  samples: []
+recent_actions: []

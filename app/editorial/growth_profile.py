@@ -44,7 +44,7 @@ def apply_growth_profile_defaults() -> None:
             "NEWSROOM_ENGAGEMENT_HOOK_ENABLED": "true",
             "NEWSROOM_HASHTAGS_ENABLED": "true",
             "NEWSROOM_HASHTAGS_MAX": "3",
-            "NEWSROOM_OPEN_LOOP_ENABLED": "true",
+            "NEWSROOM_OPEN_LOOP_ENABLED": "false",
             "NEWSROOM_BRAND_FOOTER_ENABLED": "true",
             "NEWSROOM_SHARE_NUDGE_ENABLED": "true",
             "GROWTH_SIGNATURE_ENABLED": "false",

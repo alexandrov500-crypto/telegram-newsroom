@@ -1,0 +1,50 @@
+{
+  "proposal_id": "AR-20260603-A0FC6F",
+  "regression_passed": true,
+  "breaking_points": [],
+  "risk_delta": "MED",
+  "gate_simulation": {
+    "current_phase": "M0_ACTIVE",
+    "gates": [
+      {
+        "gate_id": "M0_TO_M1",
+        "phase": "M0_ACTIVE",
+        "simulated_status": "NO_GO_HELD"
+      },
+      {
+        "gate_id": "M1_TO_M2",
+        "phase": "M0_ACTIVE",
+        "simulated_status": "GO"
+      },
+      {
+        "gate_id": "M2_TO_M3",
+        "phase": "M0_ACTIVE",
+        "simulated_status": "GO"
+      }
+    ],
+    "regression_gate_fail": false
+  },
+  "incident_replay": {
+    "replayed_count": 1,
+    "unresolved_count": 1,
+    "would_still_block": [
+      "unresolved_incident:INC-20260603-AEA028"
+    ]
+  },
+  "adversarial_replay": {
+    "reports_replayed": 1,
+    "high_severity_vectors": [
+      "race_during_dual_write",
+      "partial_schema_propagation"
+    ],
+    "coverage_gap_if_empty_patterns": true
+  },
+  "stabilization_simulation": {
+    "current_auto_stabilize_min": 0.92,
+    "proposed_auto_stabilize_min": 0.92,
+    "lowered_bar": false,
+    "critical_risk_blocks_auto": true,
+    "auto_actions_would_run_under_sim": false
+  },
+  "simulated_at": "2026-06-03T21:18:15Z"
+}

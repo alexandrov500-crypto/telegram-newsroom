@@ -96,6 +96,7 @@ def build_channel_message_html(
     include_sources: bool = False,
     include_draft_id_footer: bool = False,
     runtime_dir: str | None = None,
+    growth_meta: dict[str, Any] | None = None,
 ) -> str:
     """
     Public channel HTML — delegates to ``public_renderer`` (no debug metadata).
@@ -116,4 +117,5 @@ def build_channel_message_html(
         draft_id=draft_id,
         max_total_chars=max_total_chars,
         runtime_dir=runtime_dir,
+        growth_meta=growth_meta,
     )

@@ -1,0 +1,154 @@
+{
+  "proposal_id": "RES-20260603-A8E933",
+  "title": "[ADR-037 Resilience] Strengthen dual-write safety guard",
+  "summary": "Proposed guardrail evolution based on 4 weakness(es); max severity CRITICAL",
+  "weaknesses": [
+    {
+      "weakness_type": "dual_write_guard_gap",
+      "affected_component": "stabilization_safety_guard.yaml",
+      "severity": "CRITICAL",
+      "evidence_sources": [
+        "adversarial_reports:race_during_dual_writex6"
+      ],
+      "suggested_fix": "Strengthen dual_write_inconsistency hard stop and add schema parity gate signal",
+      "attack_vectors": [
+        "race_during_dual_write"
+      ],
+      "incident_ids": []
+    },
+    {
+      "weakness_type": "brittle_gate_condition",
+      "affected_component": "gate_enforcement / M0_TO_M1",
+      "severity": "HIGH",
+      "evidence_sources": [
+        "gate_history:3_degraded_or_no_go"
+      ],
+      "suggested_fix": "Treat offline unverified critical path as NO-GO at M0→M1 boundary",
+      "attack_vectors": [],
+      "incident_ids": []
+    },
+    {
+      "weakness_type": "risk_auditor_coverage_gap",
+      "affected_component": "risk_auditor_agent.py",
+      "severity": "CRITICAL",
+      "evidence_sources": [
+        "risk_registry:RISK-007"
+      ],
+      "suggested_fix": "Ensure stop-the-line covers active RISK-007 across all automation paths",
+      "attack_vectors": [],
+      "incident_ids": []
+    },
+    {
+      "weakness_type": "unhandled_adversarial_scenario",
+      "affected_component": "adversarial_observed_weaknesses.yaml",
+      "severity": "MED",
+      "evidence_sources": [
+        "adversarial_reports:present"
+      ],
+      "suggested_fix": "Promote top observed weaknesses into verifier patterns and stabilization guard",
+      "attack_vectors": [],
+      "incident_ids": []
+    }
+  ],
+  "guardrail_changes": [
+    {
+      "target_file": "github/stabilization_safety_guard.yaml",
+      "change_type": "tighten_dual_write_guard",
+      "suggested_yaml": {
+        "schema_version": 1,
+        "hard_stops": {
+          "critical_risk_active": true,
+          "m0_m1_gate_failed": true,
+          "dual_write_inconsistency_unresolved_prod": true
+        },
+        "rate_limits": {
+          "max_attempts_per_hour_per_issue": 3,
+          "batch_cross_issue_requires_approval": true
+        },
+        "confidence_thresholds": {
+          "suggest_only_max": 0.6,
+          "draft_pr_min": 0.6,
+          "draft_pr_max": 0.8,
+          "high_min": 0.8,
+          "high_max": 0.92,
+          "auto_stabilize_min": 0.94
+        },
+        "allowed_risk_levels_for_auto_stabilize": [
+          "LOW",
+          "MEDIUM"
+        ],
+        "whitelist_actions": [
+          "rerun_idempotent_job",
+          "trigger_reconciliation_pipeline",
+          "reset_transient_cache",
+          "rerun_clustering_sandbox",
+          "retry_failed_ingestion",
+          "rerun_nonprod_validation"
+        ],
+        "forbidden_paths": [
+          "github/migration_state.txt",
+          "migration_state.txt"
+        ],
+        "failure_type_action_map": {
+          "idempotency_failure": [
+            "rerun_idempotent_job",
+            "retry_failed_ingestion"
+          ],
+          "reconciliation_backlog": [
+            "trigger_reconciliation_pipeline",
+            "rerun_idempotent_job"
+          ],
+          "clustering_drift": [
+            "rerun_clustering_sandbox",
+            "reset_transient_cache"
+          ],
+          "dual_write_inconsistency": [],
+          "schema_mismatch": [],
+          "missing_dependency_completion": [
+            "rerun_nonprod_validation"
+          ]
+        }
+      },
+      "rationale": "Strengthen dual_write_inconsistency hard stop and add schema parity gate signal"
+    },
+    {
+      "target_file": "github/stabilization_safety_guard.yaml",
+      "change_type": "gate_boundary_note",
+      "suggested_yaml_addition": {
+        "gate_boundary_notes": {
+          "M0_TO_M1": "Offline DEGRADED with unverified critical path must block auto-stabilize"
+        }
+      },
+      "rationale": "Treat offline unverified critical path as NO-GO at M0→M1 boundary"
+    },
+    {
+      "target_file": "github/adversarial_verifier_patterns.yaml",
+      "change_type": "expand_verifier_patterns",
+      "suggested_yaml": {
+        "schema_version": 1,
+        "suggested_patterns": [
+          "disable.?safety",
+          "bypass.?guard",
+          "force.?enable.*dual.?write"
+        ],
+        "entries": []
+      },
+      "rationale": "Promote top observed weaknesses into verifier patterns and stabilization guard"
+    }
+  ],
+  "linked_components": [
+    "stabilization_safety_guard.yaml",
+    "gate_enforcement / M0_TO_M1",
+    "risk_auditor_agent.py",
+    "adversarial_observed_weaknesses.yaml"
+  ],
+  "linked_incidents": [
+    "INC-20260603-AEA028",
+    "INC-STAB-001"
+  ],
+  "linked_reports": [
+    "AR-20260603-4D243B",
+    "AR-20260603-A0FC6F"
+  ],
+  "created_at": "2026-06-03T21:13:47Z"
+}

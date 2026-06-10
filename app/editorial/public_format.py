@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from app.editorial.cb_brief_format import apply_cb_brief_shape, cb_brief_format_enabled
 from app.editorial.tone_engine import apply_newsroom_tone
 from app.editorial.tuning_loader import get_editorial_tuning
 from publisher.public_renderer import clean_headline
@@ -98,10 +99,15 @@ def format_public_story(
     *,
     why_it_matters: str = "",
     include_why: bool | None = None,
+    growth_meta: dict | None = None,
 ) -> PublicFormatResult:
     """Stable public story shape for renderer."""
     from app.editorial.content_quality import strip_dangling_ellipsis
     from app.editorial.public_post_template import normalize_lead_emoji
+    from app.growth_layer.format.growth_brief import compose_growth_brief_body, resolve_growth_blocks
+    from app.growth_layer.format.profiles import effective_format_profile, use_cb_brief_at_render, use_growth_brief_at_render
+
+    format_profile = effective_format_profile(growth_meta)
 
     h = normalize_headline(normalize_lead_emoji(headline))
     s = compress_summary(strip_dangling_ellipsis(summary))
@@ -127,8 +133,17 @@ def format_public_story(
         )
     if not include_why:
         why = ""
-    else:
+    elif not use_cb_brief_at_render(format_profile):
         why = compress_summary(why, max_lines=3, max_chars=420)
+
+    if use_growth_brief_at_render(format_profile):
+        blocks = resolve_growth_blocks(headline=h, body=s, growth_meta=growth_meta)
+        h = blocks.headline or h
+        s = compose_growth_brief_body(blocks)
+        why = ""
+    elif use_cb_brief_at_render(format_profile):
+        h, s = apply_cb_brief_shape(h, s, why)
+        why = ""
     return PublicFormatResult(
         headline=h,
         summary=s,

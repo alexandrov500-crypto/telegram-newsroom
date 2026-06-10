@@ -1,0 +1,51 @@
+# ADR-037 stabilization safety guard — hard stops for bounded autonomy.
+# Human override always available; no production writes via stabilization.
+schema_version: 1
+
+hard_stops:
+  critical_risk_active: true
+  m0_m1_gate_failed: true
+  dual_write_inconsistency_unresolved_prod: true
+
+rate_limits:
+  max_attempts_per_hour_per_issue: 3
+  batch_cross_issue_requires_approval: true
+
+confidence_thresholds:
+  suggest_only_max: 0.6
+  draft_pr_min: 0.6
+  draft_pr_max: 0.8
+  high_min: 0.8
+  high_max: 0.92
+  auto_stabilize_min: 0.92
+
+allowed_risk_levels_for_auto_stabilize:
+  - LOW
+  - MEDIUM
+
+whitelist_actions:
+  - rerun_idempotent_job
+  - trigger_reconciliation_pipeline
+  - reset_transient_cache
+  - rerun_clustering_sandbox
+  - retry_failed_ingestion
+  - rerun_nonprod_validation
+
+forbidden_paths:
+  - github/migration_state.txt
+  - migration_state.txt
+
+failure_type_action_map:
+  idempotency_failure:
+    - rerun_idempotent_job
+    - retry_failed_ingestion
+  reconciliation_backlog:
+    - trigger_reconciliation_pipeline
+    - rerun_idempotent_job
+  clustering_drift:
+    - rerun_clustering_sandbox
+    - reset_transient_cache
+  dual_write_inconsistency: []
+  schema_mismatch: []
+  missing_dependency_completion:
+    - rerun_nonprod_validation

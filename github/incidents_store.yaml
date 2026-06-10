@@ -1,0 +1,21 @@
+schema_version: 1
+incidents:
+- incident_id: INC-20260603-AEA028
+  timestamp: '2026-06-03T20:49:46Z'
+  phase: M0_ACTIVE
+  gate: ''
+  status: OPEN
+  failure_reason: 'Critical risk active: RISK-007 — Dual-write schema drift during
+    M2'
+  impacted_epics: []
+  impacted_issues:
+  - P1-E04-02
+  - P1-E01-08
+  recommended_action: Mitigate risk or update manual_gate_signals before next gate
+    run.
+  rollback_suggestion: ''
+  acknowledged: false
+  resolved: false
+  linked_github_issue: null
+  severity: CRITICAL
+  rule: critical_risk_detected

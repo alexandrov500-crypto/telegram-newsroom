@@ -1,0 +1,56 @@
+{
+  "report_date": "2026-06-03",
+  "generated_at": "2026-06-03T21:21:24Z",
+  "system_stability_trend": "degrading",
+  "system_health_score": 57.0,
+  "drift_status": {
+    "drift_detected": true,
+    "drift_type": "multi_drift:verifier_rule_erosion,adversarial_coverage_degradation",
+    "severity": "CRITICAL",
+    "evidence": [
+      "No active verifier patterns configured",
+      "verifier patterns empty despite HIGH/CRITICAL adversarial vectors"
+    ],
+    "recommended_adjustments": [
+      "Expand adversarial_verifier_patterns from latest red-team reports"
+    ]
+  },
+  "metrics_summary": {
+    "mttr_sec": null,
+    "mttr_trend": {
+      "direction": "stable",
+      "change_pct": 0.0
+    },
+    "stabilization_success_rate": 0.0,
+    "false_stabilization_rate": 0.0,
+    "incident_recurrence_rate": 0.0,
+    "evolution_acceptance_rate": 0.0
+  },
+  "recommended_tuning_actions": [
+    {
+      "suggestion_id": "TUN-20260603-17FB46",
+      "category": "verifier_rule_update",
+      "target": "github/adversarial_verifier_patterns.yaml",
+      "direction": "tighten",
+      "rationale": "Expand verifier patterns from adversarial reports — coverage degraded",
+      "confidence": 0.88,
+      "linked_drift": "multi_drift:verifier_rule_erosion,adversarial_coverage_degradation"
+    },
+    {
+      "suggestion_id": "TUN-20260603-B7E163",
+      "category": "drift_remediation",
+      "target": "evolution_pipeline",
+      "direction": "review_only",
+      "rationale": "Expand adversarial_verifier_patterns from latest red-team reports",
+      "confidence": 0.6,
+      "linked_drift": "multi_drift:verifier_rule_erosion,adversarial_coverage_degradation"
+    }
+  ],
+  "overfitting_guardrails_risk": {
+    "level": "LOW",
+    "reasons": []
+  },
+  "adversarial_resilience_score": 0.0,
+  "auto_apply_forbidden": true,
+  "human_approval_required": true
+}

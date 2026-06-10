@@ -1,0 +1,17 @@
+{
+  "proposal_id": "AR-20260603-A0FC6F",
+  "action": "DRAFT_PR",
+  "regression_passed": true,
+  "validator_status": "APPROVED_FOR_SIMULATION",
+  "risk_delta": "MED",
+  "breaking_points": [],
+  "violations": [],
+  "reasoning": [
+    "Regression PASS + validator APPROVED + LOW/MED risk — draft PR path"
+  ],
+  "decided_at": "2026-06-03T21:18:15Z",
+  "human_approval_required": true,
+  "auto_apply_forbidden": true,
+  "candidate_id": "EVO-20260603-081532",
+  "classification": "verifier_rule_update"
+}

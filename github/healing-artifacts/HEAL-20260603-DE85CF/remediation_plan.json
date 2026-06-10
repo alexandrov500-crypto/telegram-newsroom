@@ -1,0 +1,48 @@
+{
+  "plan_id": "RP-20260603-B09836",
+  "analysis_id": "FA-20260603-D0E90B",
+  "incident_id": "INC-20260603-AEA028",
+  "steps": [
+    "Run dual-write reconciliation report on staging",
+    "Align PublicationRecord field mapping with ContentPackage schema",
+    "Add consistency checker with fail-soft logging",
+    "Run dual-write parity report and align ContentPackage field mapping",
+    "Add publication_record consistency regression test before M2 gate",
+    "Add cluster persistence integration test"
+  ],
+  "impacted_issues": [
+    "P1-E04-02",
+    "P1-E01-08",
+    "P1-E01-07"
+  ],
+  "config_changes": [
+    {
+      "key": "PUBLICATION_RECORD_DUAL_WRITE",
+      "action": "do not enable until parity checklist passes"
+    },
+    {
+      "key": "CONTENT_PACKAGE_DUAL_WRITE",
+      "action": "Run dual-write parity report and align ContentPackage field mapping"
+    },
+    {
+      "key": "PUBLICATION_RECORD_DUAL_WRITE",
+      "action": "Add publication_record consistency regression test before M2 gate"
+    },
+    {
+      "key": "STORY_CLUSTER_PERSIST_ENABLED",
+      "action": "Add cluster persistence integration test"
+    }
+  ],
+  "validation_steps": [
+    "pytest tests/ -k dual_write or publication_record",
+    "python scripts/evaluate_gate.py --gate M1_TO_M2"
+  ],
+  "rollback_safety_check": "PR excludes migration_state.txt and production env changes.",
+  "pr_type": "schema_fix",
+  "risk_impact_note": "HIGH — dual-write path; draft PR for review only.",
+  "matched_mitigations": [
+    "Run dual-write parity report and align ContentPackage field mapping",
+    "Add publication_record consistency regression test before M2 gate",
+    "Add cluster persistence integration test"
+  ]
+}

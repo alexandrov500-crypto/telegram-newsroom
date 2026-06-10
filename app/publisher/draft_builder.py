@@ -265,7 +265,8 @@ def polish_channel_post(body: str, *, max_chars: int = 2800) -> str:
             clean = " ".join(parts[:-1]).strip()
             clean = _finish_thought(clean)
     clean = clean.strip()
-    if os.getenv("W3_EDITORIAL_PIPELINE_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on"):
+    cb = os.getenv("NEWSROOM_CB_BRIEF_FORMAT", "true").strip().lower() in {"1", "true", "yes", "on"}
+    if not cb and os.getenv("W3_EDITORIAL_PIPELINE_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on"):
         try:
             from app.flywheel.pipeline import enrich_for_publish
 
@@ -280,7 +281,7 @@ def polish_channel_post(body: str, *, max_chars: int = 2800) -> str:
         except Exception:
             pass
     clean = strip_editorial_template_noise(clean)
-    if os.getenv("HEADLINE_ENGINE_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on"):
+    if not cb and os.getenv("HEADLINE_ENGINE_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on"):
         try:
             from app.editorial.headline_engine import apply_headline_to_content, pick_best_headline
 
@@ -288,6 +289,12 @@ def polish_channel_post(body: str, *, max_chars: int = 2800) -> str:
             clean = apply_headline_to_content(clean, headline)
         except Exception:
             pass
+    from app.growth_layer.format.profiles import apply_cb_compose_at_draft_polish
+
+    if apply_cb_compose_at_draft_polish():
+        from app.editorial.cb_brief_format import compose_cb_brief_text
+
+        clean = compose_cb_brief_text(clean, max_chars=max_chars)
     return clean
 
 

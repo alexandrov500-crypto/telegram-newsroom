@@ -1,0 +1,3 @@
+# Proposal-only rollback records from evaluate_rollback.py (no auto-execution).
+schema_version: 1
+proposals: []

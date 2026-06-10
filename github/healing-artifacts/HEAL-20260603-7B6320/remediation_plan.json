@@ -1,0 +1,47 @@
+{
+  "plan_id": "RP-20260603-AE190A",
+  "analysis_id": "FA-20260603-698604",
+  "incident_id": "INC-20260603-AEA028",
+  "steps": [
+    "Validate STORY_CLUSTER_PERSIST_ENABLED shadow metrics",
+    "Add cluster persistence integration test",
+    "Compare cluster snapshot hashes pre/post publish",
+    "Run dual-write parity report and align ContentPackage field mapping",
+    "Add publication_record consistency regression test before M2 gate",
+    "Add cluster persistence integration test"
+  ],
+  "impacted_issues": [
+    "P1-E04-02",
+    "P1-E01-08",
+    "P1-E01-07"
+  ],
+  "config_changes": [
+    {
+      "key": "STORY_CLUSTER_PERSIST_ENABLED",
+      "action": "verify shadow mode before enable"
+    },
+    {
+      "key": "CONTENT_PACKAGE_DUAL_WRITE",
+      "action": "Run dual-write parity report and align ContentPackage field mapping"
+    },
+    {
+      "key": "PUBLICATION_RECORD_DUAL_WRITE",
+      "action": "Add publication_record consistency regression test before M2 gate"
+    },
+    {
+      "key": "STORY_CLUSTER_PERSIST_ENABLED",
+      "action": "Add cluster persistence integration test"
+    }
+  ],
+  "validation_steps": [
+    "pytest tests/ -k cluster"
+  ],
+  "rollback_safety_check": "Flag remains off in PR; tests only.",
+  "pr_type": "test_hardening",
+  "risk_impact_note": "M1 gate sensitive — operator approval mandatory.",
+  "matched_mitigations": [
+    "Run dual-write parity report and align ContentPackage field mapping",
+    "Add publication_record consistency regression test before M2 gate",
+    "Add cluster persistence integration test"
+  ]
+}

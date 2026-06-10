@@ -1,0 +1,56 @@
+schema_version: 1
+proposals:
+- proposal_id: HEAL-20260603-7B6320
+  created_at: '2026-06-03T21:02:40Z'
+  incident_id: INC-20260603-AEA028
+  analysis_id: FA-20260603-698604
+  plan_id: RP-20260603-AE190A
+  pr_type: test_hardening
+  status: dry_run
+  pr_url: ''
+  pr_number: null
+  branch: heal/heal-20260603-7b6320
+  summary: 'Critical risk active: RISK-007 — Dual-write schema drift during M2'
+  recommended_actions:
+  - Validate STORY_CLUSTER_PERSIST_ENABLED shadow metrics
+  - Add cluster persistence integration test
+  - Compare cluster snapshot hashes pre/post publish
+  - Run dual-write parity report and align ContentPackage field mapping
+  - Add publication_record consistency regression test before M2 gate
+  failure_signature: '|INC-20260603-AEA028|critical risk active: risk-007 — dual-write
+    schema drift during m2'
+- proposal_id: HEAL-20260603-D59FC9
+  created_at: '2026-06-03T21:05:23Z'
+  incident_id: INC-STAB-001
+  analysis_id: FA-20260603-ED4B72
+  plan_id: RP-20260603-E3C9E8
+  pr_type: schema_fix
+  status: dry_run
+  pr_url: ''
+  pr_number: null
+  branch: heal/heal-20260603-d59fc9
+  summary: idempotency key collision in publish
+  recommended_actions:
+  - Run dual-write reconciliation report on staging
+  - Align PublicationRecord field mapping with ContentPackage schema
+  - Add consistency checker with fail-soft logging
+  failure_signature: M0_TO_M1|INC-STAB-001|idempotency key collision in publish
+- proposal_id: HEAL-20260603-DE85CF
+  created_at: '2026-06-03T21:05:28Z'
+  incident_id: INC-20260603-AEA028
+  analysis_id: FA-20260603-D0E90B
+  plan_id: RP-20260603-B09836
+  pr_type: schema_fix
+  status: dry_run
+  pr_url: ''
+  pr_number: null
+  branch: heal/heal-20260603-de85cf
+  summary: 'Critical risk active: RISK-007 — Dual-write schema drift during M2'
+  recommended_actions:
+  - Run dual-write reconciliation report on staging
+  - Align PublicationRecord field mapping with ContentPackage schema
+  - Add consistency checker with fail-soft logging
+  - Run dual-write parity report and align ContentPackage field mapping
+  - Add publication_record consistency regression test before M2 gate
+  failure_signature: '|INC-20260603-AEA028|critical risk active: risk-007 — dual-write
+    schema drift during m2'

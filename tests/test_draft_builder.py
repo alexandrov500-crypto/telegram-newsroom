@@ -67,7 +67,8 @@ def test_polish_strips_channel_bullets_and_completes() -> None:
     assert out.count("...") == 0 or out.endswith(".")
 
 
-def test_single_source_keeps_long_text_up_to_max_chars():
+def test_single_source_keeps_long_text_up_to_max_chars(monkeypatch):
+    monkeypatch.setenv("NEWSROOM_CB_BRIEF_FORMAT", "false")
     long_body = (
         "Первое предложение с достаточной длиной для парсера. "
         "Второе предложение описывает контекст и детали события подробно. "
@@ -78,6 +79,18 @@ def test_single_source_keeps_long_text_up_to_max_chars():
     assert body.endswith(".")
     assert "…" not in body
     assert len(body) > 1200
+
+
+def test_cb_brief_caps_post_length():
+    long_body = (
+        "Первое предложение с достаточной длиной для парсера. "
+        "Второе предложение описывает контекст и детали события подробно. "
+        "Третье предложение добавляет реакцию участников и возможные последствия. "
+        "Четвертое предложение завершает мысль точкой."
+    ) * 8
+    body = format_single_source_draft({"text": long_body, "source": "@vedofon"}, max_chars=3500)
+    assert len(body) <= 900
+    assert body.endswith(".")
 
 
 def test_hierarchical_single_cluster_uses_blurb():

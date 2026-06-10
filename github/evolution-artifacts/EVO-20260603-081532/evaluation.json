@@ -1,0 +1,110 @@
+{
+  "candidate": {
+    "candidate_id": "EVO-20260603-081532",
+    "source_type": "adversarial_report",
+    "source_id": "AR-20260603-A0FC6F",
+    "title": "Evolution from adversarial report AR-20260603-A0FC6F",
+    "summary": "CRITICAL adversarial findings (2 weakness(es))",
+    "classification": "verifier_rule_update",
+    "guardrail_changes": [
+      {
+        "target_file": "github/adversarial_verifier_patterns.yaml",
+        "change_type": "expand_verifier_patterns",
+        "suggested_yaml_addition": {
+          "suggested_patterns": [
+            "race.?during.?dual.?write",
+            "partial.?schema.?propagation"
+          ]
+        },
+        "rationale": "Adversarial report recommends expanded verifier coverage"
+      }
+    ],
+    "linked_incidents": [
+      "INC-STAB-001"
+    ],
+    "linked_reports": [
+      "AR-20260603-A0FC6F"
+    ],
+    "stabilization_context": {
+      "auto_actions_total": 0,
+      "blocked_total": 0,
+      "success_rate": null,
+      "last_run_at": null
+    },
+    "created_at": "2026-06-03T21:18:15Z"
+  },
+  "regression": {
+    "proposal_id": "AR-20260603-A0FC6F",
+    "regression_passed": true,
+    "breaking_points": [],
+    "risk_delta": "MED",
+    "gate_simulation": {
+      "current_phase": "M0_ACTIVE",
+      "gates": [
+        {
+          "gate_id": "M0_TO_M1",
+          "phase": "M0_ACTIVE",
+          "simulated_status": "NO_GO_HELD"
+        },
+        {
+          "gate_id": "M1_TO_M2",
+          "phase": "M0_ACTIVE",
+          "simulated_status": "GO"
+        },
+        {
+          "gate_id": "M2_TO_M3",
+          "phase": "M0_ACTIVE",
+          "simulated_status": "GO"
+        }
+      ],
+      "regression_gate_fail": false
+    },
+    "incident_replay": {
+      "replayed_count": 1,
+      "unresolved_count": 1,
+      "would_still_block": [
+        "unresolved_incident:INC-20260603-AEA028"
+      ]
+    },
+    "adversarial_replay": {
+      "reports_replayed": 1,
+      "high_severity_vectors": [
+        "race_during_dual_write",
+        "partial_schema_propagation"
+      ],
+      "coverage_gap_if_empty_patterns": true
+    },
+    "stabilization_simulation": {
+      "current_auto_stabilize_min": 0.92,
+      "proposed_auto_stabilize_min": 0.92,
+      "lowered_bar": false,
+      "critical_risk_blocks_auto": true,
+      "auto_actions_would_run_under_sim": false
+    },
+    "simulated_at": "2026-06-03T21:18:15Z"
+  },
+  "validation": {
+    "proposal_id": "AR-20260603-A0FC6F",
+    "status": "APPROVED_FOR_SIMULATION",
+    "violations": [],
+    "warnings": [],
+    "checked_at": "2026-06-03T21:18:15Z"
+  },
+  "decision": {
+    "proposal_id": "AR-20260603-A0FC6F",
+    "action": "DRAFT_PR",
+    "regression_passed": true,
+    "validator_status": "APPROVED_FOR_SIMULATION",
+    "risk_delta": "MED",
+    "breaking_points": [],
+    "violations": [],
+    "reasoning": [
+      "Regression PASS + validator APPROVED + LOW/MED risk — draft PR path"
+    ],
+    "decided_at": "2026-06-03T21:18:15Z",
+    "human_approval_required": true,
+    "auto_apply_forbidden": true,
+    "candidate_id": "EVO-20260603-081532",
+    "classification": "verifier_rule_update"
+  }
+}

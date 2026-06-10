@@ -1,0 +1,21 @@
+schema_version: 1
+patterns:
+- failure_signature: '|INC-20260603-AEA028|critical risk active: risk-007 — dual-write
+    schema drift during m2'
+  matched_root_cause: clustering_drift
+  applied_remediation_pattern: test_hardening
+  success_rate: 0.0
+  linked_prs: []
+  time_to_recovery_sec: null
+  occurrences: 2
+  first_seen: '2026-06-03T21:02:40Z'
+  last_seen: '2026-06-03T21:05:28Z'
+- failure_signature: M0_TO_M1|INC-STAB-001|idempotency key collision in publish
+  matched_root_cause: dual_write_inconsistency
+  applied_remediation_pattern: schema_fix
+  success_rate: 0.0
+  linked_prs: []
+  time_to_recovery_sec: null
+  occurrences: 1
+  first_seen: '2026-06-03T21:05:23Z'
+  last_seen: '2026-06-03T21:05:23Z'

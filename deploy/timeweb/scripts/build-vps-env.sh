@@ -44,6 +44,15 @@ set_kv() {
   fi
 }
 
+# VPS uses Yandex via y2o relay (OPENAI_BASE_URL + sk-y2o-*). Do not overwrite with Mac sk-proj.
+if [[ -f "${ROOT}/deploy/timeweb/.env.bak" ]] && [[ "${OPENAI_API_KEY:-}" == sk-proj-* ]]; then
+  echo "WARN: local OPENAI_API_KEY looks like OpenAI direct; keep deploy/timeweb/.env.bak y2o keys for VPS" >&2
+  prev="${ROOT}/deploy/timeweb/.env"
+  if [[ -f "${prev}" ]]; then
+    # shellcheck disable=SC1090
+    source "${prev}"
+  fi
+fi
 set_kv OPENAI_API_KEY "${OPENAI_API_KEY}"
 set_kv BOT_TOKEN "${BOT_TOKEN}"
 set_kv TELEGRAM_API_ID "${TELEGRAM_API_ID}"
@@ -67,6 +76,16 @@ set_kv RUNTIME_STATE_DIR "/data/runtime"
 set_kv HEALTHCHECK_TIMEOUT_SEC "${HEALTHCHECK_TIMEOUT_SEC:-20}"
 set_kv TELEGRAM_STARTUP_HEALTH_MAX_RETRIES "${TELEGRAM_STARTUP_HEALTH_MAX_RETRIES:-1}"
 set_kv TELETHON_SESSION_PATH "/data/sessions/telethon.session"
+set_kv TELETHON_PROXY "${TELETHON_PROXY:-socks5://xray:1080}"
+set_kv TELEGRAM_BOT_PROXY "${TELEGRAM_BOT_PROXY:-http://xray:1081}"
+set_kv OPENAI_BASE_URL "${OPENAI_BASE_URL:-http://y2o:8520/v1}"
+set_kv YANDEX_API_KEY "${YANDEX_API_KEY:-}"
+set_kv YANDEX_FOLDER_ID "${YANDEX_FOLDER_ID:-}"
+set_kv GROWTH_CADENCE_ENABLED "${GROWTH_CADENCE_ENABLED:-false}"
+set_kv NEWSROOM_CB_BRIEF_FORMAT "${NEWSROOM_CB_BRIEF_FORMAT:-true}"
+set_kv SUMMARY_STYLE "${SUMMARY_STYLE:-cb-economics-brief}"
+set_kv HEADLINE_MODE "${HEADLINE_MODE:-json}"
+set_kv EDITORIAL_TUNING_PATH "${EDITORIAL_TUNING_PATH:-/app/config/editorial_tuning.yaml}"
 
 rm -f "${OUT}.bak"
 chmod 600 "${OUT}"

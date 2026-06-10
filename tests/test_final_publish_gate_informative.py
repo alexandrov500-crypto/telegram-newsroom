@@ -121,3 +121,21 @@ def test_final_gate_allows_ai_approved_autonomous_despite_publication_risk(
         operator_approved=False,
     )
     assert verdict.allowed, verdict.reason
+
+
+def test_final_gate_blocks_series_continuation_and_truncated_body() -> None:
+    verdict = evaluate_final_publish_gate(
+        content=(
+            "Пашинян: Товары, которые запретили к экспорту в Россию, уже отправились в Евросоюз. "
+            "Ряд бизнес-делегаций уже работает, первая партия роз и -\n\n"
+            "Продолжение темы — в ближайших выпусках канала."
+        ),
+        sources='[{"channel":"@cb_economics"}]',
+        operator_approved=False,
+    )
+    assert not verdict.allowed
+    assert verdict.reason in {
+        "series_continuation_filler",
+        "incomplete_teaser_no_body",
+        "incomplete_public_template",
+    }

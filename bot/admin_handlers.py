@@ -152,6 +152,28 @@ def _extras_json_for_preview(draft: Any, settings: Settings) -> str:
     return json.dumps(ex, ensure_ascii=False, sort_keys=True)
 
 
+async def _extras_json_for_preview_async(session: Any, draft: Any, settings: Settings) -> str:
+    try:
+        ex = json.loads(_extras_json_for_preview(draft, settings))
+    except (json.JSONDecodeError, TypeError):
+        ex = {}
+    if not isinstance(ex, dict):
+        ex = {}
+    try:
+        from app.growth_layer.prepublish.growth_advisor import enrich_preview_extras_with_growth_advisor
+
+        advice = await enrich_preview_extras_with_growth_advisor(
+            session,
+            draft,
+            runtime_dir=settings.runtime_state_dir,
+        )
+        if advice:
+            ex["growth_advisor"] = advice
+    except Exception:
+        pass
+    return json.dumps(ex, ensure_ascii=False, sort_keys=True)
+
+
 def _queue_line_badges(d: Any, *, now) -> str:
     badges: list[str] = []
     try:
@@ -466,13 +488,14 @@ async def cmd_draft(message: Message, settings: Settings) -> None:
             draft_id,
             similarity_threshold=settings.draft_similarity_threshold,
         )
+        extras_json = await _extras_json_for_preview_async(session, draft, settings)
     html = render_internal_review_html(
         draft_id,
         draft.content or "",
         draft.sources,
         editor_title=draft.editor_title,
         editor_summary=draft.editor_summary,
-        draft_extras_json=_extras_json_for_preview(draft, settings),
+        draft_extras_json=extras_json,
         status=draft.status,
         created_at_iso=draft.created_at.isoformat() if draft.created_at else "",
         scheduled_at_iso=draft.scheduled_publish_at.isoformat() if draft.scheduled_publish_at else None,
@@ -887,13 +910,14 @@ async def on_preview(callback: CallbackQuery, settings: Settings) -> None:
             draft_id,
             similarity_threshold=settings.draft_similarity_threshold,
         )
+        extras_json = await _extras_json_for_preview_async(session, draft, settings)
     html = render_internal_review_html(
         draft_id,
         draft.content or "",
         draft.sources,
         editor_title=draft.editor_title,
         editor_summary=draft.editor_summary,
-        draft_extras_json=_extras_json_for_preview(draft, settings),
+        draft_extras_json=extras_json,
         status=draft.status,
         created_at_iso=draft.created_at.isoformat() if draft.created_at else "",
         scheduled_at_iso=draft.scheduled_publish_at.isoformat() if draft.scheduled_publish_at else None,

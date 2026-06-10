@@ -1,0 +1,30 @@
+schema_version: 1
+risks:
+- id: RISK-001
+  title: Canonical publish path bypass
+  level: HIGH
+  status: mitigated
+  epic: P1-E01
+- id: RISK-007
+  title: Dual-write schema drift during M2
+  level: CRITICAL
+  status: active
+  epic: P1-E04
+  impacted_issues:
+  - P1-E04-02
+  - P1-E01-08
+  mitigations:
+  - action: Run dual-write parity report and align ContentPackage field mapping
+    config: CONTENT_PACKAGE_DUAL_WRITE
+  - action: Add publication_record consistency regression test before M2 gate
+    config: PUBLICATION_RECORD_DUAL_WRITE
+- id: RISK-009
+  title: Story cluster persistence regression
+  level: HIGH
+  status: active
+  epic: P1-E01
+  impacted_issues:
+  - P1-E01-07
+  mitigations:
+  - action: Add cluster persistence integration test
+    config: STORY_CLUSTER_PERSIST_ENABLED

@@ -1,0 +1,2 @@
+- [ ] pytest tests/ -k dual_write or publication_record
+- [ ] python scripts/evaluate_gate.py --gate M1_TO_M2

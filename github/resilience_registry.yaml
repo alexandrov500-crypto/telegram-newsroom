@@ -1,0 +1,14 @@
+# ADR-037 resilience registry — guardrail evolution proposals (human-approved only).
+schema_version: 1
+updated_at: null
+
+recurring_weaknesses: []
+
+resolved_gaps: []
+
+proposal_history: []
+
+acceptance_rate: 0.0
+
+stabilization_impact:
+  notes: Metrics updated manually after accepted guardrail PRs merge.

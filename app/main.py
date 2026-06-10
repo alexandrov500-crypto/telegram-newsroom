@@ -412,6 +412,22 @@ async def main() -> None:
             )
             logger.info("Growth digest check every %s minutes", os.getenv("GROWTH_DIGEST_CHECK_INTERVAL_MIN", "60"))
 
+        if os.getenv("GROWTH_VALIDATION_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on"):
+            from app.growth_layer.validation.scheduler_jobs import run_growth_validation_weekly_report
+
+            scheduler.add_job(
+                run_growth_validation_weekly_report,
+                "interval",
+                minutes=max(30, int(os.getenv("GROWTH_WEEKLY_REPORT_CHECK_INTERVAL_MIN", "60"))),
+                args=[ctx],
+                id="growth_validation_weekly_report",
+                replace_existing=True,
+            )
+            logger.info(
+                "Growth validation weekly report check every %s minutes",
+                os.getenv("GROWTH_WEEKLY_REPORT_CHECK_INTERVAL_MIN", "60"),
+            )
+
         if os.getenv("W3_FLYWHEEL_MAINTENANCE_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on"):
             from app.flywheel.scheduler_jobs import run_flywheel_maintenance_tick
 

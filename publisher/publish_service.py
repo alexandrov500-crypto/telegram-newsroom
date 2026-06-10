@@ -727,6 +727,36 @@ async def _execute_admin_publication_flow_impl(
             except Exception as w3_exc:
                 log_event(logger, "publish.w3_check_skipped", draft_id=draft_id, error=repr(w3_exc)[:120])
 
+            try:
+                from app.growth_layer.prepublish.growth_advisor import (
+                    evaluate_draft_with_session,
+                    growth_advisor_enabled,
+                    persist_draft_growth_advice,
+                )
+                from db.repository import merge_draft_extras
+
+                if growth_advisor_enabled():
+                    growth_advice = await evaluate_draft_with_session(
+                        session,
+                        d,
+                        runtime_dir=settings.runtime_state_dir,
+                    )
+                    await merge_draft_extras(session, draft_id, {"growth_advisor": growth_advice})
+                    await persist_draft_growth_advice(
+                        session,
+                        draft_id=int(draft_id),
+                        advice=growth_advice,
+                    )
+                    log_event(
+                        logger,
+                        "growth.advisor.evaluated",
+                        draft_id=draft_id,
+                        score=growth_advice.get("alignment", {}).get("score"),
+                        segment=growth_advice.get("segment"),
+                    )
+            except Exception as adv_exc:
+                log_event(logger, "growth.advisor.skipped", draft_id=draft_id, error=repr(adv_exc)[:120])
+
             approved = await approve_draft(session, draft_id)
             if not approved:
                 d3 = await get_draft_by_id(session, draft_id)
@@ -757,6 +787,8 @@ async def _execute_admin_publication_flow_impl(
             content = draft.content or ""
             sources = draft.sources or ""
             extras_json = draft.draft_extras or "{}"
+            editor_title = draft.editor_title
+            editor_summary = draft.editor_summary
 
         append_journal(
             settings.runtime_state_dir,
@@ -966,6 +998,19 @@ async def _execute_admin_publication_flow_impl(
             channel_message_id=first_id,
         )
         try:
+            from app.editorial.stability.controller import note_stability_publish
+
+            ex_pub: dict[str, object] = {}
+            try:
+                parsed_ex = json.loads(extras_json or "{}")
+                if isinstance(parsed_ex, dict):
+                    ex_pub = parsed_ex
+            except (json.JSONDecodeError, TypeError):
+                pass
+            note_stability_publish(settings.runtime_state_dir, ex_pub)
+        except Exception as pub_kpi_exc:
+            logger.debug("stability publish kpi skipped: %s", pub_kpi_exc)
+        try:
             from app.analytics.telegram_stats import enqueue_post_for_tracking
             from app.growth.cadence_engine import record_growth_cadence_publish
             from editorial.cadence import topic_dedupe_key, record_publish
@@ -1009,7 +1054,61 @@ async def _execute_admin_publication_flow_impl(
                 topic_bucket=topic_bucket,
                 publish_hour_local=hour_local,
             )
+            try:
+                from datetime import UTC, datetime
+
+                from app.growth_layer.validation.experiment import record_publish_experiment
+
+                async with session_scope() as session:
+                    await record_publish_experiment(
+                        session,
+                        draft_id=int(draft_id),
+                        telegram_post_id=int(first_id),
+                        published_at=datetime.now(UTC),
+                        extras_json=extras_json,
+                        topic_bucket=topic_bucket,
+                        primary_source=primary_source,
+                    )
+                    try:
+                        from app.growth_layer.editorial.publish_hook import record_editorial_features
+
+                        await record_editorial_features(
+                            session,
+                            draft_id=int(draft_id),
+                            content=content,
+                            sources=sources,
+                            draft_extras=extras_json,
+                            editor_title=editor_title,
+                            editor_summary=editor_summary,
+                            topic_bucket=topic_bucket,
+                        )
+                    except Exception:
+                        pass
+            except Exception:
+                pass
             record_publish(settings.runtime_state_dir, topic_key=tk)
+            try:
+                from app.editorial.stability.slo import record_stability_publish
+
+                extras_data: dict = {}
+                if extras_json:
+                    try:
+                        import json as _json
+
+                        parsed = _json.loads(extras_json)
+                        if isinstance(parsed, dict):
+                            extras_data = parsed
+                    except Exception:
+                        pass
+                stab = extras_data.get("editorial_stability") if isinstance(extras_data.get("editorial_stability"), dict) else {}
+                gd = stab.get("growth_decision") if isinstance(stab.get("growth_decision"), dict) else {}
+                record_stability_publish(
+                    settings.runtime_state_dir,
+                    post_type=str(gd.get("post_type") or extras_data.get("publishing_mode") or "news"),
+                    publishing_mode=str(extras_data.get("publishing_mode") or stab.get("publishing_mode") or "core"),
+                )
+            except Exception:
+                pass
             record_growth_cadence_publish(
                 runtime_dir=settings.runtime_state_dir,
                 topic_key=tk,

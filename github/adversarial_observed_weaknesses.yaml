@@ -1,0 +1,54 @@
+schema_version: 1
+observed_weaknesses:
+- incident_id: INC-STAB-001
+  attack_vector: race_during_dual_write
+  weak_point: Silent data fork between PublicationRecord and ContentPackage
+  severity_if_real: CRITICAL
+  affected_components:
+  - P1-E04-02
+  - P1-E01-08
+  - dual-write layer
+  mitigation_suggestions:
+  - Add dual-write compare-and-swap integration test
+  - Gate on schema parity checksum before M2
+  confidence_of_exploit: 0.78
+  recorded_at: '2026-06-03T21:11:08Z'
+  source: adversarial_agent
+- incident_id: INC-STAB-001
+  attack_vector: partial_schema_propagation
+  weak_point: Gate passes offline while prod writers disagree on shape
+  severity_if_real: HIGH
+  affected_components:
+  - schema_fix PR path
+  - M1→M2 gate
+  mitigation_suggestions:
+  - Review guardrails for this attack vector
+  confidence_of_exploit: 0.65
+  recorded_at: '2026-06-03T21:11:08Z'
+  source: adversarial_agent
+- incident_id: INC-20260603-AEA028
+  attack_vector: race_during_dual_write
+  weak_point: Silent data fork between PublicationRecord and ContentPackage
+  severity_if_real: CRITICAL
+  affected_components:
+  - P1-E04-02
+  - P1-E01-08
+  - dual-write layer
+  mitigation_suggestions:
+  - Add dual-write compare-and-swap integration test
+  - Gate on schema parity checksum before M2
+  confidence_of_exploit: 0.78
+  recorded_at: '2026-06-03T21:11:08Z'
+  source: adversarial_agent
+- incident_id: INC-20260603-AEA028
+  attack_vector: partial_schema_propagation
+  weak_point: Gate passes offline while prod writers disagree on shape
+  severity_if_real: HIGH
+  affected_components:
+  - schema_fix PR path
+  - M1→M2 gate
+  mitigation_suggestions:
+  - Review guardrails for this attack vector
+  confidence_of_exploit: 0.65
+  recorded_at: '2026-06-03T21:11:08Z'
+  source: adversarial_agent

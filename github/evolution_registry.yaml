@@ -1,0 +1,25 @@
+schema_version: 1
+applied_changes: []
+rejected_proposals: []
+regression_results: []
+stability_delta: []
+incident_rate_tracking:
+- period: baseline
+  incident_count: 2
+  note: Pre-evolution baseline (INC-20260603-AEA028 active)
+pending_proposals:
+- candidate_id: EVO-20260603-8C1E71
+  source_id: RES-20260603-A8E933
+  action: HUMAN_REVIEW
+  regression_passed: true
+  validator_status: APPROVED_FOR_SIMULATION
+  risk_delta: HIGH
+  recorded_at: '2026-06-03T21:18:15Z'
+- candidate_id: EVO-20260603-081532
+  source_id: AR-20260603-A0FC6F
+  action: DRAFT_PR
+  regression_passed: true
+  validator_status: APPROVED_FOR_SIMULATION
+  risk_delta: MED
+  recorded_at: '2026-06-03T21:18:15Z'
+updated_at: '2026-06-03T21:18:15Z'

@@ -475,6 +475,12 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
     ctx.tick_timings["db_fetch_unprocessed_sec"] = time.perf_counter() - t_db
 
     if not posts:
+        from app.editorial.stability.synthesis_flow import try_create_stability_draft
+
+        if await try_create_stability_draft(ctx, trigger="no_posts"):
+            log_event(logger, "stability.fill_no_posts", outcome="draft_created", draft_id=ctx.tick_draft_id)
+            ctx.last_cluster_size = 0
+            return
         log_event(logger, "scheduler.summarize_skipped", reason="no_unprocessed_posts", stage="fetch_posts")
         ctx.tick_summarize_idle_reason = "no_unprocessed_posts"
         _log_pipeline_idle("summarize", ctx.tick_summarize_idle_reason)
@@ -620,6 +626,29 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
                 desk.editorial_category,
                 desk.quality_score,
             )
+            from app.editorial.stability.synthesis_flow import try_create_stability_draft
+
+            if await try_create_stability_draft(ctx, trigger="desk", exclude_fingerprint=fp):
+                log_event(
+                    logger,
+                    "stability.fill_desk_reject",
+                    outcome="draft_created",
+                    draft_id=ctx.tick_draft_id,
+                    desk_reason=desk.reason,
+                )
+                return
+            post_ids = [int(p.id) for p in cluster if getattr(p, "id", None)]
+            if post_ids:
+                try:
+                    async with session_scope() as session:
+                        await mark_raw_posts_processed(session, post_ids, utcnow())
+                except Exception as exc:
+                    log_event(
+                        logger,
+                        "desk_reject_mark_processed_failed",
+                        error=repr(exc)[:200],
+                        post_count=len(post_ids),
+                    )
             return
         led.append(
             news_id=fp[:32],
@@ -673,6 +702,21 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
     identity = build_event_identity(cluster)
     ents = extract_entities(combined_text)
     record_entity_cooccurrence(settings.runtime_state_dir, ents)
+    if desk is not None and desk.publish:
+        try:
+            from app.editorial.stability.elastic_fill import record_cluster_buffer
+
+            record_cluster_buffer(
+                settings.runtime_state_dir,
+                fingerprint=fp,
+                combined_text=combined_text,
+                sources=chans,
+                topic_hint=identity.topic_hint,
+                editorial_category=str(desk.editorial_category or "macro"),
+                quality_score=float(desk.quality_score or 0.0),
+            )
+        except Exception:
+            pass
 
     channel_scores = export_channel_scores_for_priority(settings.runtime_state_dir)
     entity_norms = tuple(e.normalized for e in ents)
@@ -747,64 +791,116 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
         topic_cap=8 if _gov_snap.get("burnin_soft_governance") else 5,
     )
     _div_enforced = div_blocked and cluster_suppress_strict() and not starvation_recovery
-    if ranking_trace.hard_block or (gov_suppress and not starvation_recovery) or _div_enforced:
+    _publishing_mode = "core"
+    from app.editorial.stability.controller import evaluate_stability_context
+    from app.editorial.stability.mode_controller import (
+        primary_governance_suppress_reason,
+        should_bypass_governance,
+    )
+
+    _stab_ctx = evaluate_stability_context(
+        newsroom_tz=settings.newsroom_timezone,
+        cluster_size=len(cluster),
+        governance_blocked=bool(
+            ranking_trace.hard_block or (gov_suppress and not starvation_recovery) or _div_enforced
+        ),
+    )
+    _gov_block = ranking_trace.hard_block or (gov_suppress and not starvation_recovery) or _div_enforced
+    _stab_bypass = should_bypass_governance(
+        _stab_ctx,
+        div_blocked=div_blocked,
+        gov_suppress=gov_suppress,
+        hard_block=ranking_trace.hard_block,
+    )
+    _publishing_mode = _stab_ctx.mode.value if _stab_bypass else "core"
+    if _gov_block and not bypass and not _stab_bypass:
         reasons = list(ranking_trace.reason_codes) + div_codes
         if gov_reason:
             reasons.append(gov_reason)
-        if bypass:
+        _primary_suppress = primary_governance_suppress_reason(
+            list(ranking_trace.reason_codes),
+            div_codes,
+            gov_reason=gov_reason,
+        )
+        append_decision(
+            runtime_dir=settings.runtime_state_dir,
+            decision_type="cluster_governance_suppress",
+            outcome="suppressed",
+            subject_id=fp,
+            reason_codes=reasons[:24],
+            ranking_trace=ranking_trace.to_dict(),
+            policy_matches=policy_matches,
+        )
+        if not starvation_recovery:
+            record_suppression_ttl(
+                settings.runtime_state_dir,
+                fp,
+                1800.0,
+                reason=gov_reason or _primary_suppress or "",
+            )
+        record_suppression_metric(settings.runtime_state_dir, gov_reason or "governance")
+        inc("skipped_intelligence_suppress")
+        log_event(
+            logger,
+            "scheduler.cluster_suppressed",
+            reasons=reasons,
+            stage="governance",
+            primary_suppress=_primary_suppress,
+            publishing_mode=_stab_ctx.mode.value,
+        )
+        log_pipeline_trace(
+            logger,
+            stage="scoring",
+            cluster_id=fp,
+            decision="suppress",
+            reason="governance",
+            policy_matches=[str(p) for p in policy_matches][:16],
+        )
+        ctx.tick_summarize_idle_reason = f"cluster_governance:{_primary_suppress[:120]}"
+        from app.editorial.stability.synthesis_flow import try_create_stability_draft
+
+        if await try_create_stability_draft(ctx, trigger="governance", exclude_fingerprint=fp):
             log_event(
                 logger,
-                "scheduler.governance_bypass_debug",
-                reasons=reasons,
-                cluster_id=fp,
-            )
-            log_pipeline_trace(
-                logger,
-                stage="scoring",
-                cluster_id=fp,
-                decision="proceed",
-                reason="debug_bypass_governance",
-                policy_matches=[str(p) for p in policy_matches][:16],
-            )
-        else:
-            append_decision(
-                runtime_dir=settings.runtime_state_dir,
-                decision_type="cluster_governance_suppress",
-                outcome="suppressed",
-                subject_id=fp,
-                reason_codes=reasons[:24],
-                ranking_trace=ranking_trace.to_dict(),
-                policy_matches=policy_matches,
-            )
-            if not starvation_recovery:
-                record_suppression_ttl(
-                    settings.runtime_state_dir,
-                    fp,
-                    1800.0,
-                    reason=gov_reason or reasons[0] if reasons else "",
-                )
-            record_suppression_metric(settings.runtime_state_dir, gov_reason or "governance")
-            inc("skipped_intelligence_suppress")
-            log_event(logger, "scheduler.cluster_suppressed", reasons=reasons, stage="governance")
-            log_pipeline_trace(
-                logger,
-                stage="scoring",
-                cluster_id=fp,
-                decision="suppress",
-                reason="governance",
-                policy_matches=[str(p) for p in policy_matches][:16],
-            )
-            ctx.tick_summarize_idle_reason = (
-                f"cluster_governance:{(gov_reason or (reasons[0] if reasons else 'governance'))[:120]}"
-            )
-            log_event(
-                logger,
-                "summarize_exit",
-                outcome="reject",
-                reason=ctx.tick_summarize_idle_reason,
+                "stability.fill_governance",
+                outcome="draft_created",
+                draft_id=ctx.tick_draft_id,
+                primary_suppress=_primary_suppress,
             )
             ctx.tick_timings["cluster_sec"] = time.perf_counter() - t_cl
             return
+        log_event(
+            logger,
+            "summarize_exit",
+            outcome="reject",
+            reason=ctx.tick_summarize_idle_reason,
+        )
+        ctx.tick_timings["cluster_sec"] = time.perf_counter() - t_cl
+        return
+    if _gov_block and _stab_bypass and not bypass:
+        log_event(
+            logger,
+            "stability.governance_bypass",
+            mode=_stab_ctx.mode.value,
+            div_codes=div_codes,
+            gov_reason=gov_reason,
+            anti_pause=_stab_ctx.anti_pause.reason,
+        )
+    elif _gov_block and bypass:
+        log_event(
+            logger,
+            "scheduler.governance_bypass_debug",
+            reasons=list(ranking_trace.reason_codes) + div_codes,
+            cluster_id=fp,
+        )
+        log_pipeline_trace(
+            logger,
+            stage="scoring",
+            cluster_id=fp,
+            decision="proceed",
+            reason="debug_bypass_governance",
+            policy_matches=[str(p) for p in policy_matches][:16],
+        )
     pipeline_decision = evaluate_cluster_for_pipeline(
         cluster,
         settings=settings,
@@ -1183,6 +1279,34 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
     from app.publisher.draft_builder import finalize_draft_content
 
     draft_body = finalize_draft_content(draft_body, max_chars=settings.max_post_chars)
+    _stab_extras: dict[str, object] = {}
+    try:
+        from app.editorial.stability.controller import enrich_draft_for_stability
+
+        _desk_cat = str(getattr(desk, "editorial_category", None) or "macro") if desk is not None else "macro"
+        _desk_q = float(getattr(desk, "quality_score", 0.0) or 0.0) if desk is not None else 0.0
+        _is_brk = bool(
+            (escore is not None and getattr(escore, "is_breaking", False))
+            or (desk is not None and getattr(desk, "breaking_override", False))
+        )
+        draft_body, _stab_extras = enrich_draft_for_stability(
+            draft_body,
+            runtime_dir=settings.runtime_state_dir,
+            editorial_category=_desk_cat,
+            quality_score=_desk_q,
+            is_breaking=_is_brk,
+            publishing_mode=_publishing_mode,
+            sources=[str(p.channel_name or "") for p in cluster],
+            cluster_size=len(cluster),
+            cluster_texts=[str(p.text or "")[:2000] for p in (used_posts or cluster)],
+            newsroom_tz=settings.newsroom_timezone,
+        )
+        if _stab_extras.get("stability_reject"):
+            ctx.tick_summarize_idle_reason = "dominance_growth_reject"
+            log_event(logger, "summarize_exit", outcome="reject", reason=ctx.tick_summarize_idle_reason)
+            return
+    except Exception as exc:
+        log_event(logger, "stability.enrich_failed", error=repr(exc)[:200])
     content_hash = sha256_hex(draft_body)
 
     keys = {(str(p.channel_name).strip(), int(p.message_id)) for p in used_posts}
@@ -1198,10 +1322,12 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
     cadence_decision_reason = ""
 
     # Guardrail: never send placeholder/empty or truncated teasers to moderation.
-    from app.editorial.content_quality import is_publishably_informative
+    from app.editorial.content_quality import has_series_continuation_filler, is_publishably_informative
 
     normalized_body = " ".join(str(draft_body or "").split()).strip()
-    if not is_publishably_informative(normalized_body, min_chars=60, min_sentences=2):
+    if has_series_continuation_filler(normalized_body) or not is_publishably_informative(
+        normalized_body, min_chars=60, min_sentences=2
+    ):
         if raw_post_ids_for_db:
             try:
                 async with session_scope() as session:
@@ -1255,46 +1381,57 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
         "yes",
         "on",
     )
-    if cadence_enabled and not bypass:
-        try:
-            from app.editorial.growth_cadence import allow_story_for_current_session
+    if cadence_enabled and not bypass and not starvation_recovery:
+        from app.editorial.stability.anti_pause import evaluate_anti_pause
+        from app.editorial.stability.config import skip_cadence_cap_on_anti_pause
 
-            priority_score = float(getattr(escore, "final_priority_score", 0.0) or 0.0) if escore is not None else 0.0
-            is_breaking = bool(
-                (escore is not None and getattr(escore, "is_breaking", False))
-                or (desk is not None and getattr(desk, "breaking_override", False))
-            )
-            cadence_allowed, cadence_decision_reason, cadence_sess = allow_story_for_current_session(
-                runtime_dir=settings.runtime_state_dir,
-                priority_score=priority_score,
-                is_breaking=is_breaking,
-                newsroom_tz=settings.newsroom_timezone,
-            )
-            cadence_session_key = cadence_sess.key
-            cadence_signature = cadence_sess.signature
-            if not cadence_allowed:
-                if raw_post_ids_for_db:
-                    try:
-                        async with session_scope() as session:
-                            await mark_raw_posts_processed(session, raw_post_ids_for_db, utcnow())
-                    except Exception as exc:
-                        log_event(
-                            logger,
-                            "scheduler.cadence_reject_mark_processed_failed",
-                            error=repr(exc)[:200],
-                        )
-                ctx.tick_summarize_idle_reason = f"growth_cadence:{cadence_decision_reason}"
-                log_event(
-                    logger,
-                    "scheduler.summarize_skipped",
-                    reason=ctx.tick_summarize_idle_reason,
-                    session=cadence_session_key,
-                    priority_score=priority_score,
+        _ap = evaluate_anti_pause(newsroom_tz=settings.newsroom_timezone)
+        _skip_cadence = skip_cadence_cap_on_anti_pause() and _ap.anti_pause_active
+        _priority_boost = bool(_stab_extras.get("priority_boost"))
+        if not _skip_cadence and not _priority_boost:
+            try:
+                from app.editorial.growth_cadence import allow_story_for_current_session
+
+                priority_score = float(getattr(escore, "final_priority_score", 0.0) or 0.0) if escore is not None else 0.0
+                if desk is not None:
+                    desk_q = float(getattr(desk, "quality_score", 0.0) or 0.0)
+                    if desk_q > 0:
+                        priority_score = max(priority_score, desk_q)
+                is_breaking = bool(
+                    (escore is not None and getattr(escore, "is_breaking", False))
+                    or (desk is not None and getattr(desk, "breaking_override", False))
                 )
-                log_event(logger, "summarize_exit", outcome="reject", reason=ctx.tick_summarize_idle_reason)
-                return
-        except Exception as exc:
-            log_event(logger, "growth_cadence.evaluate_failed", error=repr(exc)[:200])
+                cadence_allowed, cadence_decision_reason, cadence_sess = allow_story_for_current_session(
+                    runtime_dir=settings.runtime_state_dir,
+                    priority_score=priority_score,
+                    is_breaking=is_breaking,
+                    newsroom_tz=settings.newsroom_timezone,
+                )
+                cadence_session_key = cadence_sess.key
+                cadence_signature = cadence_sess.signature
+                if not cadence_allowed:
+                    if raw_post_ids_for_db:
+                        try:
+                            async with session_scope() as session:
+                                await mark_raw_posts_processed(session, raw_post_ids_for_db, utcnow())
+                        except Exception as exc:
+                            log_event(
+                                logger,
+                                "scheduler.cadence_reject_mark_processed_failed",
+                                error=repr(exc)[:200],
+                            )
+                    ctx.tick_summarize_idle_reason = f"growth_cadence:{cadence_decision_reason}"
+                    log_event(
+                        logger,
+                        "scheduler.summarize_skipped",
+                        reason=ctx.tick_summarize_idle_reason,
+                        session=cadence_session_key,
+                        priority_score=priority_score,
+                    )
+                    log_event(logger, "summarize_exit", outcome="reject", reason=ctx.tick_summarize_idle_reason)
+                    return
+            except Exception as exc:
+                log_event(logger, "growth_cadence.evaluate_failed", error=repr(exc)[:200])
 
     observe_draft_quality(
         logger,
@@ -1470,6 +1607,112 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
                     }
                 },
             )
+        if _stab_extras.get("ccd"):
+            await merge_draft_extras(session, draft_id, {"ccd": _stab_extras["ccd"]})
+        if _stab_extras.get("mpaes"):
+            await merge_draft_extras(session, draft_id, {"mpaes": _stab_extras["mpaes"]})
+        if _stab_extras.get("ugsol"):
+            await merge_draft_extras(
+                session,
+                draft_id,
+                {
+                    "ugsol": _stab_extras["ugsol"],
+                    "final_editorial_decision": _stab_extras.get("final_editorial_decision"),
+                },
+            )
+        if _stab_extras.get("gmcs"):
+            await merge_draft_extras(session, draft_id, {"gmcs": _stab_extras["gmcs"]})
+        if _stab_extras.get("eml"):
+            await merge_draft_extras(
+                session,
+                draft_id,
+                {
+                    "eml": _stab_extras["eml"],
+                    "editorial_monetization": _stab_extras.get("editorial_monetization"),
+                },
+            )
+        if _stab_extras.get("eaa"):
+            await merge_draft_extras(
+                session,
+                draft_id,
+                {
+                    "eaa": _stab_extras["eaa"],
+                    "ai_editorial_review": _stab_extras.get("ai_editorial_review"),
+                    "autonomous_publish_approved": _stab_extras.get("autonomous_publish_approved"),
+                },
+            )
+        if _stab_extras.get("osgcp"):
+            await merge_draft_extras(
+                session,
+                draft_id,
+                {
+                    "osgcp": _stab_extras["osgcp"],
+                    "flagship_post": bool(_stab_extras.get("flagship_post")),
+                    "priority_boost": bool(_stab_extras.get("priority_boost")),
+                    "force_digest_slot": bool(_stab_extras.get("force_digest_slot")),
+                },
+            )
+        elif _stab_extras.get("product_os"):
+            await merge_draft_extras(
+                session,
+                draft_id,
+                {
+                    "product_os": _stab_extras["product_os"],
+                    "channel_product": _stab_extras.get("channel_product") or {},
+                    "growth": _stab_extras.get("growth") or {},
+                    "flagship_post": bool(_stab_extras.get("flagship_post")),
+                    "priority_boost": bool(_stab_extras.get("priority_boost")),
+                    "force_digest_slot": bool(_stab_extras.get("force_digest_slot")),
+                },
+            )
+        elif _stab_extras.get("channel_product"):
+            await merge_draft_extras(
+                session,
+                draft_id,
+                {
+                    "channel_product": _stab_extras["channel_product"],
+                    "growth": _stab_extras.get("growth") or {},
+                },
+            )
+        if _stab_extras.get("ueos"):
+            await merge_draft_extras(
+                session,
+                draft_id,
+                {
+                    "ueos": _stab_extras["ueos"],
+                    "flagship_post": bool(_stab_extras.get("flagship_post")),
+                    "priority_boost": bool(_stab_extras.get("priority_boost")),
+                    "force_digest_slot": bool(_stab_extras.get("force_digest_slot")),
+                },
+            )
+        if _stab_extras.get("audience_unification"):
+            await merge_draft_extras(
+                session,
+                draft_id,
+                {
+                    "audience_unification": _stab_extras["audience_unification"],
+                    "flagship_post": bool(_stab_extras.get("flagship_post")),
+                },
+            )
+        if _stab_extras.get("editorial_dominance"):
+            await merge_draft_extras(
+                session,
+                draft_id,
+                {
+                    "editorial_dominance": _stab_extras["editorial_dominance"],
+                    "priority_boost": bool(_stab_extras.get("priority_boost")),
+                    "force_digest_slot": bool(_stab_extras.get("force_digest_slot")),
+                },
+            )
+        if _stab_extras.get("editorial_stability"):
+            await merge_draft_extras(
+                session,
+                draft_id,
+                {
+                    "editorial_stability": _stab_extras["editorial_stability"],
+                    "publishing_mode": _publishing_mode,
+                },
+            )
         ed_card = compute_editorial_score_card(
             draft_text=draft_body,
             raw_posts=used_posts,
@@ -1579,6 +1822,7 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
                     observe_narrative_event,
                 )
                 from app.editorial.signal_ranking import rank_story_signal
+                from app.growth_layer.virality.engine import growth_layer_enabled
 
                 _chans = [
                     str(s.get("channel") or "")
@@ -1593,6 +1837,45 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
                     runtime_dir=settings.runtime_state_dir,
                     category=_cat,
                 )
+                if growth_layer_enabled():
+                    try:
+                        from app.growth_layer.format.profiles import resolve_format_profile
+                        from app.growth_layer.virality.engine import ViralityScoreEngine
+                        from db.growth_scores_repository import upsert_draft_growth_score
+
+                        _vir = ViralityScoreEngine().score(
+                            text=draft_body,
+                            signal=_signal,
+                            escore=escore,
+                            editorial_card=ed_card.to_dict() if ed_card is not None else None,
+                        )
+                        _fmt_profile = resolve_format_profile(_vir.score)
+                        await upsert_draft_growth_score(
+                            session,
+                            draft_id=draft_id,
+                            result=_vir,
+                            format_profile=_fmt_profile,
+                        )
+                        await merge_draft_extras(
+                            session,
+                            draft_id,
+                            _vir.to_growth_extras_patch(format_profile=_fmt_profile),
+                        )
+                        log_event(
+                            logger,
+                            "growth.virality_scored",
+                            draft_id=draft_id,
+                            virality_score=_vir.score,
+                            virality_tier=_vir.tier.value,
+                            format_profile=_fmt_profile,
+                        )
+                    except Exception as exc:
+                        log_event(
+                            logger,
+                            "growth.virality_score_failed",
+                            draft_id=draft_id,
+                            error=repr(exc)[:200],
+                        )
                 narrative_intel = evaluate_narrative_strategy(
                     settings.runtime_state_dir,
                     text=draft_body,

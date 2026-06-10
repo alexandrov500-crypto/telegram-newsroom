@@ -22,6 +22,18 @@ from utils.metrics import inc
 from utils.structured_log import log_event
 from utils.telegram_chunks import split_telegram_text
 
+
+def _growth_meta_from_extras(extras_json: str | None) -> dict[str, Any] | None:
+    from app.editorial.product_os.render_bridge import merged_growth_meta_with_product_os
+
+    merged = merged_growth_meta_with_product_os(extras_json)
+    if merged:
+        return merged
+    from app.editorial.channel_product.render_bridge import merged_growth_meta_from_extras
+
+    return merged_growth_meta_from_extras(extras_json)
+
+
 if TYPE_CHECKING:
     from aiogram import Bot
 
@@ -332,6 +344,7 @@ async def publish_draft_to_channel(
         draft_id=draft_id,
         include_sources=bool(getattr(settings, "publish_include_sources", False)),
         include_draft_id_footer=bool(getattr(settings, "publish_include_sources", False)),
+        growth_meta=_growth_meta_from_extras(draft_extras_json),
     )
     from app.editorial.publish_pipeline_guards import enforce_publish_html_guards
 

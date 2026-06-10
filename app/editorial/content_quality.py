@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 
 _INCOMPLETE_TEASER = re.compile(
@@ -13,7 +14,14 @@ _INCOMPLETE_TEASER = re.compile(
 )
 _DEICTIC_STUB = re.compile(r"\b(так|ниже|выше)\s*\.?\s*$", re.I)
 _UNFINISHED_ENDING = re.compile(
-    r"(\.\.\.|…|[,;:]\s*|[-–—]\s*|\s+(?:и|или|а|но)\.?\s*)\s*$",
+    r"(\.\.\.|…|[,;:]\s*|[-–—]\s*|\s+(?:и|или|а|но)(?:\s*[-–—])?\.?\s*)\s*$",
+    re.I,
+)
+_CONTINUATION_SERIES = re.compile(
+    r"(?:"
+    r"продолжение\s+темы\s*(?:[—–\-:]\s*)?(?:в\s+)?(?:ближайших?\s+)?(?:выпусках?\s+)?(?:канала)?"
+    r"|continuation\s+(?:in\s+)?(?:the\s+)?next\s+(?:episode|installment|issue)"
+    r")",
     re.I,
 )
 # Model/source cut-off disguised as a full sentence (… stripped → «для армянского.»).
@@ -84,6 +92,10 @@ _GENERIC_WHY_BLOCK = re.compile(
     r"\n?\n?Почему\s+это\s+важно\s*:\s*" + _GENERIC_INSIGHT.pattern,
     re.I,
 )
+_WHY_IT_MATTERS_BLOCK = re.compile(
+    r"\n?\n?Почему\s+это\s+важно\s*:\s*.+?(?=\n\n|\Z)",
+    re.I | re.DOTALL,
+)
 _ENGAGEMENT_HOOK = re.compile(
     r"(Главное для экономики|Ключевой сигнал(?: для крипторынка)?|Ключевой факт|"
     r"Что важно в геоповестке|Что это значит для рынка)\s*:\s*[^.!?]+[.!?]\s*",
@@ -92,7 +104,9 @@ _ENGAGEMENT_HOOK = re.compile(
 _OPEN_LOOP = re.compile(
     r"(Traders now focus|Watch closely|AI rally continues|"
     r"Geopolitical pressure continues|Macro stress continues|"
-    r"Crypto risk-on continues)[^.!?]*[.!?]\s*",
+    r"Crypto risk-on continues)"
+    r"|продолжение\s+темы\s*[—–\-:]\s*в\s+ближайших?\s+выпусках?"
+    r"[^.!?]*[.!?]?\s*",
     re.I,
 )
 _SOURCE_FOOTER = re.compile(r"\s*(Источник|Source|via)\s*:\s*@?\S+\s*", re.I)
@@ -132,6 +146,28 @@ _CONSUMER_FRAUD = re.compile(
 _MID_ELLIPSIS_TEASER = re.compile(r"[а-яёa-z]\s*…", re.I)
 
 
+def public_why_it_matters_enabled() -> bool:
+    return os.getenv("PUBLIC_WHY_IT_MATTERS", "false").strip().lower() in ("1", "true", "yes", "on")
+
+
+def premium_channel_configured() -> bool:
+    for key in (
+        "W5_PREMIUM_CHANNEL_LINK",
+        "PREMIUM_CHANNEL_ID",
+        "TARGET_PREMIUM_CHANNEL_ID",
+        "W5_PREMIUM_CHANNEL_ID",
+    ):
+        if os.getenv(key, "").strip():
+            return True
+    return False
+
+
+def premium_monetization_enabled() -> bool:
+    if os.getenv("W5_PREMIUM_LAYER_ENABLED", "true").strip().lower() not in ("1", "true", "yes", "on"):
+        return False
+    return premium_channel_configured()
+
+
 def is_generic_insight(text: str) -> bool:
     """True when «why it matters» is a canned fallback, not content-specific analysis."""
     return bool(_GENERIC_INSIGHT.search((text or "").strip()))
@@ -149,6 +185,7 @@ def strip_editorial_template_noise(text: str) -> str:
         return ""
     t = _OPINION_PREFIX.sub("", t).strip()
     t = _SOURCE_CHANNEL_CHROME.sub("", t).strip()
+    t = _PREMIUM_FUNNEL.sub("", t).strip()
     t = strip_generic_why_it_matters(t)
     return re.sub(r"\n{3,}", "\n\n", t).strip()
 
@@ -158,6 +195,8 @@ def strip_generic_why_it_matters(text: str) -> str:
     t = (text or "").strip()
     if not t:
         return ""
+    if not public_why_it_matters_enabled():
+        t = _WHY_IT_MATTERS_BLOCK.sub("", t).strip()
     t = _GENERIC_WHY_BLOCK.sub("", t).strip()
     t = re.sub(
         r"Почему\s+это\s+важно\s*:\s*" + _GENERIC_INSIGHT.pattern + r"\.?\s*",
@@ -174,6 +213,28 @@ def strip_generic_why_it_matters(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", t).strip()
 
 
+def has_series_continuation_filler(text: str) -> bool:
+    """«Продолжение темы — в ближайших выпусках» and similar non-stories."""
+    return bool(_CONTINUATION_SERIES.search((text or "").strip()))
+
+
+def has_incomplete_trailing_clause(text: str) -> bool:
+    """Alias used by public_format / renderer."""
+    return has_dangling_conjunction_tail(text)
+
+
+def has_dangling_conjunction_tail(text: str) -> bool:
+    """Cut-offs like «первая партия роз и -» before publish."""
+    t = (text or "").strip()
+    if not t:
+        return False
+    if re.search(r"\s+и\s*[-–—]\s*$", t, re.I):
+        return True
+    if re.search(r"\s+или\s*[-–—]\s*$", t, re.I):
+        return True
+    return False
+
+
 def strip_public_template_metadata(text: str) -> str:
     """Remove growth/template chrome before editorial quality checks."""
     t = strip_editorial_template_noise(text or "")
@@ -181,6 +242,7 @@ def strip_public_template_metadata(text: str) -> str:
     t = _SIGNATURE_PREFIX.sub("", t).strip()
     t = _ENGAGEMENT_HOOK.sub("", t)
     t = _OPEN_LOOP.sub("", t).strip()
+    t = _CONTINUATION_SERIES.sub("", t).strip()
     t = _SOURCE_FOOTER.sub(" ", t).strip()
     t = _TRAILING_HASHTAGS.sub("", t).strip()
     t = _BRAND_CTA.sub("", t).strip()
@@ -247,6 +309,10 @@ def is_incomplete_teaser(text: str) -> bool:
         return True
     if is_truncated_mid_thought(t):
         return True
+    if has_dangling_conjunction_tail(t):
+        return True
+    if has_series_continuation_filler(t):
+        return True
     if _MID_ELLIPSIS_TEASER.search(t):
         return True
     if _INCOMPLETE_TEASER.search(t):
@@ -267,8 +333,17 @@ def passes_premium_newsroom_policy(text: str) -> bool:
     - finished narrative (handled by informative checks),
     - no procedural bureaucracy without context,
     - explicit implication for reader/market.
+
+    When premium monetization is off, only require basic informativeness —
+    cosmetic «implication» gates must not stall the public channel.
     """
     t = (text or "").strip()
+    if not premium_monetization_enabled():
+        if not is_publishably_informative(t, min_chars=60, min_sentences=2):
+            return False
+        if _BUREAUCRATIC.search(t) and not _IMPLICATION.search(t):
+            return False
+        return True
     if not is_publishably_informative(t, min_chars=90, min_sentences=2):
         return False
     if not _SIGNAL_DOMAIN.search(t):
@@ -295,3 +370,49 @@ def has_hidden_advertising(text: str) -> bool:
     if _URL_WITH_TRACKING.search(t):
         return True
     return False
+
+
+def has_unfinished_public_ending(text: str) -> bool:
+    """True when public copy must not ship (dangling clause, series filler, no terminal stop)."""
+    t = (text or "").strip()
+    if not t:
+        return True
+    if has_dangling_conjunction_tail(t) or has_series_continuation_filler(t):
+        return True
+    if _UNFINISHED_ENDING.search(t):
+        return True
+    return not bool(_SENTENCE_END.search(t))
+
+
+def sanitize_unfinished_public_text(text: str) -> str:
+    """Drop trailing incomplete clause; keep last complete sentence(s) only."""
+    t = strip_dangling_ellipsis(text or "")
+    t = _CONTINUATION_SERIES.sub("", t).strip()
+    if not t or has_unfinished_public_ending(t) and not re.search(r"[.!?]", t):
+        parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", t) if len(p.strip()) > 12]
+        if len(parts) >= 2:
+            out = " ".join(parts[:-1]).strip()
+            if out and not out.endswith((".", "!", "?")):
+                out += "."
+            return out
+        return ""
+    if has_unfinished_public_ending(t):
+        parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", t) if len(p.strip()) > 12]
+        if len(parts) >= 2:
+            return " ".join(parts[:-1]).strip()
+    return t
+
+
+def strip_source_channel_promos(text: str) -> str:
+    """Remove trailing source lines and channel promo chrome from draft body."""
+    t = (text or "").strip()
+    if not t:
+        return ""
+    t = re.sub(
+        r"(?:^|\n)\s*(?:Источник|Source|via)\s*:\s*@?\S+\s*",
+        "\n",
+        t,
+        flags=re.I,
+    ).strip()
+    t = _CONTINUATION_SERIES.sub("", t).strip()
+    return re.sub(r"\n{3,}", "\n\n", t).strip()

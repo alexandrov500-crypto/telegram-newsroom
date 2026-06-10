@@ -150,6 +150,17 @@ def render_rich_draft_preview_html(
         block = render_editorial_intelligence_html(intel)
         if block:
             parts.append(block)
+
+    growth_advisor = extras.get("growth_advisor") if isinstance(extras.get("growth_advisor"), dict) else {}
+    if growth_advisor:
+        import os
+
+        if os.getenv("GROWTH_ADVISOR_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on"):
+            from app.growth_layer.prepublish.growth_advisor import render_growth_advisor_html
+
+            ga_block = render_growth_advisor_html(growth_advisor)
+            if ga_block:
+                parts.append(ga_block)
     elif quality:
         parts.extend(["", "<b>Качество</b>"])
         for k in sorted(quality.keys()):

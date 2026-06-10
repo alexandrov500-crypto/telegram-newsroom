@@ -46,15 +46,41 @@ def test_formatter_no_tabloid_markers() -> None:
     assert "шокирующ" not in out.lower()
 
 
-def test_formatter_default_includes_cta() -> None:
+def test_formatter_default_no_cta_in_cb_brief_mode() -> None:
     out = format_public_post_plain("Заголовок\n\nТекст новости.", '[{"channel": "@cb_economics"}]')
-    assert "Подписывайтесь" in out
+    assert "Подписывайтесь" not in out
 
 
-def test_formatter_adaptive_cta_for_crypto() -> None:
+def test_formatter_cb_brief_no_hashtags() -> None:
+    out = format_public_post_plain(
+        "Fed сохранила ставку, но инфляция остается выше целевого уровня.\n\n"
+        "Рынок оценивает траекторию доходностей и влияние на доллар.",
+        '[{"channel": "@cb_economics"}]',
+        include_cta=False,
+    )
+    assert "#" not in out
+
+
+def test_formatter_cb_brief_headline_and_body() -> None:
+    out = format_public_post_plain(
+        "ЦБ повысил ключевую ставку на 50 б.п.\n\n"
+        "Решение поддерживает рубль. Инфляция замедляется — регулятор сохраняет жёсткий курс.",
+        '[{"channel": "@cb_economics"}]',
+        include_cta=False,
+    )
+    lines = [ln for ln in out.splitlines() if ln.strip()]
+    assert lines[0].startswith("ЦБ")
+    assert "Источник:" in out
+    assert "Почему это важно" not in out
+
+
+def test_formatter_adaptive_cta_for_crypto_when_cb_brief_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NEWSROOM_CB_BRIEF_FORMAT", "false")
+    monkeypatch.setenv("NEWSROOM_HASHTAGS_ENABLED", "false")
     out = format_public_post_plain(
         "Крипторынок оживился после запуска нового ETF на биткоин.\n\nОбъемы выросли.",
         '[{"channel": "@decenter"}]',
+        include_cta=True,
     )
     assert "крипторынок" in out.lower()
 
@@ -150,7 +176,8 @@ def test_formatter_scrubs_json_from_body() -> None:
     assert "channel" not in out
 
 
-def test_formatter_adds_smart_hashtags_macro() -> None:
+def test_formatter_hashtags_when_cb_brief_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NEWSROOM_CB_BRIEF_FORMAT", "false")
     out = format_public_post_plain(
         "Fed сохранила ставку, но инфляция остается выше целевого уровня.\n\n"
         "Рынок оценивает траекторию доходностей и влияние на доллар.",
@@ -158,11 +185,12 @@ def test_formatter_adds_smart_hashtags_macro() -> None:
         include_cta=False,
     )
     tags = re.findall(r"#\w+", out)
-    assert any(t in tags for t in ("#Fed", "#Inflation", "#Rates", "#Macro"))
+    assert any(t in tags for t in ("#Fed", "#Inflation", "#Rates"))
     assert len(tags) <= 3
 
 
-def test_formatter_html_includes_hashtags_when_relevant() -> None:
+def test_formatter_html_hashtags_when_cb_brief_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NEWSROOM_CB_BRIEF_FORMAT", "false")
     html = format_public_post_html(
         "NVIDIA поднимает прогноз, а рынок чипов ускоряет AI-капекс цикл.",
         '[{"channel": "@cb_economics"}]',

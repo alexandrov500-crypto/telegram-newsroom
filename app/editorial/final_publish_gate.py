@@ -97,6 +97,30 @@ def evaluate_final_publish_gate(
     from app.publisher.draft_builder import polish_channel_post
 
     quality_text = polish_channel_post(text, max_chars=8000)
+    from app.editorial.content_quality import (
+        has_dangling_conjunction_tail,
+        has_series_continuation_filler,
+    )
+
+    for candidate in (text, quality_text):
+        if has_series_continuation_filler(candidate):
+            v = FinalPublishGateVerdict(
+                allowed=False,
+                manual_review_required=False,
+                permanent_block=True,
+                reason="series_continuation_filler",
+            )
+            log_gate_decision(draft_id=draft_id, verdict=v)
+            return v
+        if has_dangling_conjunction_tail(candidate):
+            v = FinalPublishGateVerdict(
+                allowed=False,
+                manual_review_required=True,
+                permanent_block=False,
+                reason="incomplete_teaser_no_body",
+            )
+            log_gate_decision(draft_id=draft_id, verdict=v)
+            return v
     for candidate in (text, quality_text):
         if has_hidden_advertising(candidate):
             v = FinalPublishGateVerdict(
@@ -142,6 +166,8 @@ def evaluate_final_publish_gate(
         log_gate_decision(draft_id=draft_id, verdict=v, extra={"output_language": out_lang})
         return v
 
+    review_cleared = _discretionary_review_cleared(draft_extras_json, operator_approved)
+
     try:
         rendered = build_channel_message_html(text, sources, draft_id=draft_id or 0, runtime_dir=runtime_dir)
         from app.editorial.content_quality import (
@@ -154,10 +180,24 @@ def evaluate_final_publish_gate(
         plain_rendered = strip_telegram_markdown(re.sub(r"<[^>]+>", " ", rendered or ""))
         plain_rendered = re.sub(r"\s+", " ", plain_rendered).strip()
         plain_core = strip_public_template_metadata(plain_rendered)
+        if has_series_continuation_filler(plain_rendered) or has_series_continuation_filler(plain_core):
+            v = FinalPublishGateVerdict(
+                allowed=False,
+                manual_review_required=False,
+                permanent_block=True,
+                reason="series_continuation_filler",
+            )
+            log_gate_decision(draft_id=draft_id, verdict=v)
+            return v
         informative = is_publishably_informative(plain_core, min_chars=90, min_sentences=2) or (
             is_publishably_informative(quality_text, min_chars=90, min_sentences=2)
         )
-        teaser_block = is_incomplete_teaser(plain_core) and is_incomplete_teaser(quality_text)
+        teaser_block = (
+            is_incomplete_teaser(plain_core)
+            or is_incomplete_teaser(quality_text)
+            or has_dangling_conjunction_tail(plain_core)
+            or has_dangling_conjunction_tail(quality_text)
+        )
         if not safety_only:
             if teaser_block or not informative:
                 # Recoverable, NOT permanent: a render/formatting hiccup must not
@@ -199,7 +239,6 @@ def evaluate_final_publish_gate(
         return v
 
     chans = _parse_channels(sources)
-    review_cleared = _discretionary_review_cleared(draft_extras_json, operator_approved)
     gov = evaluate_advanced_governance(text)
     if gov.auto_block:
         return FinalPublishGateVerdict(

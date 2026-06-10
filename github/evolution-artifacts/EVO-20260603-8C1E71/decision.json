@@ -1,0 +1,17 @@
+{
+  "proposal_id": "RES-20260603-A8E933",
+  "action": "HUMAN_REVIEW",
+  "regression_passed": true,
+  "validator_status": "APPROVED_FOR_SIMULATION",
+  "risk_delta": "HIGH",
+  "breaking_points": [],
+  "violations": [],
+  "reasoning": [
+    "Risk delta HIGH — human review required before apply"
+  ],
+  "decided_at": "2026-06-03T21:18:15Z",
+  "human_approval_required": true,
+  "auto_apply_forbidden": true,
+  "candidate_id": "EVO-20260603-8C1E71",
+  "classification": "verifier_rule_update"
+}

@@ -1,0 +1,41 @@
+schema_version: 1
+policy_changes:
+- change_id: GOV-BASELINE-001
+  source: incident
+  change_type: stop_the_line_engaged
+  target: github/risk_registry.yaml
+  rationale: RISK-007 CRITICAL dual-write drift triggered stop-the-line
+  outcome: pending
+  timestamp: '2026-06-03T20:49:46Z'
+  linked_artifacts:
+  - INC-20260603-AEA028
+  - github/incidents_store.yaml
+- change_id: GOV-TUN-20260603-D358F7
+  source: governance
+  change_type: tuning_proposal_generated
+  target: github/governance-proposals/GOV-TUN-20260603-D358F7
+  rationale: Closed-loop reliability run — drift=True health=57.0
+  outcome: pending
+  timestamp: '2026-06-03T21:22:13Z'
+  linked_artifacts:
+  - 2026-06-03.json
+evolution_decisions:
+- candidate_id: EVO-20260603-8C1E71
+  source_id: RES-20260603-A8E933
+  action: HUMAN_REVIEW
+  regression_passed: true
+  risk_delta: HIGH
+  recorded_at: '2026-06-03T21:18:15Z'
+  outcome: pending
+- candidate_id: EVO-20260603-081532
+  source_id: AR-20260603-A0FC6F
+  action: DRAFT_PR
+  regression_passed: true
+  validator_status: APPROVED_FOR_SIMULATION
+  risk_delta: MED
+  recorded_at: '2026-06-03T21:18:15Z'
+  synced_at: '2026-06-03T21:22:13Z'
+stabilization_threshold_shifts: []
+verifier_rule_modifications: []
+risk_policy_adjustments: []
+updated_at: '2026-06-03T21:22:13Z'

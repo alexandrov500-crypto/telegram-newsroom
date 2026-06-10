@@ -83,6 +83,84 @@ def staging_health_snapshot() -> dict[str, Any]:
     pipeline = dict(pipeline_health_hint())
     editorial = dict(desk_health_snapshot())
     editorial["category_thresholds"] = category_thresholds_snapshot(desk_threshold_context())
+    try:
+        from app.editorial.stability.slo import stability_slo_snapshot
+
+        editorial["stability_slo"] = stability_slo_snapshot()
+    except Exception:
+        pass
+    try:
+        from app.editorial.growth_dominance.kpi import egdl_kpi_snapshot
+
+        editorial["growth_dominance"] = egdl_kpi_snapshot()
+    except Exception:
+        pass
+    try:
+        from app.editorial.audience_unification.kpi import auh_kpi_snapshot
+
+        editorial["audience_unification"] = auh_kpi_snapshot()
+    except Exception:
+        pass
+    try:
+        from app.editorial.unified_operating_system.kpi import ueos_kpi_snapshot
+
+        editorial["ueos"] = ueos_kpi_snapshot()
+    except Exception:
+        pass
+    try:
+        from app.editorial.channel_product.kpi import channel_product_kpi_snapshot
+
+        editorial["channel_product"] = channel_product_kpi_snapshot()
+    except Exception:
+        pass
+    try:
+        from app.editorial.product_os.kpi import product_os_kpi_snapshot
+
+        editorial["product_os"] = product_os_kpi_snapshot()
+    except Exception:
+        pass
+    try:
+        from app.editorial.osgcp.kpi import osgcp_kpi_snapshot
+
+        editorial["osgcp"] = osgcp_kpi_snapshot()
+    except Exception:
+        pass
+    try:
+        from app.editorial.ccd.kpi import ccd_kpi_snapshot
+
+        editorial["ccd"] = ccd_kpi_snapshot()
+    except Exception:
+        pass
+    try:
+        from app.editorial.mpaes.kpi import mpaes_kpi_snapshot
+
+        editorial["mpaes"] = mpaes_kpi_snapshot()
+    except Exception:
+        pass
+    try:
+        from app.editorial.ugsol.kpi import ugsol_kpi_snapshot
+
+        editorial["ugsol"] = ugsol_kpi_snapshot()
+    except Exception:
+        pass
+    try:
+        from app.editorial.gmcs.kpi import gmcs_kpi_snapshot
+
+        editorial["gmcs"] = gmcs_kpi_snapshot()
+    except Exception:
+        pass
+    try:
+        from app.editorial.eml.kpi import eml_kpi_snapshot
+
+        editorial["eml"] = eml_kpi_snapshot()
+    except Exception:
+        pass
+    try:
+        from app.editorial.eaa.kpi import eaa_kpi_snapshot
+
+        editorial["eaa"] = eaa_kpi_snapshot()
+    except Exception:
+        pass
     publishing: dict[str, Any] = {
         "published_1h": 0,
         "publish_failures_1h": 0,

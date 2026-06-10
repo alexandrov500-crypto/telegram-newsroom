@@ -44,6 +44,7 @@ def render_public_post_html(
     hashtags_line: str | None = None,
     brand_footer_line: str | None = None,
     share_nudge_line: str | None = None,
+    growth_meta: dict[str, Any] | None = None,
 ) -> str:
     """
     Standard channel HTML:
@@ -59,7 +60,7 @@ def render_public_post_html(
     headline, body = split_headline_and_body(polished)
     body, embedded_why = extract_why_it_matters(body)
     why = (why_it_matters or embedded_why or "").strip()
-    story = format_public_story(headline, body, why_it_matters=why)
+    story = format_public_story(headline, body, why_it_matters=why, growth_meta=growth_meta)
 
     parts: list[str] = []
     sig = (signature_line or "").strip()

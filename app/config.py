@@ -398,8 +398,8 @@ def load_settings() -> Settings:
 
     from ai.editorial import normalize_headline_mode, normalize_summary_style
 
-    summary_style = normalize_summary_style(os.getenv("SUMMARY_STYLE", "premium-newsroom"))
-    headline_mode = normalize_headline_mode(os.getenv("HEADLINE_MODE", "none"))
+    summary_style = normalize_summary_style(os.getenv("SUMMARY_STYLE", "cb-economics-brief"))
+    headline_mode = normalize_headline_mode(os.getenv("HEADLINE_MODE", "json"))
 
     profile_raw = os.getenv("APP_DEPLOYMENT_PROFILE", os.getenv("NEWSROOM_PROFILE", "development")).strip().lower()
     if profile_raw not in ("development", "staging", "production"):

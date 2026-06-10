@@ -9,6 +9,7 @@ import re
 from hashlib import md5
 from typing import Any
 
+from app.editorial.cb_brief_format import cb_brief_format_enabled
 from app.editorial.public_format import format_public_story
 from app.editorial.growth_cadence import signature_line_for_now
 from app.editorial.publish_body_scrubber import scrub_publish_plaintext
@@ -154,6 +155,10 @@ def _light_tone_cleanup(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", t).strip()
 
 
+def _cb_brief_channel() -> bool:
+    return cb_brief_format_enabled()
+
+
 def _prepare_body_plain(content: str, *, max_chars: int) -> str:
     from app.publisher.draft_builder import _repair_leading_name_glitches
 
@@ -243,6 +248,8 @@ def _stable_mod(text: str, n: int) -> int:
 
 
 def _smart_hashtags(text: str, bucket: str, *, runtime_dir: str | None = None) -> list[str]:
+    if _cb_brief_channel():
+        return []
     if os.getenv("NEWSROOM_HASHTAGS_ENABLED", "true").strip().lower() not in {"1", "true", "yes", "on"}:
         return []
     # Country/macro tags on pure geo/diplomatic posts confuse readers — reserve for market buckets.
@@ -340,7 +347,7 @@ def _open_loop_line(
         return "Следующие заголовки могут быстро переоценить риск — держим на радаре."
     if bucket == "market":
         return "Важно, закрепится ли движение в следующих сессиях."
-    return "Продолжение темы — в ближайших выпусках канала."
+    return ""
 
 
 def _adaptive_brand_footer(text: str, engagement_score: float) -> str:
@@ -368,6 +375,21 @@ def _share_nudge_line(bucket: str) -> str:
     return "Перешлите тем, кому актуально — так канал быстрее растёт."
 
 
+def _minimal_channel_format(growth_meta: dict | None = None) -> bool:
+    if _cb_brief_channel():
+        return True
+    from app.growth_layer.format.profiles import effective_format_profile, use_growth_brief_at_render
+
+    return use_growth_brief_at_render(effective_format_profile(growth_meta))
+
+
+def _channel_product_render(growth_meta: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(growth_meta, dict):
+        return {}
+    cp = growth_meta.get("channel_product")
+    return cp if isinstance(cp, dict) else {}
+
+
 def format_public_post_plain(
     content: str,
     sources: str | list[dict[str, Any]] | None = None,
@@ -376,6 +398,7 @@ def format_public_post_plain(
     include_cta: bool | None = None,
     runtime_dir: str | None = None,
     max_total_chars: int = 12000,
+    growth_meta: dict[str, Any] | None = None,
 ) -> str:
     tuning = get_editorial_tuning()
     max_body = tuning.structure.summary_max_chars
@@ -388,22 +411,26 @@ def format_public_post_plain(
     headline, body = split_headline_and_body(polished)
     body, embedded_why = extract_why_it_matters(body)
     why = (why_it_matters or embedded_why or "").strip()
-    story = format_public_story(headline, body, why_it_matters=why)
+    story = format_public_story(headline, body, why_it_matters=why, growth_meta=growth_meta)
     bucket = _story_bucket(f"{story.headline}\n{story.summary}")
     score = _engagement_score(story.summary, bucket)
     story_text = f"{story.headline}\n{story.summary}\n{story.why_it_matters}"
-    tags = _smart_hashtags(story_text, bucket, runtime_dir=runtime_dir)
-    open_loop = _open_loop_line(bucket, score, runtime_dir=runtime_dir, text=story_text)
-    brand_footer = _adaptive_brand_footer(f"{story.headline}\n{story.summary}", score)
+    minimal = _minimal_channel_format(growth_meta)
+    tags = [] if minimal else _smart_hashtags(story_text, bucket, runtime_dir=runtime_dir)
+    open_loop = "" if minimal else _open_loop_line(bucket, score, runtime_dir=runtime_dir, text=story_text)
+    cp_render = _channel_product_render(growth_meta)
+    if not minimal and cp_render.get("enable_open_loop") and not open_loop:
+        open_loop = _open_loop_line(bucket, max(score, 0.6), runtime_dir=runtime_dir, text=story_text)
+    brand_footer = "" if minimal else _adaptive_brand_footer(f"{story.headline}\n{story.summary}", score)
     parts: list[str] = []
-    signature = signature_line_for_now()
+    signature = "" if minimal else signature_line_for_now()
     if signature:
         parts.append(signature)
         parts.append("")
     if story.headline:
         parts.append(story.headline)
     if story.summary:
-        hook = _engagement_hook(story.summary, bucket, headline=story.headline)
+        hook = "" if minimal else _engagement_hook(story.summary, bucket, headline=story.headline)
         if hook:
             parts.append(hook)
             parts.append("")
@@ -428,12 +455,18 @@ def format_public_post_plain(
     if brand_footer:
         parts.append("")
         parts.append(brand_footer)
-    use_cta = tuning.structure.include_cta if include_cta is None else include_cta
+    use_cta = False if minimal else (tuning.structure.include_cta if include_cta is None else include_cta)
     if use_cta:
         parts.append("")
-        parts.append(_adaptive_cta_line(bucket))
-    share = _share_nudge_line(bucket)
-    if share and _stable_mod(story_text, 2) == 0:
+        sub_line = str(cp_render.get("subscribe_line") or "").strip()
+        parts.append(sub_line if sub_line else _adaptive_cta_line(bucket))
+    share = ""
+    if not minimal:
+        if cp_render.get("enable_share_nudge") and str(cp_render.get("share_nudge") or "").strip():
+            share = str(cp_render["share_nudge"]).strip()
+        elif _share_nudge_line(bucket):
+            share = _share_nudge_line(bucket)
+    if share and (cp_render.get("enable_share_nudge") or _stable_mod(story_text, 2) == 0):
         parts.append("")
         parts.append(share)
     out = _dedupe_source_lines("\n".join(parts).strip())
@@ -474,6 +507,7 @@ def format_public_post_html(
     include_cta: bool | None = None,
     runtime_dir: str | None = None,
     max_total_chars: int = 12000,
+    growth_meta: dict[str, Any] | None = None,
 ) -> str:
     _ = draft_id
     tuning = get_editorial_tuning()
@@ -484,30 +518,43 @@ def format_public_post_html(
     attr = resolve_source_attribution(chans, runtime_dir=runtime_dir)
     if attr.strip_urls_from_body:
         polished = strip_raw_urls(polished)
-    use_cta = tuning.structure.include_cta if include_cta is None else include_cta
+    minimal = _minimal_channel_format(growth_meta)
+    use_cta = False if minimal else (tuning.structure.include_cta if include_cta is None else include_cta)
     bucket = _story_bucket(polished)
     score = _engagement_score(polished, bucket)
     _hl_for_hook, _ = split_headline_and_body(polished)
-    hook = _engagement_hook(polished, bucket, headline=_hl_for_hook)
-    tags = _smart_hashtags(polished, bucket, runtime_dir=runtime_dir)
-    open_loop = _open_loop_line(bucket, score, runtime_dir=runtime_dir, text=polished)
-    brand_footer = _adaptive_brand_footer(polished, score)
+    hook = "" if minimal else _engagement_hook(polished, bucket, headline=_hl_for_hook)
+    tags = [] if minimal else _smart_hashtags(polished, bucket, runtime_dir=runtime_dir)
+    open_loop = "" if minimal else _open_loop_line(bucket, score, runtime_dir=runtime_dir, text=polished)
+    cp_render = _channel_product_render(growth_meta)
+    if cp_render.get("enable_open_loop") and not open_loop:
+        open_loop = _open_loop_line(bucket, max(score, 0.6), runtime_dir=runtime_dir, text=polished)
+    brand_footer = "" if minimal else _adaptive_brand_footer(polished, score)
     if open_loop:
         polished = f"{polished}\n\n{open_loop}"
     from app.editorial.public_post_template import render_public_post_html
+
+    cta_line = str(cp_render.get("subscribe_line") or "").strip() or _adaptive_cta_line(bucket)
+    share_line = ""
+    if not minimal:
+        if cp_render.get("enable_share_nudge") and str(cp_render.get("share_nudge") or "").strip():
+            share_line = str(cp_render["share_nudge"]).strip()
+        elif _share_nudge_line(bucket) and _stable_mod(polished, 2) == 0:
+            share_line = _share_nudge_line(bucket)
 
     out = render_public_post_html(
         polished,
         sources,
         why_it_matters=why_it_matters,
-        signature_line=signature_line_for_now(),
+        signature_line="" if minimal else signature_line_for_now(),
         runtime_dir=runtime_dir,
         intro_hook=hook,
         include_cta=use_cta,
-        cta_line=_adaptive_cta_line(bucket),
+        cta_line=cta_line,
         hashtags_line=" ".join(tags) if tags else "",
         brand_footer_line=brand_footer,
-        share_nudge_line=_share_nudge_line(bucket) if _stable_mod(polished, 2) == 0 else "",
+        share_nudge_line=share_line,
+        growth_meta=growth_meta,
     )
     log_event(
         logger,

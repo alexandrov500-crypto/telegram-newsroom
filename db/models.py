@@ -199,6 +199,140 @@ class PostPerformance(Base):
     extras_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
 
 
+class DraftGrowthScore(Base):
+    """Pre-publish virality prediction (Growth Layer Phase 1)."""
+
+    __tablename__ = "draft_growth_scores"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    draft_id: Mapped[int] = mapped_column(
+        ForeignKey("drafts.id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+    virality_score: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
+    virality_tier: Mapped[str] = mapped_column(String(32), nullable=False, default="standard", index=True)
+    novelty: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    economic_impact: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    audience_relevance: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    emotional_trigger: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    shareability: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    format_profile: Mapped[str] = mapped_column(String(32), nullable=False, default="cb_brief")
+    reasons_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    model_version: Mapped[str] = mapped_column(String(32), nullable=False, default="v1-heuristic-signal-bridge")
+    computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class PostGrowthValidation(Base):
+    """Growth experiment record: predicted virality vs measured post performance."""
+
+    __tablename__ = "post_growth_validation"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    draft_id: Mapped[int] = mapped_column(
+        ForeignKey("drafts.id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+    telegram_post_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    channel_id: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
+    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    format_profile: Mapped[str] = mapped_column(String(32), nullable=False, default="cb_brief", index=True)
+    predicted_virality: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    virality_tier: Mapped[str] = mapped_column(String(32), nullable=False, default="standard")
+    topic_bucket: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    primary_source: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    content_segment: Mapped[str] = mapped_column(String(32), nullable=False, default="general_news", index=True)
+    experiment_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    actuals_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    validation_status: Mapped[str] = mapped_column(String(16), nullable=False, default="PENDING", index=True)
+    validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class PostEditorialFeatures(Base):
+    """Snapshot of explainable editorial features at publish time."""
+
+    __tablename__ = "post_editorial_features"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    draft_id: Mapped[int] = mapped_column(
+        ForeignKey("drafts.id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+    headline_length: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    headline_word_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    has_number: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    has_percent: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    has_currency: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    has_question: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    has_colon: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    has_quote: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    uppercase_ratio: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    body_length: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    paragraph_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    bullet_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    emoji_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    link_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    source_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    content_segment: Mapped[str] = mapped_column(String(32), nullable=False, default="general_news", index=True)
+    format_profile: Mapped[str] = mapped_column(String(32), nullable=False, default="cb_brief")
+    virality_tier: Mapped[str] = mapped_column(String(32), nullable=False, default="standard")
+    features_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class DraftGrowthAdvice(Base):
+    """Pre-publication growth advisor snapshot for validation loop."""
+
+    __tablename__ = "draft_growth_advice"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    draft_id: Mapped[int] = mapped_column(
+        ForeignKey("drafts.id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+    alignment_score: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
+    headline_alignment: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    structure_alignment: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    segment_alignment: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    predicted_segment: Mapped[str] = mapped_column(String(32), nullable=False, default="general_news", index=True)
+    recommendations_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class AdvisorRecommendationOutcome(Base):
+    """Per-recommendation adoption and post-publish outcome (Phase 3B)."""
+
+    __tablename__ = "advisor_recommendation_outcomes"
+    __table_args__ = (
+        UniqueConstraint("draft_id", "recommendation_type", name="uq_advisor_outcome_draft_rec"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    draft_id: Mapped[int] = mapped_column(
+        ForeignKey("drafts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    post_id: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
+    recommendation_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    adopted: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    alignment_before: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    alignment_after: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    actual_err: Mapped[float | None] = mapped_column(Float, nullable=True)
+    actual_forwards: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    actual_engagement: Mapped[float | None] = mapped_column(Float, nullable=True)
+    actual_virality: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class ChannelAudienceSnapshot(Base):
     """Subscriber count time series for growth delta tracking."""
 

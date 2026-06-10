@@ -197,10 +197,16 @@ def _log_desk_decision(
 
 def _hard_content_violation(text: str) -> str | None:
     """Safety rejects that must never be bypassed (debug/recovery/starvation)."""
-    from app.editorial.content_quality import has_hidden_advertising, is_incomplete_teaser
+    from app.editorial.content_quality import (
+        has_hidden_advertising,
+        has_series_continuation_filler,
+        is_incomplete_teaser,
+    )
 
     if has_hidden_advertising(text or ""):
         return "hidden_advertising_or_native_ad"
+    if has_series_continuation_filler(text or ""):
+        return "series_continuation_filler"
     if is_incomplete_teaser(text or ""):
         return "incomplete_teaser_no_body"
     return None
@@ -250,9 +256,15 @@ def evaluate_desk_filter(
 
     ref_reject = reference_model_desk_reject(text or "", sources, category)
     if ref_reject:
-        return _finish(
-            _reject(ref_reject, "reject", q, ctx, breakdown, runtime_dir=runtime_dir)
+        starvation_soft_ref = (
+            ctx.publish_starvation_detected
+            and ref_reject == "reference_model_not_informative"
+            and q >= ctx.lower_priority_score
         )
+        if not starvation_soft_ref:
+            return _finish(
+                _reject(ref_reject, "reject", q, ctx, breakdown, runtime_dir=runtime_dir)
+            )
 
     if bypass:
         decision = DeskDecision(

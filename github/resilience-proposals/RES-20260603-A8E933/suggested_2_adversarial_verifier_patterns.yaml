@@ -1,0 +1,6 @@
+schema_version: 1
+suggested_patterns:
+- disable.?safety
+- bypass.?guard
+- force.?enable.*dual.?write
+entries: []

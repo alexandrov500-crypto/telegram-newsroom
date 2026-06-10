@@ -118,6 +118,15 @@ def allow_story_for_current_session(
     except Exception:
         pass
 
+    try:
+        from app.editorial.desk_starvation import desk_threshold_context
+
+        ctx = desk_threshold_context()
+        if ctx.publish_starvation_detected:
+            min_priority = min(min_priority, float(ctx.effective_threshold))
+    except Exception:
+        pass
+
     if priority_score < min_priority:
         return False, "below_session_priority_threshold", session
 

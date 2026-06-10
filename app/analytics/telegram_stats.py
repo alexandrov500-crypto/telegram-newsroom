@@ -182,6 +182,24 @@ async def poll_pending_post_metrics(client: Any, *, channel_id: int) -> int:
             base.extras_json = json.dumps(extras)
             updated += 1
             try:
+                from app.growth_layer.validation.experiment import finalize_post_validation
+
+                await finalize_post_validation(
+                    session,
+                    draft_id=base.draft_id,
+                    telegram_post_id=base.telegram_post_id,
+                    snapshot_label=label,
+                    views=views,
+                    forwards=forwards,
+                    reactions=reactions,
+                    subscribers=subs,
+                    engagement_score=eng,
+                    virality_score=vir,
+                    hours_since_publish=hrs,
+                )
+            except Exception:
+                pass
+            try:
                 from app.analytics.trend_bridge import feed_real_metrics_to_trend_memory
 
                 await feed_real_metrics_to_trend_memory(

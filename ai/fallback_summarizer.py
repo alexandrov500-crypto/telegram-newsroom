@@ -60,7 +60,14 @@ def fallback_summarize_cluster(posts: list[RawPost], *, max_body_chars: int = 28
             strip_telegram_markdown(posts[0].text or ""),
             max_chars=max_body_chars,
         )
+    from app.editorial.cb_brief_format import apply_cb_brief_shape, cb_brief_format_enabled
+
     headline = _headline_from_body(body)
+    if cb_brief_format_enabled():
+        lines = [ln.strip() for ln in body.splitlines() if ln.strip()]
+        rest = "\n\n".join(lines[1:]) if len(lines) > 1 else body
+        headline, rest = apply_cb_brief_shape(headline, rest)
+        body = f"{headline}\n\n{rest}".strip() if headline and rest else (rest or headline or body)
     if not used:
         used = [int(p.id) for p in posts if p.id is not None][:8]
     return SummarizeClusterResult(post_text=body, used_ids=used, headline=headline, execution=_exec_meta())

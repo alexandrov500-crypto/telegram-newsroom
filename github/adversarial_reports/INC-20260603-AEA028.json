@@ -1,0 +1,191 @@
+{
+  "report_id": "AR-20260603-4D243B",
+  "incident_id": "INC-20260603-AEA028",
+  "timestamp": "2026-06-03T21:11:08Z",
+  "phase": "M0_ACTIVE",
+  "scenarios": [
+    {
+      "scenario_id": "ADV-20260603-41AC69",
+      "attack_vector": "race_during_dual_write",
+      "simulated_failure_mode": "Concurrent legacy + canonical writes diverge mid-transaction",
+      "exploited_assumptions": [
+        "Dual-write paths are atomic",
+        "Schema versions are synchronized",
+        "Plan step coverage is complete (8 steps)"
+      ],
+      "impact_prediction": "Silent data fork between PublicationRecord and ContentPackage",
+      "severity_if_real": "CRITICAL",
+      "affected_components": [
+        "P1-E04-02",
+        "P1-E01-08",
+        "dual-write layer"
+      ],
+      "mitigation_suggestions": [
+        "Add dual-write compare-and-swap integration test",
+        "Gate on schema parity checksum before M2"
+      ],
+      "confidence_of_exploit": 0.78,
+      "cascade_steps": []
+    },
+    {
+      "scenario_id": "ADV-20260603-C9EE90",
+      "attack_vector": "partial_schema_propagation",
+      "simulated_failure_mode": "Migration deploys new field to one writer only",
+      "exploited_assumptions": [
+        "Schema changes roll out atomically",
+        "Plan step coverage is complete (8 steps)"
+      ],
+      "impact_prediction": "Gate passes offline while prod writers disagree on shape",
+      "severity_if_real": "HIGH",
+      "affected_components": [
+        "schema_fix PR path",
+        "M1→M2 gate"
+      ],
+      "mitigation_suggestions": [
+        "Review guardrails for this attack vector"
+      ],
+      "confidence_of_exploit": 0.65,
+      "cascade_steps": []
+    }
+  ],
+  "weaknesses": [
+    {
+      "scenario_id": "ADV-20260603-41AC69",
+      "attack_vector": "race_during_dual_write",
+      "weak_point": "Silent data fork between PublicationRecord and ContentPackage",
+      "system_assumptions_broken": [
+        "Dual-write paths are atomic",
+        "Schema versions are synchronized",
+        "Plan step coverage is complete (8 steps)",
+        "Cascade reaches 3 downstream ADR-037 nodes"
+      ],
+      "missing_guardrails": [
+        "No adversarial test for this failure mode in CI"
+      ],
+      "unsafe_assumptions": [
+        "Dual-write paths are atomic",
+        "Schema versions are synchronized",
+        "Plan step coverage is complete (8 steps)"
+      ],
+      "bypassable_safety_controls": [],
+      "severity_if_real": "CRITICAL",
+      "affected_components": [
+        "P1-E04-02",
+        "P1-E01-08",
+        "dual-write layer"
+      ],
+      "mitigation_suggestions": [
+        "Add dual-write compare-and-swap integration test",
+        "Gate on schema parity checksum before M2"
+      ],
+      "confidence_of_exploit": 0.78
+    },
+    {
+      "scenario_id": "ADV-20260603-C9EE90",
+      "attack_vector": "partial_schema_propagation",
+      "weak_point": "Gate passes offline while prod writers disagree on shape",
+      "system_assumptions_broken": [
+        "Schema changes roll out atomically",
+        "Plan step coverage is complete (8 steps)",
+        "Cascade reaches 3 downstream ADR-037 nodes"
+      ],
+      "missing_guardrails": [
+        "No adversarial test for this failure mode in CI"
+      ],
+      "unsafe_assumptions": [
+        "Schema changes roll out atomically",
+        "Plan step coverage is complete (8 steps)"
+      ],
+      "bypassable_safety_controls": [],
+      "severity_if_real": "HIGH",
+      "affected_components": [
+        "schema_fix PR path",
+        "M1→M2 gate"
+      ],
+      "mitigation_suggestions": [
+        "Review guardrails for this attack vector"
+      ],
+      "confidence_of_exploit": 0.65
+    }
+  ],
+  "simulations": [
+    {
+      "scenario_id": "ADV-20260603-41AC69",
+      "attack_vector": "race_during_dual_write",
+      "propagation_timeline": [
+        {
+          "step": "T0",
+          "event": "Inject: Concurrent legacy + canonical writes diverge mid-transaction",
+          "state": "failure_active"
+        },
+        {
+          "step": "T1",
+          "event": "Remediation step runs: Run dual-write reconciliation report on staging",
+          "state": "partial_success"
+        },
+        {
+          "step": "T1b",
+          "event": "Dual-write paths diverge under concurrent load (simulated)",
+          "state": "data_integrity_compromised"
+        }
+      ],
+      "cascade_affected_issues": [
+        "M2",
+        "P1-E04-02",
+        "P1-E01-08"
+      ],
+      "predicted_gate_status": "NO_GO",
+      "simulation_mode": "logical_only",
+      "production_mutated": false
+    },
+    {
+      "scenario_id": "ADV-20260603-C9EE90",
+      "attack_vector": "partial_schema_propagation",
+      "propagation_timeline": [
+        {
+          "step": "T0",
+          "event": "Inject: Migration deploys new field to one writer only",
+          "state": "failure_active"
+        },
+        {
+          "step": "T1",
+          "event": "Remediation step runs: Run dual-write reconciliation report on staging",
+          "state": "partial_success"
+        },
+        {
+          "step": "T1b",
+          "event": "Dual-write paths diverge under concurrent load (simulated)",
+          "state": "data_integrity_compromised"
+        }
+      ],
+      "cascade_affected_issues": [
+        "M2",
+        "P1-E04-02",
+        "P1-E01-08"
+      ],
+      "predicted_gate_status": "NO_GO",
+      "simulation_mode": "logical_only",
+      "production_mutated": false
+    }
+  ],
+  "summary": {
+    "total_weaknesses": 2,
+    "by_severity": {
+      "LOW": 0,
+      "MED": 0,
+      "HIGH": 1,
+      "CRITICAL": 1
+    },
+    "top_attack_vectors": [
+      "race_during_dual_write",
+      "partial_schema_propagation"
+    ],
+    "highest_severity": "CRITICAL"
+  },
+  "advisory_integrations": {
+    "observed_weaknesses_appended": 2,
+    "verifier_patterns_suggested": [],
+    "stabilization_threshold_hint": "Consider +0.05 confidence margin for auto-stabilize (observed HIGH weaknesses)",
+    "note": "Advisory only — human review before merging into risk_registry or guards"
+  }
+}
