@@ -160,11 +160,13 @@ def _cb_brief_channel() -> bool:
 
 
 def _prepare_body_plain(content: str, *, max_chars: int) -> str:
+    from app.editorial.clean_channel_copy import prepare_clean_channel_post
     from app.publisher.draft_builder import _repair_leading_name_glitches
 
     scrubbed = scrub_publish_plaintext(_repair_leading_name_glitches(content))
     cleaned = strip_internal_debug_text(scrubbed)
-    return _light_tone_cleanup(polish_channel_post(cleaned, max_chars=max_chars))
+    polished = _light_tone_cleanup(polish_channel_post(cleaned, max_chars=max_chars))
+    return prepare_clean_channel_post(polished, max_chars=max_chars)
 
 
 def _story_bucket(text: str) -> str:
@@ -420,7 +422,9 @@ def format_public_post_plain(
     open_loop = "" if minimal else _open_loop_line(bucket, score, runtime_dir=runtime_dir, text=story_text)
     cp_render = _channel_product_render(growth_meta)
     if not minimal and cp_render.get("enable_open_loop") and not open_loop:
-        open_loop = _open_loop_line(bucket, max(score, 0.6), runtime_dir=runtime_dir, text=story_text)
+        open_loop = _open_loop_line(
+            bucket, max(score, 0.6), runtime_dir=runtime_dir, text=story_text
+        )
     brand_footer = "" if minimal else _adaptive_brand_footer(f"{story.headline}\n{story.summary}", score)
     parts: list[str] = []
     signature = "" if minimal else signature_line_for_now()
@@ -527,7 +531,7 @@ def format_public_post_html(
     tags = [] if minimal else _smart_hashtags(polished, bucket, runtime_dir=runtime_dir)
     open_loop = "" if minimal else _open_loop_line(bucket, score, runtime_dir=runtime_dir, text=polished)
     cp_render = _channel_product_render(growth_meta)
-    if cp_render.get("enable_open_loop") and not open_loop:
+    if not minimal and cp_render.get("enable_open_loop") and not open_loop:
         open_loop = _open_loop_line(bucket, max(score, 0.6), runtime_dir=runtime_dir, text=polished)
     brand_footer = "" if minimal else _adaptive_brand_footer(polished, score)
     if open_loop:

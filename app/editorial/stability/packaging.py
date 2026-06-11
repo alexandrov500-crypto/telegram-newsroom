@@ -66,6 +66,13 @@ def apply_editorial_packaging(
     meta: dict[str, Any] = {"rubric_tag": "", "packaging_applied": False}
     if not text:
         return text, meta
+    try:
+        from app.editorial.clean_channel_copy import clean_channel_copy_enabled
+
+        if clean_channel_copy_enabled():
+            return text, meta
+    except Exception:
+        pass
 
     tag = infer_rubric_tag(text, editorial_category=editorial_category, post_type=post_type)
     meta["rubric_tag"] = tag

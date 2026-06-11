@@ -72,6 +72,13 @@ def evaluate_attention_design(text: str, *, post_type: str = "") -> AttentionDes
 
 def enrich_attention_layers(text: str, *, post_type: str = "") -> str:
     """Light-touch enrichment when layers are weak but content is not empty."""
+    try:
+        from app.editorial.clean_channel_copy import clean_channel_copy_enabled
+
+        if clean_channel_copy_enabled():
+            return (text or "").strip()
+    except Exception:
+        pass
     design = evaluate_attention_design(text, post_type=post_type)
     if design.passes or not (text or "").strip():
         return text

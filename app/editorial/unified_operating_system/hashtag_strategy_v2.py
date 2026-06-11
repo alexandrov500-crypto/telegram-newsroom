@@ -56,6 +56,13 @@ def apply_hashtag_strategy_v2(
     meta: dict[str, Any] = {"primary": None, "secondary": None, "applied": False}
     if not text:
         return text, meta
+    try:
+        from app.editorial.clean_channel_copy import clean_channel_copy_enabled
+
+        if clean_channel_copy_enabled():
+            return text, meta
+    except Exception:
+        pass
 
     primary = infer_primary_hashtag(text, editorial_category=editorial_category)
     secondary = infer_secondary_hashtag(text, primary)

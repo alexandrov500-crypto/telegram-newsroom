@@ -66,6 +66,13 @@ def apply_growth_hashtags(
     meta: dict[str, Any] = {"primary_cluster": "", "secondary": None, "applied": False}
     if not text:
         return text, meta
+    try:
+        from app.editorial.clean_channel_copy import clean_channel_copy_enabled
+
+        if clean_channel_copy_enabled():
+            return text, meta
+    except Exception:
+        pass
 
     primary = infer_growth_hashtag(
         text,

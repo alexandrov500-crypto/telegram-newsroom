@@ -1301,6 +1301,15 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
             cluster_texts=[str(p.text or "")[:2000] for p in (used_posts or cluster)],
             newsroom_tz=settings.newsroom_timezone,
         )
+        try:
+            from app.editorial.clean_channel_copy import prepare_clean_channel_post
+
+            draft_body = prepare_clean_channel_post(
+                draft_body,
+                max_chars=settings.max_post_chars,
+            )
+        except Exception:
+            pass
         if _stab_extras.get("stability_reject"):
             ctx.tick_summarize_idle_reason = "dominance_growth_reject"
             log_event(logger, "summarize_exit", outcome="reject", reason=ctx.tick_summarize_idle_reason)

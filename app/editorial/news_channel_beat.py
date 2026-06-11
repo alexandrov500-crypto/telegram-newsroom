@@ -88,6 +88,12 @@ def apply_news_channel_beat_defaults() -> None:
         "EDITORIAL_INFORMATIVE_MIN_CHARS_ANTI_PAUSE": "40",
         "EDITORIAL_INFORMATIVE_MIN_SENTENCES_ANTI_PAUSE": "1",
         "EAA_MIN_AUTONOMY_CONFIDENCE": "0.58",
+        "NEWSROOM_CLEAN_CHANNEL_COPY": "true",
+        "NEWSROOM_CB_BRIEF_FORMAT": "true",
+        "NEWSROOM_PUBLISH_FORMAT": "cb_brief",
+        "NEWSROOM_HASHTAGS_ENABLED": "false",
+        "PUBLIC_WHY_IT_MATTERS": "false",
+        "NEWSROOM_REFERENCE_MODEL": "cb_economics",
     }
 
     for key, val in defaults.items():

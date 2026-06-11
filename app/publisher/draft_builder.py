@@ -347,7 +347,10 @@ def _repair_leading_name_glitches(text: str) -> str:
 
 def finalize_draft_content(body: str, *, max_chars: int = 2800) -> str:
     """Last-mile cleanup before DB / admin notify (strip markdown, complete sentences)."""
-    return polish_channel_post(_repair_leading_name_glitches(body), max_chars=max_chars)
+    from app.editorial.clean_channel_copy import prepare_clean_channel_post
+
+    polished = polish_channel_post(_repair_leading_name_glitches(body), max_chars=max_chars)
+    return prepare_clean_channel_post(polished, max_chars=max_chars)
 
 
 def build_draft_body(

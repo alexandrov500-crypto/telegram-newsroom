@@ -48,6 +48,13 @@ def transform_for_unified_audience(
 ) -> tuple[str, dict[str, Any]]:
     text = (body or "").strip()
     meta: dict[str, Any] = {"transformed": False, "rules_applied": []}
+    try:
+        from app.editorial.clean_channel_copy import clean_channel_copy_enabled
+
+        if clean_channel_copy_enabled():
+            return text, meta
+    except Exception:
+        pass
     if not text or _NICHE_ONLY.search(text):
         return text, meta
 

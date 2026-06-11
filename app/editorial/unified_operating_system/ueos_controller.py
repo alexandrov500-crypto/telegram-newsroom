@@ -178,11 +178,18 @@ def enrich_draft_with_ueos(
     if discovery:
         import re
 
-        existing = set(re.findall(r"#\w+", packaged or ""))
-        extra = [t for t in discovery if t not in existing]
-        if extra and len(existing) < 2:
-            packaged = f"{(packaged or '').strip()} {' '.join(extra[:1])}".strip()
-            hashtag_meta = {**hashtag_meta, "mpaes_discovery_merged": extra[:1]}
+        try:
+            from app.editorial.clean_channel_copy import clean_channel_copy_enabled
+
+            skip_tags = clean_channel_copy_enabled()
+        except Exception:
+            skip_tags = False
+        if not skip_tags:
+            existing = set(re.findall(r"#\w+", packaged or ""))
+            extra = [t for t in discovery if t not in existing]
+            if extra and len(existing) < 2:
+                packaged = f"{(packaged or '').strip()} {' '.join(extra[:1])}".strip()
+                hashtag_meta = {**hashtag_meta, "mpaes_discovery_merged": extra[:1]}
 
     record_ueos_decision(
         runtime_dir,
