@@ -133,6 +133,12 @@ def evaluate_policies(
         if rtype == "topic_repeat_cooldown" and topic_k:
             last = float((state.get("topic_last_selected") or {}).get(topic_k) or 0)
             interval = float(rule.get("min_interval_sec") or 1800)
+            try:
+                from app.editorial.news_channel_beat import news_beat_topic_cooldown_sec
+
+                interval = news_beat_topic_cooldown_sec(default=interval)
+            except Exception:
+                pass
             if last and now - last < interval:
                 hit = True
                 detail = {"topic": topic_k, "seconds_since": round(now - last, 1)}

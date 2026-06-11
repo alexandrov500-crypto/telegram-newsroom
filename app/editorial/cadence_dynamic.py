@@ -98,8 +98,11 @@ def evaluate_dynamic_cadence(
 
     hour = now_local.hour
     from app.editorial.growth_profile import aggressive_growth_enabled
+    from app.editorial.news_channel_beat import news_channel_beat_enabled
 
-    if aggressive_growth_enabled():
+    if news_channel_beat_enabled():
+        session_cap = 10 if 7 <= hour < 23 else 4
+    elif aggressive_growth_enabled():
         session_cap = 8 if 7 <= hour < 23 else 3
     elif autonomous_relaxed:
         session_cap = 6 if 8 <= hour < 22 else 2

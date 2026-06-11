@@ -80,7 +80,15 @@ def cadence_should_defer_cluster(
     data = _load_state(runtime_dir)
     last = float(data.get("last_publish_unix") or 0.0)
     min_gap = float(policy.min_publish_interval_sec or getattr(settings, "publish_channel_min_interval_sec", 0.0) or 0.0)
-    if min_gap > 0 and last > 0 and (now - last) < min_gap * 0.35:
+    defer_ratio = 0.35
+    try:
+        from app.editorial.news_channel_beat import news_channel_beat_enabled
+
+        if news_channel_beat_enabled():
+            defer_ratio = 0.12
+    except Exception:
+        pass
+    if min_gap > 0 and last > 0 and (now - last) < min_gap * defer_ratio:
         reasons.append("cadence_recent_publish_gap_short")
         return True, reasons
     recent = list(data.get("recent") or [])[:24]

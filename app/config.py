@@ -237,9 +237,11 @@ def load_settings() -> Settings:
     if not channels:
         raise RuntimeError("SOURCE_CHANNELS must contain at least one channel")
 
+    from app.editorial.news_channel_beat import apply_news_channel_beat_defaults
     from app.editorial.reference_model import apply_reference_model_env_defaults, filter_source_channels
     from app.editorial.growth_profile import apply_growth_profile_defaults
 
+    apply_news_channel_beat_defaults()
     apply_reference_model_env_defaults()
     apply_growth_profile_defaults()
     filtered = filter_source_channels(list(channels))
