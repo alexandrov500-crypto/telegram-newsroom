@@ -29,6 +29,31 @@ def evaluate_stability_context(
     )
 
 
+def _wire_beat_advisory_only(dom_extras: dict[str, Any], *, publishing_mode: str, quality_score: float) -> dict[str, Any]:
+    """News beat wire: layer rejects are advisory — publish gates decide."""
+    try:
+        from app.editorial.ai_editorial_reviewer import autonomous_editorial_mode_enabled
+        from app.editorial.news_channel_beat import news_channel_beat_enabled
+
+        if (
+            publishing_mode == "core"
+            and news_channel_beat_enabled()
+            and autonomous_editorial_mode_enabled()
+            and quality_score >= 40
+        ):
+            for key in (
+                "stability_reject",
+                "ueos_reject",
+                "product_os_reject",
+                "dominance_reject",
+                "auh_reject",
+            ):
+                dom_extras.pop(key, None)
+    except Exception:
+        pass
+    return dom_extras
+
+
 def enrich_draft_for_stability(
     draft_body: str,
     *,
@@ -260,6 +285,9 @@ def enrich_draft_for_stability(
                 newsroom_tz=newsroom_tz,
             )
             dom_extras = {**dom_extras, **eaa_extras}
+            dom_extras = _wire_beat_advisory_only(
+                dom_extras, publishing_mode=publishing_mode, quality_score=quality_score
+            )
             if eaa_extras.get("eaa_reject") and publishing_mode == "core":
                 extras: dict[str, Any] = {
                     "editorial_stability": {
@@ -273,16 +301,23 @@ def enrich_draft_for_stability(
         pass
 
     if dom_extras.get("ugsol_reject") and publishing_mode == "core":
-        extras: dict[str, Any] = {
-            "editorial_stability": {
-                "publishing_mode": publishing_mode,
-                "growth_decision": decision.to_dict(),
-            },
-            **dom_extras,
-        }
-        return packaged, extras
+        dom_extras = _wire_beat_advisory_only(
+            dom_extras, publishing_mode=publishing_mode, quality_score=quality_score
+        )
+        if dom_extras.get("ugsol_reject"):
+            extras: dict[str, Any] = {
+                "editorial_stability": {
+                    "publishing_mode": publishing_mode,
+                    "growth_decision": decision.to_dict(),
+                },
+                **dom_extras,
+            }
+            return packaged, extras
 
     if dom_extras:
+        dom_extras = _wire_beat_advisory_only(
+            dom_extras, publishing_mode=publishing_mode, quality_score=quality_score
+        )
         extras: dict[str, Any] = {
             "editorial_stability": {
                 "publishing_mode": publishing_mode,
@@ -293,7 +328,13 @@ def enrich_draft_for_stability(
         return packaged, extras
 
     if decision.reject:
-        return draft_body, {"growth_decision": decision.to_dict(), "stability_reject": True}
+        dom = _wire_beat_advisory_only(
+            {"growth_decision": decision.to_dict(), "stability_reject": True},
+            publishing_mode=publishing_mode,
+            quality_score=quality_score,
+        )
+        if dom.get("stability_reject"):
+            return draft_body, dom
 
     packaged, pkg_meta = apply_editorial_packaging(
         draft_body,
