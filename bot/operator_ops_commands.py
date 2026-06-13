@@ -90,6 +90,20 @@ async def cmd_lastpub(message: Message, settings: Settings) -> None:
     )
 
 
+@router.message(Command("growth_pulse"))
+async def cmd_growth_pulse(message: Message, settings: Settings) -> None:
+    if not _admin_private_message(message, settings):
+        await message.answer("Access denied.")
+        return
+    from app.growth.autonomous_robot import collect_growth_pulse, format_pulse_telegram
+
+    pulse = await collect_growth_pulse(
+        runtime_dir=settings.runtime_state_dir,
+        channel_id=int(settings.target_channel_id),
+    )
+    await message.answer(format_pulse_telegram(pulse), disable_web_page_preview=True)
+
+
 @router.message(Command("pause_autopublish"))
 async def cmd_pause_autopublish(message: Message, settings: Settings) -> None:
     if not _admin_private_message(message, settings):

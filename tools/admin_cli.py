@@ -1026,6 +1026,47 @@ def cmd_runtime_compact_state(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_growth_pulse(args: argparse.Namespace) -> int:
+    import asyncio
+
+    from app.growth.autonomous_robot import collect_growth_pulse, format_pulse_telegram
+    from app.growth.autonomous_robot.controller import decide_autonomous_adjustments
+    from app.growth.autonomous_robot.tuning_store import load_tuning_state
+    from db.session import close_db, init_db, session_scope
+
+    settings = _load_settings()
+
+    async def run() -> dict:
+        await close_db()
+        await init_db(settings.database_url)
+        async with session_scope():
+            pulse = await collect_growth_pulse(
+                runtime_dir=settings.runtime_state_dir,
+                channel_id=int(settings.target_channel_id),
+            )
+        await close_db()
+        pulse["tuning_overrides"] = (load_tuning_state(settings.runtime_state_dir).get("overrides") or {})
+        pulse["pending_adjustments"] = decide_autonomous_adjustments(pulse)
+        return pulse
+
+    pulse = asyncio.run(run())
+    if args.json:
+        print(json.dumps(pulse, indent=2, default=str))
+        return 0
+    print(format_pulse_telegram(pulse))
+    tuning = pulse.get("tuning_overrides") or {}
+    if tuning:
+        print("\nTuning overrides:")
+        for k, v in tuning.items():
+            print(f"  {k}={v}")
+    pending = pulse.get("pending_adjustments") or []
+    if pending:
+        print("\nWould adjust:")
+        for act in pending:
+            print(f"  {act['key']} -> {act['value']} ({act['reason']})")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Newsroom read-only admin / debug CLI")
     parser.add_argument("--json", action="store_true", help="JSON output where applicable")
@@ -1234,6 +1275,9 @@ def main() -> int:
     p_pdiv.add_argument("--evolution", choices=("new", "update", "ambiguous"), default="new")
     p_pdiv.add_argument("--continuity", type=float, default=0.15)
     p_pdiv.set_defaults(func=cmd_pipeline_decision_inspect)
+
+    p_gp = sub.add_parser("growth-pulse", help="Audience robot pulse: throughput, silence, rejects, subs")
+    p_gp.set_defaults(func=cmd_growth_pulse)
 
     args = parser.parse_args()
     return int(args.func(args))

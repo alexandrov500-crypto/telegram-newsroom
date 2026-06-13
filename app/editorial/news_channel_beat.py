@@ -99,6 +99,10 @@ def apply_news_channel_beat_defaults() -> None:
         "CHANNEL_PRODUCT_SHARE_NUDGE": "true",
         "CHANNEL_PRODUCT_OPEN_LOOP": "false",
         "GROWTH_SIGNATURE_ENABLED": "false",
+        "AUTONOMOUS_GROWTH_ROBOT_ENABLED": "true",
+        "AUTONOMOUS_GROWTH_TUNING_ENABLED": "true",
+        "GROWTH_SOURCE_YIELD_ENABLED": "true",
+        "GROWTH_FEEDBACK_ENABLED": "true",
         "NEWSROOM_REFERENCE_MODEL": "cb_economics",
     }
 

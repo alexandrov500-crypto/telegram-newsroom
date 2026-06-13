@@ -385,6 +385,20 @@ async def main() -> None:
             )
             logger.info("Telegram analytics poll every %s minutes", analytics_min)
 
+        if os.getenv("AUTONOMOUS_GROWTH_ROBOT_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on"):
+            from app.growth.autonomous_robot import run_autonomous_growth_tick
+
+            growth_robot_min = max(15, int(os.getenv("AUTONOMOUS_GROWTH_ROBOT_INTERVAL_MIN", "60")))
+            scheduler.add_job(
+                run_autonomous_growth_tick,
+                "interval",
+                minutes=growth_robot_min,
+                args=[ctx],
+                id="autonomous_growth_robot",
+                replace_existing=True,
+            )
+            logger.info("Autonomous growth robot every %s minutes", growth_robot_min)
+
         if os.getenv("BREAKING_LANE_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on"):
             from app.lanes.breaking_pipeline import run_breaking_tick
 

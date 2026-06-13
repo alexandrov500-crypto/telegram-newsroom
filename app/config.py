@@ -244,6 +244,13 @@ def load_settings() -> Settings:
     apply_news_channel_beat_defaults()
     apply_reference_model_env_defaults()
     apply_growth_profile_defaults()
+    try:
+        from app.growth.autonomous_robot import apply_tuning_overrides_to_env
+
+        runtime_dir = os.getenv("RUNTIME_STATE_DIR", "./var/runtime").strip()
+        apply_tuning_overrides_to_env(runtime_dir)
+    except Exception:
+        pass
     filtered = filter_source_channels(list(channels))
     if filtered != channels:
         import logging
