@@ -378,10 +378,18 @@ def _share_nudge_line(bucket: str) -> str:
 
 
 def _minimal_channel_format(growth_meta: dict | None = None) -> bool:
+    from app.growth_layer.format.profiles import (
+        effective_format_profile,
+        publish_format_mode,
+        use_growth_brief_at_render,
+    )
+
+    if publish_format_mode() == "subscriber_wire":
+        return False
+    if effective_format_profile(growth_meta) == "subscriber_wire":
+        return False
     if _cb_brief_channel():
         return True
-    from app.growth_layer.format.profiles import effective_format_profile, use_growth_brief_at_render
-
     return use_growth_brief_at_render(effective_format_profile(growth_meta))
 
 
@@ -402,6 +410,34 @@ def format_public_post_plain(
     max_total_chars: int = 12000,
     growth_meta: dict[str, Any] | None = None,
 ) -> str:
+    from app.editorial.subscriber_wire_format import (
+        render_subscriber_wire_plain,
+        subscriber_wire_format_enabled,
+    )
+    from app.growth_layer.format.profiles import effective_format_profile
+
+    profile = effective_format_profile(growth_meta)
+    if subscriber_wire_format_enabled() or profile == "subscriber_wire":
+        tuning = get_editorial_tuning()
+        polished = _prepare_body_plain(content, max_chars=tuning.structure.summary_max_chars)
+        polished = _strip_embedded_source_lines(polished)
+        chans = _parse_source_channels(sources)
+        attr = resolve_source_attribution(chans, runtime_dir=runtime_dir)
+        if attr.strip_urls_from_body:
+            polished = strip_raw_urls(polished)
+        out = render_subscriber_wire_plain(
+            polished,
+            sources,
+            why_it_matters=why_it_matters,
+            runtime_dir=runtime_dir,
+            growth_meta=growth_meta,
+        )
+        if len(out) > max_total_chars:
+            from app.publisher.draft_builder import complete_story_text
+
+            out = complete_story_text(out, max_chars=max_total_chars)
+        return out
+
     tuning = get_editorial_tuning()
     max_body = tuning.structure.summary_max_chars
     chans = _parse_source_channels(sources)
@@ -514,6 +550,38 @@ def format_public_post_html(
     growth_meta: dict[str, Any] | None = None,
 ) -> str:
     _ = draft_id
+    from app.editorial.subscriber_wire_format import (
+        render_subscriber_wire_html,
+        subscriber_wire_format_enabled,
+    )
+    from app.growth_layer.format.profiles import effective_format_profile
+
+    profile = effective_format_profile(growth_meta)
+    if subscriber_wire_format_enabled() or profile == "subscriber_wire":
+        tuning = get_editorial_tuning()
+        polished = _prepare_body_plain(content, max_chars=tuning.structure.summary_max_chars)
+        polished = _strip_embedded_source_lines(polished)
+        chans = _parse_source_channels(sources)
+        attr = resolve_source_attribution(chans, runtime_dir=runtime_dir)
+        if attr.strip_urls_from_body:
+            polished = strip_raw_urls(polished)
+        out = render_subscriber_wire_html(
+            polished,
+            sources,
+            why_it_matters=why_it_matters,
+            runtime_dir=runtime_dir,
+            growth_meta=growth_meta,
+        )
+        log_event(
+            logger,
+            "editorial.engagement_applied",
+            channel_format="subscriber_wire_html",
+            bucket=_story_bucket(polished),
+        )
+        if len(out) > max_total_chars:
+            out = out[:max_total_chars].rstrip()
+        return out
+
     tuning = get_editorial_tuning()
     max_body = tuning.structure.summary_max_chars
     polished = _prepare_body_plain(content, max_chars=max_body)

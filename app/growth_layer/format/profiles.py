@@ -17,12 +17,19 @@ def growth_layer_enabled() -> bool:
 
 def publish_format_mode() -> str:
     """
-    cb_brief | growth_brief | hybrid
-    Default preserves legacy NEWSROOM_CB_BRIEF_FORMAT behaviour.
+    cb_brief | growth_brief | hybrid | subscriber_wire
+    subscriber_wire = cb_economics scan speed + growth forward mechanics.
     """
     raw = os.getenv("NEWSROOM_PUBLISH_FORMAT", "").strip().lower()
-    if raw in {"cb_brief", "growth_brief", "hybrid"}:
+    if raw in {"cb_brief", "growth_brief", "hybrid", "subscriber_wire"}:
         return raw
+    try:
+        from app.editorial.news_channel_beat import news_channel_beat_enabled
+
+        if news_channel_beat_enabled():
+            return "subscriber_wire"
+    except Exception:
+        pass
     if cb_brief_format_enabled():
         return "cb_brief"
     return "cb_brief"
@@ -37,6 +44,8 @@ def _viral_threshold() -> int:
 
 def resolve_format_profile(virality_score: int | None) -> str:
     mode = publish_format_mode()
+    if mode == "subscriber_wire":
+        return "subscriber_wire"
     if mode == "growth_brief":
         return "growth_brief"
     if mode == "hybrid":
@@ -61,6 +70,10 @@ def use_cb_brief_at_render(format_profile: str) -> bool:
 
 def use_growth_brief_at_render(format_profile: str) -> bool:
     return format_profile == "growth_brief"
+
+
+def use_subscriber_wire_at_render(format_profile: str) -> bool:
+    return format_profile == "subscriber_wire"
 
 
 def growth_meta_from_draft_extras(extras_json: str | None) -> dict[str, Any] | None:

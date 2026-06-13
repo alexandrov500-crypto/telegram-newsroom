@@ -90,9 +90,15 @@ def apply_news_channel_beat_defaults() -> None:
         "EAA_MIN_AUTONOMY_CONFIDENCE": "0.58",
         "NEWSROOM_CLEAN_CHANNEL_COPY": "true",
         "NEWSROOM_CB_BRIEF_FORMAT": "true",
-        "NEWSROOM_PUBLISH_FORMAT": "cb_brief",
+        "NEWSROOM_PUBLISH_FORMAT": "subscriber_wire",
         "NEWSROOM_HASHTAGS_ENABLED": "false",
         "PUBLIC_WHY_IT_MATTERS": "false",
+        "NEWSROOM_ENGAGEMENT_HOOK_ENABLED": "false",
+        "NEWSROOM_OPEN_LOOP_ENABLED": "false",
+        "NEWSROOM_BRAND_FOOTER_ENABLED": "false",
+        "CHANNEL_PRODUCT_SHARE_NUDGE": "true",
+        "CHANNEL_PRODUCT_OPEN_LOOP": "false",
+        "GROWTH_SIGNATURE_ENABLED": "false",
         "NEWSROOM_REFERENCE_MODEL": "cb_economics",
     }
 

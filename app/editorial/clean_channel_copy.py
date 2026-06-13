@@ -100,10 +100,20 @@ def scrub_editorial_pipeline_filler(text: str) -> str:
 
 
 def prepare_clean_channel_post(text: str, *, max_chars: int = 2800) -> str:
-    """Finished channel post: scrub pipeline filler → cb_economics brief shape."""
+    """Finished channel post: scrub pipeline filler → publish shape."""
     if not clean_channel_copy_enabled():
         return (text or "").strip()
     cleaned = scrub_editorial_pipeline_filler(text)
     if not cleaned:
         return ""
+    try:
+        from app.editorial.subscriber_wire_format import (
+            compose_subscriber_wire_text,
+            subscriber_wire_format_enabled,
+        )
+
+        if subscriber_wire_format_enabled():
+            return compose_subscriber_wire_text(cleaned, max_chars=max_chars)
+    except Exception:
+        pass
     return compose_cb_brief_text(cleaned, max_chars=max_chars)

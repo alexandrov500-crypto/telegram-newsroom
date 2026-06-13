@@ -16,6 +16,7 @@ from app.editorial.channel_product.feedback_bridge import global_momentum, topic
 from app.editorial.channel_product.growth_loop import classify_growth_loop
 from app.editorial.channel_product.state import record_channel_product_event
 from app.editorial.channel_product.viral_mechanics import evaluate_viral_mechanics
+from app.growth_layer.format.profiles import publish_format_mode
 
 
 def _extract_ueos(layer_extras: dict[str, Any]) -> dict[str, Any]:
@@ -73,7 +74,9 @@ def enrich_draft_with_channel_product(
     topic_w = topic_weights_from_feedback(runtime_dir)
     cta = select_cta_variant(body, topic_weights=topic_w)
 
-    fmt = "growth_brief" if viral.use_growth_brief else "cb_brief"
+    fmt = "subscriber_wire" if publish_format_mode() == "subscriber_wire" else (
+        "growth_brief" if viral.use_growth_brief else "cb_brief"
+    )
     attr = build_acquisition_attribution(
         draft_body=body,
         loop_stage=loop.stage.value,
