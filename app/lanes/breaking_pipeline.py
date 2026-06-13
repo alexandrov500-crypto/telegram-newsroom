@@ -132,6 +132,132 @@ async def _fetch_recent_t0_posts(client: Any, handles: list[str], *, limit: int 
     return out
 
 
+def _wire_routine_enabled() -> bool:
+    raw = os.getenv("WIRE_LANE_ROUTINE_ENABLED", "").strip().lower()
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"off", "false", "0", "no"}:
+        return False
+    try:
+        from app.editorial.news_channel_beat import news_channel_beat_enabled
+
+        return news_channel_beat_enabled()
+    except Exception:
+        return False
+
+
+def _wire_routine_cooldown_sec() -> int:
+    try:
+        return max(90, int(os.getenv("WIRE_LANE_ROUTINE_COOLDOWN_SEC", "180")))
+    except ValueError:
+        return 180
+
+
+def _wire_freshness_max_min() -> float:
+    try:
+        return max(5.0, min(60.0, float(os.getenv("WIRE_FRESHNESS_MAX_MIN", "20"))))
+    except ValueError:
+        return 20.0
+
+
+def _fastlane_handles(settings: Any) -> list[str]:
+    from app.ops.autonomous_publish import _auto_publish_fastlane_sources
+
+    handles = list(_auto_publish_fastlane_sources())
+    if handles:
+        return [h if h.startswith("@") else f"@{h.lstrip('@')}" for h in handles if h]
+    return breaking_source_handles(settings)
+
+
+def _post_age_minutes(post_date: Any) -> float:
+    if post_date is None:
+        return 9999.0
+    dt = post_date if getattr(post_date, "tzinfo", None) else post_date.replace(tzinfo=UTC)
+    return max(0.0, (datetime.now(UTC) - dt.astimezone(UTC)).total_seconds() / 60.0)
+
+
+async def _try_wire_routine_publish(ctx: Any, *, state: dict[str, Any], now: float) -> dict[str, Any] | None:
+    """Fast path for fresh T0/fastlane posts without breaking keywords."""
+    if not _wire_routine_enabled():
+        return None
+
+    last_routine = float(state.get("last_routine_publish_ts") or 0)
+    if now - last_routine < _wire_routine_cooldown_sec():
+        return None
+
+    settings = ctx.settings
+    handles = _fastlane_handles(settings)
+    if not handles:
+        return None
+
+    client = build_telethon_client(
+        api_id=settings.telegram_api_id,
+        api_hash=settings.telegram_api_hash,
+        session_string=settings.telethon_session_string,
+        session_path=settings.telethon_session_path,
+    )
+    if not await connect_telethon_resilient(client, label="wire_routine_collect"):
+        return None
+
+    posts = await _fetch_recent_t0_posts(client, handles, limit=int(os.getenv("WIRE_LANE_FETCH_LIMIT", "8")))
+    recent_hashes = set(state.get("recent_hashes") or [])
+    max_age = _wire_freshness_max_min()
+    candidate: dict[str, Any] | None = None
+
+    for p in sorted(posts, key=lambda x: x.get("date") or datetime.min.replace(tzinfo=UTC), reverse=True):
+        text = str(p.get("text") or "")
+        if len(text.strip()) < 80:
+            continue
+        if _post_age_minutes(p.get("date")) > max_age:
+            continue
+        h = _content_hash(text)
+        if h in recent_hashes:
+            continue
+        async with session_scope() as session:
+            q = select(RawPost.id).where(
+                RawPost.channel_name == str(p.get("channel") or ""),
+                RawPost.message_id == int(p.get("message_id") or 0),
+            )
+            if (await session.execute(q)).scalar_one_or_none() is not None:
+                continue
+        candidate = p
+        candidate["_hash"] = h
+        break
+
+    if not candidate:
+        return None
+
+    summary = _lightweight_summarize(str(candidate.get("text") or ""))
+    sources = json.dumps([{"channel": candidate["channel"], "message_id": candidate["message_id"]}])
+    article_id = f"wire:{candidate['_hash']}"
+    try:
+        from app.worker.fast_publish import publish_breaking_item
+
+        msg_id = await publish_breaking_item(
+            ctx.bot,
+            settings,
+            content=summary,
+            sources=json.loads(sources),
+            article_id=article_id,
+        )
+    except Exception as exc:
+        log_event(logger, "wire_routine.publish_failed", error=repr(exc)[:200])
+        return None
+
+    recent_hashes.add(candidate["_hash"])
+    state["recent_hashes"] = list(recent_hashes)[-50:]
+    state["last_routine_publish_ts"] = now
+    state["last_publish_ts"] = now
+    log_event(
+        logger,
+        "wire_routine.published",
+        message_id=msg_id,
+        channel=candidate.get("channel"),
+        age_min=round(_post_age_minutes(candidate.get("date")), 1),
+    )
+    return {"published": True, "message_id": msg_id, "reason": "wire_routine", "channel": candidate.get("channel")}
+
+
 async def run_breaking_tick(ctx: Any) -> dict[str, Any]:
     """
     Scheduler job: poll T0 → lightweight gate → emergency publish.
@@ -185,6 +311,10 @@ async def run_breaking_tick(ctx: Any) -> dict[str, Any]:
         break
 
     if not candidate:
+        routine = await _try_wire_routine_publish(ctx, state=state, now=now)
+        if routine:
+            _save_state(runtime_dir, state)
+            return routine
         result["reason"] = "no_breaking_candidate"
         return result
 

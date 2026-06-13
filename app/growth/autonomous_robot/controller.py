@@ -68,8 +68,28 @@ def decide_autonomous_adjustments(pulse: dict[str, Any]) -> list[dict[str, Any]]
     gap = _env_float("EDITORIAL_ANTI_PAUSE_GAP_MINUTES", 50)
     interval = _env_float("PUBLISH_CHANNEL_MIN_INTERVAL_SEC", 45)
 
+    # Latency recovery — pending drafts aging in queue
+    median_pending = pulse.get("median_pending_age_min")
+    if median_pending is not None and float(median_pending) > 18:
+        if interval > TUNING_BOUNDS["PUBLISH_CHANNEL_MIN_INTERVAL_SEC"][0] + 2:
+            actions.append(
+                {
+                    "key": "PUBLISH_CHANNEL_MIN_INTERVAL_SEC",
+                    "value": max(TUNING_BOUNDS["PUBLISH_CHANNEL_MIN_INTERVAL_SEC"][0], interval - 8),
+                    "reason": f"latency_recovery pending_age={median_pending}",
+                }
+            )
+        elif ueos > TUNING_BOUNDS["UEOS_PUBLISH_THRESHOLD"][0] + 1:
+            actions.append(
+                {
+                    "key": "UEOS_PUBLISH_THRESHOLD",
+                    "value": ueos - 2,
+                    "reason": f"latency_recovery pending_age={median_pending}",
+                }
+            )
+
     # Throughput recovery — silence or under-target volume
-    if (silence is not None and float(silence) > 75) or pub_24h < target * 0.55:
+    if not actions and ((silence is not None and float(silence) > 75) or pub_24h < target * 0.55):
         if ueos > TUNING_BOUNDS["UEOS_PUBLISH_THRESHOLD"][0] + 1:
             actions.append(
                 {
@@ -96,7 +116,7 @@ def decide_autonomous_adjustments(pulse: dict[str, Any]) -> list[dict[str, Any]]
             )
 
     # Quality guard — too many rejects while publishing enough
-    elif reject_ratio > 0.48 and pub_24h >= target * 0.4:
+    elif not actions and reject_ratio > 0.48 and pub_24h >= target * 0.4:
         if "dominance_growth" in top_reason or "growth_reject" in top_reason:
             if ueos < TUNING_BOUNDS["UEOS_PUBLISH_THRESHOLD"][1] - 1:
                 actions.append(
@@ -117,7 +137,7 @@ def decide_autonomous_adjustments(pulse: dict[str, Any]) -> list[dict[str, Any]]
                 )
 
     # Engagement optimization — enough volume but weak momentum
-    elif momentum < 0.32 and pub_24h >= target * 0.75 and reject_ratio < 0.35:
+    elif not actions and momentum < 0.32 and pub_24h >= target * 0.75 and reject_ratio < 0.35:
         if ueos < TUNING_BOUNDS["UEOS_PUBLISH_THRESHOLD"][1] - 0.5:
             actions.append(
                 {
@@ -212,6 +232,10 @@ async def run_autonomous_growth_tick(ctx: object) -> dict[str, Any]:
 
     phase2: dict[str, Any] = {}
     try:
+        from app.growth.autonomous_robot.acquisition_loop import (
+            format_acquisition_operator_note,
+            run_acquisition_loop,
+        )
         from app.growth.autonomous_robot.peak_hours import current_peak_verdict
         from app.growth.autonomous_robot.source_curator import curate_fastlane_sources
         from app.growth.autonomous_robot.topic_boost import refresh_topic_boost_matrix
@@ -221,10 +245,16 @@ async def run_autonomous_growth_tick(ctx: object) -> dict[str, Any]:
         phase2["peak_hour"] = current_peak_verdict(newsroom_tz=tz).reason
         baseline = [str(h) for h in getattr(settings, "source_channels", ()) or ()]
         phase2["source_curation"] = await curate_fastlane_sources(runtime_dir, env_baseline=baseline)
+        phase2["acquisition"] = await run_acquisition_loop(
+            runtime_dir,
+            channel_id=int(getattr(settings, "target_channel_id", 0) or 0) or None,
+            pulse=pulse,
+        )
         pulse["phase2"] = {
             "top_topics": phase2["topic_boost"].get("top_topics") or [],
             "peak_hour": phase2["peak_hour"],
             "fastlane_count": len((phase2["source_curation"].get("fastlane") or [])),
+            "acquisition_pin": bool((phase2.get("acquisition") or {}).get("pin_candidates")),
         }
         result["phase2"] = phase2
     except Exception as exc:
@@ -263,6 +293,9 @@ async def run_autonomous_growth_tick(ctx: object) -> dict[str, Any]:
                 ab = pulse.get("format_ab_status")
                 if ab:
                     msg += f"\n\n{ab}"
+                acq = (result.get("phase2") or {}).get("acquisition")
+                if acq and acq.get("pin_changed"):
+                    msg += "\n\n" + format_acquisition_operator_note(acq)
                 if format_ab_applied:
                     winner = (result.get("format_ab") or {}).get("state", {}).get("winner")
                     msg += f"\n\n🏆 Format A/B winner locked: {winner}"

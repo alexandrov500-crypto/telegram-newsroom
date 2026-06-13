@@ -53,6 +53,7 @@ def score_draft_for_audience(
     extras_json: str,
     runtime_dir: str,
     newsroom_tz: str = "Europe/Moscow",
+    created_at: Any | None = None,
 ) -> AudiencePriorityScore:
     feedback = load_engagement_feedback(runtime_dir)
     prefs = load_audience_preferences(runtime_dir)
@@ -135,6 +136,24 @@ def score_draft_for_audience(
     except Exception:
         pass
 
+    freshness_component = 0.0
+    try:
+        from app.growth.wire_freshness import (
+            draft_age_minutes,
+            freshness_boost,
+            is_fastlane_source,
+            primary_source_from_json,
+            wire_freshness_enabled,
+        )
+
+        if wire_freshness_enabled() and created_at is not None:
+            age = draft_age_minutes(type("_AgeDraft", (), {"created_at": created_at})())
+            freshness_component = freshness_boost(age)
+            if is_fastlane_source(primary_source_from_json(sources_json)):
+                freshness_component = min(1.0, freshness_component * 1.18)
+    except Exception:
+        freshness_component = 0.0
+
     score = (
         0.28 * signal_score
         + 0.22 * topic_aff
@@ -143,6 +162,7 @@ def score_draft_for_audience(
         + 0.10 * slot_aff
         + 0.08 * novelty
         + momentum_boost
+        + (0.22 * freshness_component if freshness_component else 0.0)
     ) * explore_boost * habit_boost
 
     try:
@@ -178,6 +198,7 @@ def score_draft_for_audience(
         "momentum": round(momentum_boost, 4),
         "explore_boost": round(explore_boost, 4),
         "habit_boost": round(habit_boost, 4),
+        "freshness": round(freshness_component, 4),
     }
     return AudiencePriorityScore(
         draft_id=draft_id,
@@ -204,6 +225,7 @@ def rank_pending_drafts_for_publish(
             extras_json=str(getattr(d, "draft_extras", "") or "{}"),
             runtime_dir=runtime_dir,
             newsroom_tz=tz,
+            created_at=getattr(d, "created_at", None),
         )
         if ps.suppress:
             continue

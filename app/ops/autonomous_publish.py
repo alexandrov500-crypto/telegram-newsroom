@@ -707,15 +707,59 @@ async def try_immediate_autonomous_publish(
     if draft is None:
         return False
 
-    from app.editorial.ai_editorial_reviewer import ai_editorial_review
+    extras_json = str(draft.draft_extras or "{}")
+    sources_json = str(draft.sources or "[]")
 
-    verdict = await ai_editorial_review(
-        str(draft.content or ""),
-        sources=str(draft.sources or "[]"),
-        extras_json=str(draft.draft_extras or "{}"),
-        settings=settings,
-        openai_client=openai_client,
+    from app.editorial.ai_editorial_reviewer import (
+        ai_editorial_review,
+        extras_ai_approves_autonomous_publish,
+        rule_based_editorial_review,
     )
+    from app.ops.wire_fast_publish import wire_fast_skip_ai_review
+
+    if extras_ai_approves_autonomous_publish(extras_json):
+        try:
+            detail = json.loads(extras_json)
+            ai = detail.get("ai_editorial_review") or {}
+        except (json.JSONDecodeError, TypeError):
+            ai = {}
+        from app.editorial.ai_editorial_reviewer import AiEditorialVerdict
+
+        verdict = AiEditorialVerdict(
+            approved=True,
+            confidence=float(ai.get("confidence") or 0.75),
+            reason=str(ai.get("reason") or "cached_ai_review"),
+            expert_notes=str(ai.get("expert_notes") or ""),
+            source=str(ai.get("source") or "cached"),
+        )
+    elif wire_fast_skip_ai_review() and _dominant_source_from_sources_json(sources_json):
+        src_key = _dominant_source_from_sources_json(sources_json).lower()
+        fastlane = _auto_publish_fastlane_sources()
+        if src_key in fastlane or src_key.lstrip("@") in fastlane:
+            verdict = rule_based_editorial_review(
+                str(draft.content or ""),
+                sources=sources_json,
+                extras_json=extras_json,
+                settings=settings,
+                min_chars=60,
+                min_sentences=2,
+            )
+        else:
+            verdict = await ai_editorial_review(
+                str(draft.content or ""),
+                sources=sources_json,
+                extras_json=extras_json,
+                settings=settings,
+                openai_client=openai_client,
+            )
+    else:
+        verdict = await ai_editorial_review(
+            str(draft.content or ""),
+            sources=sources_json,
+            extras_json=extras_json,
+            settings=settings,
+            openai_client=openai_client,
+        )
     await merge_draft_extras(
         session,
         draft_id,

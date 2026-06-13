@@ -2138,6 +2138,12 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
                         "draft_autonomous_scheduled",
                         {"draft_id": draft_id},
                     )
+                    try:
+                        from app.ops.wire_fast_publish import try_wire_inline_publish
+
+                        await try_wire_inline_publish(bot, settings, draft_id)
+                    except Exception as exc:
+                        log_event(logger, "wire_fast.inline_failed", draft_id=draft_id, error=repr(exc)[:160])
                 else:
                     append_runtime_event(
                         "draft_ai_review_pending",
@@ -2261,7 +2267,9 @@ async def _scheduled_publish_step_impl(ctx: PipelineContext) -> None:
 
     bot = ctx.bot
     async with session_scope() as session:
-        ids = await list_due_scheduled_draft_ids(session, limit=3)
+        due_limit = int(os.getenv("PUBLISH_DUE_DRAFTS_PER_TICK", "6").strip() or "6")
+        due_limit = max(1, min(12, due_limit))
+        ids = await list_due_scheduled_draft_ids(session, limit=due_limit)
     autonomous_publish_ids: set[int] = set()
     starvation_auto_publish = os.getenv("DESK_STARVATION_AUTO_PUBLISH", "true").strip().lower() in (
         "1",
@@ -2287,7 +2295,8 @@ async def _scheduled_publish_step_impl(ctx: PipelineContext) -> None:
                 except Exception as exc:
                     log_event(logger, "publish.stall_check_failed", error=repr(exc)[:200])
                 max_auto = int(os.getenv("AUTO_PUBLISH_MAX_SCHEDULE_PER_TICK", "2").strip() or "2")
-                max_auto = max(1, min(5, max_auto))
+                max_cap = int(os.getenv("AUTO_PUBLISH_MAX_SCHEDULE_CAP", "8").strip() or "8")
+                max_auto = max(1, min(max_cap, max_auto))
                 picked: list[int] = []
                 for _ in range(max_auto):
                     auto_did = await try_auto_schedule_one_pending(settings, session)

@@ -115,6 +115,15 @@ async def collect_growth_pulse(
             ).scalar()
             or 0
         )
+        pending_rows = list(
+            (
+                await session.execute(
+                    select(Draft.created_at).where(Draft.status == DraftStatus.PENDING.value).limit(40)
+                )
+            )
+            .scalars()
+            .all()
+        )
 
         audience_row = None
         if channel_id:
@@ -137,6 +146,21 @@ async def collect_growth_pulse(
     reject_n = len(rejected_rows)
     reject_ratio = round(reject_n / max(1, created_24h), 3)
     posts_per_day_7d = round(pub_7d / 7.0, 2)
+
+    pending_ages: list[float] = []
+    for created in pending_rows:
+        if created is None:
+            continue
+        dt = created if getattr(created, "tzinfo", None) else created.replace(tzinfo=UTC)
+        pending_ages.append(max(0.0, (now - dt.astimezone(UTC)).total_seconds() / 60.0))
+    median_pending_age = None
+    if pending_ages:
+        pending_ages.sort()
+        mid = len(pending_ages) // 2
+        median_pending_age = round(
+            pending_ages[mid] if len(pending_ages) % 2 else (pending_ages[mid - 1] + pending_ages[mid]) / 2.0,
+            1,
+        )
 
     eng = _load_engagement_cache(runtime_dir)
     momentum = float(eng.get("momentum") or 0.0)
@@ -193,6 +217,9 @@ async def collect_growth_pulse(
     if momentum < 0.35 and pub_24h >= target * 0.7:
         pulse["recommendations"].append("engagement_low: prioritize high-yield sources and forward stories")
 
+    if median_pending_age is not None and median_pending_age > 20:
+        pulse["recommendations"].append(f"latency_high: median pending age {median_pending_age}m")
+
     if score >= 75:
         health = "strong"
     elif score >= 55:
@@ -209,6 +236,7 @@ async def collect_growth_pulse(
             "published_24h": pub_24h,
             "published_7d_avg_per_day": posts_per_day_7d,
             "silence_minutes": silence_min,
+            "median_pending_age_min": median_pending_age,
             "drafts_created_24h": created_24h,
             "reject_ratio_24h": reject_ratio,
             "top_reject_reasons": top_rejects,
@@ -240,6 +268,9 @@ def format_pulse_telegram(pulse: dict[str, Any]) -> str:
     sm = pulse.get("silence_minutes")
     if sm is not None:
         lines.append(f"⏱ silence {sm} min")
+    mpa = pulse.get("median_pending_age_min")
+    if mpa is not None:
+        lines.append(f"⚡ pending age median {mpa} min")
     aud = pulse.get("audience") or {}
     if aud.get("member_count") is not None:
         lines.append(
