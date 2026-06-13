@@ -467,7 +467,12 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
 
     t_db = time.perf_counter()
     async with session_scope() as session:
-        posts = await fetch_unprocessed_raw_posts(session, limit=settings.raw_fetch_cap)
+        from app.editorial.wire_backlog import fetch_wire_unprocessed_posts, skip_stale_wire_backlog
+
+        skipped_stale = await skip_stale_wire_backlog(session)
+        if skipped_stale:
+            log_event(logger, "wire_backlog.stale_skipped", count=skipped_stale)
+        posts = await fetch_wire_unprocessed_posts(session, limit=settings.raw_fetch_cap)
         try:
             feedback_stats = await collect_editorial_feedback_stats(session)
         except Exception:
@@ -774,6 +779,8 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
         starvation_recovery = desk_threshold_context().publish_starvation_detected
     except Exception:
         pass
+    throughput_recovery = bool(getattr(ctx, "wire_recovery_active", False))
+    _recovery_mode = starvation_recovery or throughput_recovery
     from app.editorial.burnin_governance import (
         cluster_suppress_strict,
         governance_snapshot,
@@ -790,7 +797,7 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
         source_cap=12 if _gov_snap.get("burnin_soft_governance") else 8,
         topic_cap=8 if _gov_snap.get("burnin_soft_governance") else 5,
     )
-    _div_enforced = div_blocked and cluster_suppress_strict() and not starvation_recovery
+    _div_enforced = div_blocked and cluster_suppress_strict() and not _recovery_mode
     _publishing_mode = "core"
     from app.editorial.stability.controller import evaluate_stability_context
     from app.editorial.stability.mode_controller import (
@@ -802,10 +809,10 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
         newsroom_tz=settings.newsroom_timezone,
         cluster_size=len(cluster),
         governance_blocked=bool(
-            ranking_trace.hard_block or (gov_suppress and not starvation_recovery) or _div_enforced
+            ranking_trace.hard_block or (gov_suppress and not _recovery_mode) or _div_enforced
         ),
     )
-    _gov_block = ranking_trace.hard_block or (gov_suppress and not starvation_recovery) or _div_enforced
+    _gov_block = ranking_trace.hard_block or (gov_suppress and not _recovery_mode) or _div_enforced
     _stab_bypass = should_bypass_governance(
         _stab_ctx,
         div_blocked=div_blocked,
@@ -831,7 +838,7 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
             ranking_trace=ranking_trace.to_dict(),
             policy_matches=policy_matches,
         )
-        if not starvation_recovery:
+        if not _recovery_mode:
             record_suppression_ttl(
                 settings.runtime_state_dir,
                 fp,
@@ -1406,7 +1413,7 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
         "yes",
         "on",
     )
-    if cadence_enabled and not bypass and not starvation_recovery:
+    if cadence_enabled and not bypass and not _recovery_mode:
         from app.editorial.stability.anti_pause import evaluate_anti_pause
         from app.editorial.stability.config import skip_cadence_cap_on_anti_pause
 
@@ -2709,6 +2716,23 @@ async def run_pipeline_tick(ctx: PipelineContext, *, wall_clock_start: float) ->
     ctx.tick_publish_outcome = "not_reached"
     ctx.is_breaking_stream = False
     ctx.tick_failures = 0
+    ctx.wire_recovery_active = False
+    try:
+        from app.editorial.wire_recovery import apply_wire_recovery_env_boost, wire_recovery_snapshot
+
+        _wire_snap = await wire_recovery_snapshot()
+        ctx.wire_recovery_active = bool(_wire_snap.get("active"))
+        if ctx.wire_recovery_active:
+            _boosts = apply_wire_recovery_env_boost()
+            log_event(
+                logger,
+                "wire_recovery.active",
+                boosts=_boosts,
+                backlog=_wire_snap.get("backlog_unprocessed"),
+                silence_min=_wire_snap.get("silence_minutes"),
+            )
+    except Exception:
+        pass
 
     from utils.operational_context import current_tick_id
 
@@ -2956,6 +2980,12 @@ async def run_pipeline_tick(ctx: PipelineContext, *, wall_clock_start: float) ->
         from app.observability.staging_alerts import log_staging_alerts
 
         log_staging_alerts()
+    except Exception:
+        pass
+    try:
+        from app.editorial.wire_recovery import maybe_alert_wire_silence
+
+        await maybe_alert_wire_silence(ctx.bot, settings)
     except Exception:
         pass
     try:

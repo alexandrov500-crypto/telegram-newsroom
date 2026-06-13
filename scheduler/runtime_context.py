@@ -33,6 +33,7 @@ class PipelineContext:
     is_breaking_stream: bool = False
     tick_failures: int = 0
     tick_media_detail: dict[str, object] | None = None
+    wire_recovery_active: bool = False
 
 
 _ACTIVE: PipelineContext | None = None

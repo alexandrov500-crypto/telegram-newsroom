@@ -69,6 +69,13 @@ def apply_cooldowns(
     cooldown_sec: float = 900.0,
 ) -> tuple[bool, list[str]]:
     """Return (blocked, reason_codes) if topic or dominant source on cooldown."""
+    try:
+        from app.editorial.wire_recovery import wire_bypass_diversity_cooldowns
+
+        if wire_bypass_diversity_cooldowns():
+            return False, []
+    except Exception:
+        pass
     data = _state(runtime_dir)
     now = time.time()
     codes: list[str] = []
