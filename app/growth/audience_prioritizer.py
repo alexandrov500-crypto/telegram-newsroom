@@ -146,6 +146,18 @@ def score_draft_for_audience(
     ) * explore_boost * habit_boost
 
     try:
+        from app.growth.autonomous_robot.peak_hours import evaluate_peak_hour
+        from app.growth.autonomous_robot.topic_boost import topic_boost_multiplier
+
+        score *= topic_boost_multiplier(topic_bucket, runtime_dir)
+        peak = evaluate_peak_hour(hour_local=hour, newsroom_tz=newsroom_tz)
+        score *= peak.score_multiplier
+        components["topic_boost"] = round(topic_boost_multiplier(topic_bucket, runtime_dir), 4)
+        components["peak_multiplier"] = round(peak.score_multiplier, 4)
+    except Exception:
+        pass
+
+    try:
         from app.monetization.audience_value import score_audience_value
 
         av = score_audience_value(topic_bucket=topic_bucket, runtime_dir=runtime_dir)

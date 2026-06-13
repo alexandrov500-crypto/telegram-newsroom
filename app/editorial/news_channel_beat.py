@@ -103,6 +103,12 @@ def apply_news_channel_beat_defaults() -> None:
         "AUTONOMOUS_GROWTH_TUNING_ENABLED": "true",
         "GROWTH_SOURCE_YIELD_ENABLED": "true",
         "GROWTH_FEEDBACK_ENABLED": "true",
+        "GROWTH_TOPIC_BOOST_ENABLED": "true",
+        "GROWTH_PEAK_HOUR_MODE": "soft",
+        "GROWTH_PEAK_HOUR_START": "10",
+        "GROWTH_PEAK_HOUR_END": "18",
+        "AUTONOMOUS_SOURCE_CURATION_ENABLED": "true",
+        "AUTONOMOUS_WEEKLY_REPORT_ENABLED": "true",
         "NEWSROOM_REFERENCE_MODEL": "cb_economics",
     }
 

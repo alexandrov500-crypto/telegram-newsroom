@@ -100,6 +100,16 @@ def evaluate_growth_cadence_gate(
 
     min_interval = dyn.min_interval_sec
     try:
+        from app.growth.autonomous_robot.peak_hours import evaluate_peak_hour
+
+        peak = evaluate_peak_hour(hour_local=hour, is_breaking=is_breaking, newsroom_tz=tz)
+        min_interval = max(30, int(min_interval * peak.interval_multiplier))
+        if peak.defer and not autonomous_relaxed and not is_breaking:
+            reasons.append(f"peak_hour_{peak.reason}")
+    except Exception:
+        pass
+
+    try:
         from app.monetization.financial_feedback import load_topic_roi_weights_sync, profitability_boost
 
         roi_weights = load_topic_roi_weights_sync(runtime_dir)

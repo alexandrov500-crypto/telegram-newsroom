@@ -253,4 +253,10 @@ def format_pulse_telegram(pulse: dict[str, Any]) -> str:
     tops = pulse.get("sources_top") or []
     if tops:
         lines.append("⭐ " + ", ".join(f"@{s['handle'].lstrip('@')}" for s in tops[:2]))
+    phase2 = pulse.get("phase2") or {}
+    if phase2.get("peak_hour"):
+        lines.append(f"🕐 peak mode: {phase2['peak_hour']}")
+    top_topics = phase2.get("top_topics") or []
+    if top_topics:
+        lines.append("📌 " + ", ".join(str(t.get("topic")) for t in top_topics[:2]))
     return "\n".join(lines)

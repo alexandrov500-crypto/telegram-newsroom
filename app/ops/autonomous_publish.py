@@ -44,15 +44,30 @@ def _auto_publish_fastlane_sources() -> frozenset[str]:
     if reference_model_enabled():
         ref = reference_fastlane_handles()
         if ref:
-            return ref
+            base = ref
+        else:
+            base = frozenset()
+    else:
+        base = frozenset()
+
     raw = os.getenv("AUTO_PUBLISH_FASTLANE_SOURCES", "@cb_economics").strip()
-    out: set[str] = set()
+    out: set[str] = set(base)
     for p in raw.replace(";", ",").split(","):
         s = p.strip().lower()
         if not s:
             continue
         out.add(s if s.startswith("@") else f"@{s}")
         out.add(s.lstrip("@"))
+
+    try:
+        from app.growth.autonomous_robot.source_curator import load_autonomous_fastlane_handles
+
+        runtime_dir = os.getenv("RUNTIME_STATE_DIR", "./var/runtime").strip()
+        curated = load_autonomous_fastlane_handles(runtime_dir)
+        out.update(curated)
+    except Exception:
+        pass
+
     return frozenset(out)
 
 

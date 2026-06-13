@@ -130,6 +130,65 @@ def decide_autonomous_adjustments(pulse: dict[str, Any]) -> list[dict[str, Any]]
     return actions[:1]
 
 
+def _weekly_report_due(settings: Any) -> bool:
+    if os.getenv("AUTONOMOUS_WEEKLY_REPORT_ENABLED", "true").strip().lower() not in {"1", "true", "yes", "on"}:
+        return False
+    tz_name = str(getattr(settings, "newsroom_timezone", "Europe/Moscow") or "Europe/Moscow")
+    try:
+        from zoneinfo import ZoneInfo
+
+        now_local = datetime.now(ZoneInfo(tz_name))
+    except Exception:
+        now_local = datetime.now(UTC)
+    try:
+        weekday = int(os.getenv("AUTONOMOUS_WEEKLY_REPORT_WEEKDAY", "0"))
+        hour = int(os.getenv("AUTONOMOUS_WEEKLY_REPORT_HOUR", "10"))
+    except ValueError:
+        weekday, hour = 0, 10
+    return now_local.weekday() == weekday and now_local.hour == hour
+
+
+async def _maybe_send_weekly_growth_report(
+    ctx: object,
+    settings: Any,
+    runtime_dir: str,
+    pulse: dict[str, Any],
+) -> None:
+    if not _weekly_report_due(settings):
+        return
+    state_path = Path(runtime_dir) / "autonomous_weekly_report_state.json"
+    tz_name = str(getattr(settings, "newsroom_timezone", "Europe/Moscow") or "Europe/Moscow")
+    try:
+        from zoneinfo import ZoneInfo
+
+        week_key = datetime.now(ZoneInfo(tz_name)).strftime("%Y-W%W")
+    except Exception:
+        week_key = datetime.now(UTC).strftime("%Y-W%W")
+
+    if state_path.is_file():
+        try:
+            prev = json.loads(state_path.read_text(encoding="utf-8"))
+            if isinstance(prev, dict) and prev.get("week_key") == week_key:
+                return
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    from app.growth.autonomous_robot.weekly_report import build_weekly_growth_summary, format_weekly_growth_report
+
+    channel_id = int(getattr(settings, "target_channel_id", 0) or getattr(settings, "channel_id", 0) or 0)
+    summary = await build_weekly_growth_summary(
+        runtime_dir=runtime_dir,
+        channel_id=channel_id or None,
+        pulse=pulse,
+    )
+    text = format_weekly_growth_report(summary)
+    bot = getattr(ctx, "bot", None)
+    admin_id = int(getattr(settings, "admin_user_id", 0) or 0)
+    if bot and admin_id:
+        await bot.send_message(admin_id, text[:3900], disable_web_page_preview=True)
+    state_path.write_text(json.dumps({"week_key": week_key, "sent_at": datetime.now(UTC).isoformat()}), encoding="utf-8")
+
+
 async def run_autonomous_growth_tick(ctx: object) -> dict[str, Any]:
     """Hourly: pulse → optional tuning → notify operator on material change."""
     settings = ctx.settings  # type: ignore[attr-defined]
@@ -144,12 +203,33 @@ async def run_autonomous_growth_tick(ctx: object) -> dict[str, Any]:
 
     pulse = await collect_growth_pulse(
         runtime_dir=runtime_dir,
-        channel_id=int(getattr(settings, "channel_id", 0) or 0) or None,
+        channel_id=int(getattr(settings, "target_channel_id", 0) or 0) or None,
     )
     result["pulse"] = pulse
 
     pulse_path = Path(runtime_dir) / "growth_pulse_latest.json"
     pulse_path.write_text(json.dumps(pulse, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    phase2: dict[str, Any] = {}
+    try:
+        from app.growth.autonomous_robot.peak_hours import current_peak_verdict
+        from app.growth.autonomous_robot.source_curator import curate_fastlane_sources
+        from app.growth.autonomous_robot.topic_boost import refresh_topic_boost_matrix
+
+        phase2["topic_boost"] = refresh_topic_boost_matrix(runtime_dir)
+        tz = str(getattr(settings, "newsroom_timezone", "Europe/Moscow") or "Europe/Moscow")
+        phase2["peak_hour"] = current_peak_verdict(newsroom_tz=tz).reason
+        baseline = [str(h) for h in getattr(settings, "source_channels", ()) or ()]
+        phase2["source_curation"] = await curate_fastlane_sources(runtime_dir, env_baseline=baseline)
+        pulse["phase2"] = {
+            "top_topics": phase2["topic_boost"].get("top_topics") or [],
+            "peak_hour": phase2["peak_hour"],
+            "fastlane_count": len((phase2["source_curation"].get("fastlane") or [])),
+        }
+        result["phase2"] = phase2
+    except Exception as exc:
+        log_event(logger, "growth_robot.phase2_failed", error=repr(exc)[:160])
+        result["phase2_error"] = repr(exc)[:160]
 
     actions: list[dict[str, Any]] = []
     if _cooldown_ok(runtime_dir):
@@ -173,6 +253,11 @@ async def run_autonomous_growth_tick(ctx: object) -> dict[str, Any]:
                 await bot.send_message(admin_id, msg[:3900], disable_web_page_preview=True)
     except Exception as exc:
         log_event(logger, "growth_robot.notify_failed", error=repr(exc)[:120])
+
+    try:
+        await _maybe_send_weekly_growth_report(ctx, settings, runtime_dir, pulse)
+    except Exception as exc:
+        log_event(logger, "growth_robot.weekly_failed", error=repr(exc)[:120])
 
     log_event(
         logger,
