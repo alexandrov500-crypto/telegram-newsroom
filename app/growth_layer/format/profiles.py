@@ -17,22 +17,37 @@ def growth_layer_enabled() -> bool:
 
 def publish_format_mode() -> str:
     """
-    cb_brief | growth_brief | hybrid | subscriber_wire
-    subscriber_wire = cb_economics scan speed + growth forward mechanics.
+    cb_brief | growth_brief | hybrid | subscriber_wire | format_ab
+    format_ab = 50/50 subscriber_wire vs cb_brief until forward-rate winner locks.
     """
     raw = os.getenv("NEWSROOM_PUBLISH_FORMAT", "").strip().lower()
-    if raw in {"cb_brief", "growth_brief", "hybrid", "subscriber_wire"}:
+    if raw in {"cb_brief", "growth_brief", "hybrid", "subscriber_wire", "format_ab"}:
         return raw
     try:
         from app.editorial.news_channel_beat import news_channel_beat_enabled
 
         if news_channel_beat_enabled():
-            return "subscriber_wire"
+            return "format_ab"
     except Exception:
         pass
     if cb_brief_format_enabled():
         return "cb_brief"
     return "cb_brief"
+
+
+def resolve_publish_format_profile(
+    virality_score: int | None = None,
+    *,
+    draft_id: int | None = None,
+    content: str = "",
+) -> str:
+    """Resolve format for a specific draft (supports format_ab assignment)."""
+    mode = publish_format_mode()
+    if mode == "format_ab":
+        from app.growth.autonomous_robot.format_ab import assign_format_variant
+
+        return assign_format_variant(draft_id=int(draft_id or 0), content=content)
+    return resolve_format_profile(virality_score)
 
 
 def _viral_threshold() -> int:
@@ -44,6 +59,8 @@ def _viral_threshold() -> int:
 
 def resolve_format_profile(virality_score: int | None) -> str:
     mode = publish_format_mode()
+    if mode == "format_ab":
+        return "format_ab"
     if mode == "subscriber_wire":
         return "subscriber_wire"
     if mode == "growth_brief":

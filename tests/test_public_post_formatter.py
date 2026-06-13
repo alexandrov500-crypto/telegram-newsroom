@@ -178,6 +178,9 @@ def test_formatter_scrubs_json_from_body() -> None:
 
 def test_formatter_hashtags_when_cb_brief_off(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("NEWSROOM_CB_BRIEF_FORMAT", "false")
+    monkeypatch.setenv("NEWSROOM_PUBLISH_FORMAT", "hybrid")
+    monkeypatch.setenv("NEWSROOM_CHANNEL_BEAT", "off")
+    monkeypatch.setenv("NEWSROOM_HASHTAGS_ENABLED", "true")
     out = format_public_post_plain(
         "Fed сохранила ставку, но инфляция остается выше целевого уровня.\n\n"
         "Рынок оценивает траекторию доходностей и влияние на доллар.",
@@ -191,6 +194,9 @@ def test_formatter_hashtags_when_cb_brief_off(monkeypatch: pytest.MonkeyPatch) -
 
 def test_formatter_html_hashtags_when_cb_brief_off(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("NEWSROOM_CB_BRIEF_FORMAT", "false")
+    monkeypatch.setenv("NEWSROOM_PUBLISH_FORMAT", "hybrid")
+    monkeypatch.setenv("NEWSROOM_CHANNEL_BEAT", "off")
+    monkeypatch.setenv("NEWSROOM_HASHTAGS_ENABLED", "true")
     html = format_public_post_html(
         "NVIDIA поднимает прогноз, а рынок чипов ускоряет AI-капекс цикл.",
         '[{"channel": "@cb_economics"}]',

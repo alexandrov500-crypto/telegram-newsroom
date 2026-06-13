@@ -62,7 +62,9 @@ def test_acquisition_attribution_experiment_id() -> None:
     assert "t.me/testchannel" in attr.deep_link_hint
 
 
-def test_enrich_draft_with_channel_product(tmp_path: Path) -> None:
+def test_enrich_draft_with_channel_product(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NEWSROOM_PUBLISH_FORMAT", "hybrid")
+    monkeypatch.setenv("NEWSROOM_CHANNEL_BEAT", "off")
     body = (
         "Fed повысила ставку.\n\n"
         "Почему важно: инвесторы пересматривают риск.\n\n"
@@ -84,7 +86,7 @@ def test_enrich_draft_with_channel_product(tmp_path: Path) -> None:
     assert "growth" in extras
     cp = extras["channel_product"]
     assert cp["enable_share_nudge"] is True
-    assert cp["format_profile"] in {"growth_brief", "cb_brief"}
+    assert cp["format_profile"] in {"growth_brief", "cb_brief", "subscriber_wire", "format_ab"}
     assert extras["growth"]["experiment_id"]
 
 

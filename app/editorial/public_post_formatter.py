@@ -384,8 +384,13 @@ def _minimal_channel_format(growth_meta: dict | None = None) -> bool:
         use_growth_brief_at_render,
     )
 
-    if publish_format_mode() == "subscriber_wire":
+    profile = effective_format_profile(growth_meta)
+    if profile == "cb_brief" and publish_format_mode() == "format_ab":
+        return True
+    if publish_format_mode() == "subscriber_wire" or profile == "subscriber_wire":
         return False
+    if publish_format_mode() == "format_ab":
+        return profile == "cb_brief"
     if effective_format_profile(growth_meta) == "subscriber_wire":
         return False
     if _cb_brief_channel():
@@ -417,7 +422,9 @@ def format_public_post_plain(
     from app.growth_layer.format.profiles import effective_format_profile
 
     profile = effective_format_profile(growth_meta)
-    if subscriber_wire_format_enabled() or profile == "subscriber_wire":
+    if profile == "subscriber_wire" or (
+        subscriber_wire_format_enabled() and profile != "cb_brief"
+    ):
         tuning = get_editorial_tuning()
         polished = _prepare_body_plain(content, max_chars=tuning.structure.summary_max_chars)
         polished = _strip_embedded_source_lines(polished)
@@ -557,7 +564,9 @@ def format_public_post_html(
     from app.growth_layer.format.profiles import effective_format_profile
 
     profile = effective_format_profile(growth_meta)
-    if subscriber_wire_format_enabled() or profile == "subscriber_wire":
+    if profile == "subscriber_wire" or (
+        subscriber_wire_format_enabled() and profile != "cb_brief"
+    ):
         tuning = get_editorial_tuning()
         polished = _prepare_body_plain(content, max_chars=tuning.structure.summary_max_chars)
         polished = _strip_embedded_source_lines(polished)

@@ -1853,7 +1853,7 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
                 )
                 if growth_layer_enabled():
                     try:
-                        from app.growth_layer.format.profiles import resolve_format_profile
+                        from app.growth_layer.format.profiles import resolve_publish_format_profile
                         from app.growth_layer.virality.engine import ViralityScoreEngine
                         from db.growth_scores_repository import upsert_draft_growth_score
 
@@ -1863,7 +1863,11 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
                             escore=escore,
                             editorial_card=ed_card.to_dict() if ed_card is not None else None,
                         )
-                        _fmt_profile = resolve_format_profile(_vir.score)
+                        _fmt_profile = resolve_publish_format_profile(
+                            _vir.score,
+                            draft_id=draft_id,
+                            content=draft_body,
+                        )
                         await upsert_draft_growth_score(
                             session,
                             draft_id=draft_id,

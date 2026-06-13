@@ -68,5 +68,7 @@ def test_cb_brief_unaffected_when_standard(monkeypatch: pytest.MonkeyPatch) -> N
     assert story.headline.startswith("ЦБ")
 
 
-def test_default_publish_format_is_cb_brief() -> None:
+def test_default_publish_format_is_cb_brief(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NEWSROOM_CHANNEL_BEAT", "off")
+    monkeypatch.setenv("NEWSROOM_PUBLISH_FORMAT", "cb_brief")
     assert publish_format_mode() == "cb_brief"

@@ -231,6 +231,15 @@ async def run_autonomous_growth_tick(ctx: object) -> dict[str, Any]:
         log_event(logger, "growth_robot.phase2_failed", error=repr(exc)[:160])
         result["phase2_error"] = repr(exc)[:160]
 
+    try:
+        from app.growth.autonomous_robot.format_ab import format_ab_status_text, run_format_ab_evaluation
+
+        result["format_ab"] = await run_format_ab_evaluation(runtime_dir)
+        pulse["format_ab_status"] = format_ab_status_text(runtime_dir)
+    except Exception as exc:
+        log_event(logger, "growth_robot.format_ab_failed", error=repr(exc)[:160])
+        result["format_ab_error"] = repr(exc)[:160]
+
     actions: list[dict[str, Any]] = []
     if _cooldown_ok(runtime_dir):
         actions = decide_autonomous_adjustments(pulse)
@@ -241,15 +250,22 @@ async def run_autonomous_growth_tick(ctx: object) -> dict[str, Any]:
         result["adjustments"] = []
         result["adjustments_skipped"] = "cooldown"
 
-    # Notify on critical health or adjustment
+    # Notify on critical health, adjustment, or format A/B winner
     try:
-        if pulse.get("health") == "critical" or actions:
+        format_ab_applied = bool((result.get("format_ab") or {}).get("applied"))
+        if pulse.get("health") == "critical" or actions or format_ab_applied:
             bot = getattr(ctx, "bot", None)
             admin_id = int(getattr(settings, "admin_user_id", 0) or 0)
             if bot and admin_id:
                 msg = format_pulse_telegram(pulse)
                 if actions:
                     msg += "\n\n🤖 " + actions[0]["reason"]
+                ab = pulse.get("format_ab_status")
+                if ab:
+                    msg += f"\n\n{ab}"
+                if format_ab_applied:
+                    winner = (result.get("format_ab") or {}).get("state", {}).get("winner")
+                    msg += f"\n\n🏆 Format A/B winner locked: {winner}"
                 await bot.send_message(admin_id, msg[:3900], disable_web_page_preview=True)
     except Exception as exc:
         log_event(logger, "growth_robot.notify_failed", error=repr(exc)[:120])

@@ -245,10 +245,14 @@ def load_settings() -> Settings:
     apply_reference_model_env_defaults()
     apply_growth_profile_defaults()
     try:
-        from app.growth.autonomous_robot import apply_tuning_overrides_to_env
+        from app.growth.autonomous_robot.tuning_store import apply_tuning_overrides_to_env
 
         runtime_dir = os.getenv("RUNTIME_STATE_DIR", "./var/runtime").strip()
         apply_tuning_overrides_to_env(runtime_dir)
+        from app.growth.autonomous_robot.format_ab import apply_format_ab_env_overrides, init_format_ab_state
+
+        init_format_ab_state(runtime_dir)
+        apply_format_ab_env_overrides(runtime_dir)
     except Exception:
         pass
     filtered = filter_source_channels(list(channels))
