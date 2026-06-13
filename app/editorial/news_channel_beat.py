@@ -94,6 +94,7 @@ def apply_news_channel_beat_defaults() -> None:
         # Editorial layers — publish-first under autonomy
         "UEOS_PUBLISH_THRESHOLD": "68",
         "UEOS_DIGEST_THRESHOLD": "52",
+        "EDITORIAL_GROWTH_INTEL_SOFT_QUALITY": "45",
         "EGDL_REQUIRE_MULTI_SOURCE_CLASS": "false",
         "EDITORIAL_INFORMATIVE_MIN_CHARS_ANTI_PAUSE": "40",
         "EDITORIAL_INFORMATIVE_MIN_SENTENCES_ANTI_PAUSE": "1",

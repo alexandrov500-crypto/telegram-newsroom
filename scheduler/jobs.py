@@ -1311,7 +1311,18 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
         except Exception:
             pass
         if _stab_extras.get("stability_reject"):
-            ctx.tick_summarize_idle_reason = "dominance_growth_reject"
+            _rej_reason = "dominance_growth_reject"
+            try:
+                if _stab_extras.get("ueos_reject"):
+                    _rej_reason = "ueos_reject"
+                elif _stab_extras.get("eaa_reject"):
+                    _rej_reason = "eaa_reject"
+                gd = _stab_extras.get("growth_decision") if isinstance(_stab_extras.get("growth_decision"), dict) else {}
+                if gd.get("reject"):
+                    _rej_reason = str(gd.get("decision_reason") or _rej_reason)
+            except Exception:
+                pass
+            ctx.tick_summarize_idle_reason = _rej_reason
             log_event(logger, "summarize_exit", outcome="reject", reason=ctx.tick_summarize_idle_reason)
             return
     except Exception as exc:

@@ -160,6 +160,24 @@ def enrich_draft_with_ueos(
         reject = False
         force_digest = True
 
+    try:
+        from app.editorial.ai_editorial_reviewer import autonomous_editorial_mode_enabled
+        from app.editorial.news_channel_beat import news_channel_beat_enabled
+
+        if (
+            reject
+            and publishing_mode == "core"
+            and news_channel_beat_enabled()
+            and autonomous_editorial_mode_enabled()
+        ):
+            if ueos.total >= digest_thr and quality_score >= 42:
+                reject = False
+            elif ap.anti_pause_active and ueos.total >= max(40.0, digest_thr - 10):
+                reject = False
+                force_digest = True
+    except Exception:
+        pass
+
     if not principle.complete and reject and publishing_mode == "core" and not layer_arb.stability_override:
         reject = True
 

@@ -53,9 +53,13 @@ def enrich_draft_for_stability(
     )
     if decision.reject and publishing_mode == "core":
         try:
+            from app.editorial.ai_editorial_reviewer import autonomous_editorial_mode_enabled
             from app.editorial.growth_dominance.config import egdl_enabled
+            from app.editorial.news_channel_beat import news_channel_beat_enabled
 
-            if not egdl_enabled():
+            if news_channel_beat_enabled() and autonomous_editorial_mode_enabled():
+                pass  # wire beat — growth reject is non-terminal; UEOS/publish gates decide
+            elif not egdl_enabled():
                 return draft_body, {"growth_decision": decision.to_dict(), "stability_reject": True}
         except Exception:
             return draft_body, {"growth_decision": decision.to_dict(), "stability_reject": True}

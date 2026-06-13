@@ -171,6 +171,26 @@ def evaluate_growth_decision(
         reason = f"{reason}_anti_pause_override"
         growth = GrowthPotential.MEDIUM
 
+    # News beat wire — clean copy has no «why matters» chrome; quality + facts suffice
+    if reject and publishing_mode == "core":
+        try:
+            from app.editorial.ai_editorial_reviewer import autonomous_editorial_mode_enabled
+            from app.editorial.news_channel_beat import news_channel_beat_enabled
+            from app.editorial.stability.config import growth_intel_soft_quality_floor
+
+            if news_channel_beat_enabled() and autonomous_editorial_mode_enabled():
+                floor = growth_intel_soft_quality_floor()
+                if wh and quality_score >= floor:
+                    reject = False
+                    growth = GrowthPotential.MEDIUM
+                    reason = f"{reason}_news_beat_wire_pass"
+                elif wh and quality_score >= 42 and len((text or "").strip()) >= 80:
+                    reject = False
+                    growth = GrowthPotential.MEDIUM
+                    reason = f"{reason}_news_beat_starvation_pass"
+        except Exception:
+            pass
+
     return GrowthDecision(
         post_type=post_type,
         growth_potential=growth,
