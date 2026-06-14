@@ -29,8 +29,29 @@ def test_wire_throughput_recovery_on_backlog(monkeypatch):
     from app.editorial import wire_recovery
 
     monkeypatch.setattr(wire_recovery, "minutes_since_last_publish", lambda: 5.0)
+
+    class _Ap:
+        anti_pause_active = False
+        max_gap_exceeded = False
+
+    monkeypatch.setattr("app.editorial.stability.anti_pause.evaluate_anti_pause", lambda *a, **k: _Ap())
     assert wire_recovery.wire_throughput_recovery_active(backlog=500, silence_min=5.0) is True
-    assert wire_recovery.wire_throughput_recovery_active(backlog=100, silence_min=5.0) is False
+    assert wire_recovery.wire_throughput_recovery_active(backlog=50, silence_min=5.0) is False
+
+
+def test_wire_bypass_suppression_on_silence(monkeypatch):
+    from app.editorial import wire_recovery
+
+    monkeypatch.setenv("WIRE_BYPASS_SUPPRESSION_TTL", "true")
+    monkeypatch.setenv("NEWSROOM_CHANNEL_BEAT", "top_news")
+    monkeypatch.setattr(wire_recovery, "minutes_since_last_publish", lambda: 30.0)
+
+    class _Ap:
+        anti_pause_active = False
+        max_gap_exceeded = False
+
+    monkeypatch.setattr("app.editorial.stability.anti_pause.evaluate_anti_pause", lambda *a, **k: _Ap())
+    assert wire_recovery.wire_bypass_suppression_memory() is True
 
 
 def test_apply_cooldowns_bypassed_in_wire_recovery(monkeypatch, tmp_path):

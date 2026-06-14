@@ -129,6 +129,13 @@ def evaluate_unified_cluster_stage(
         starvation_bypass_suppression = desk_threshold_context().publish_starvation_detected
     except Exception:
         pass
+    try:
+        from app.editorial.wire_recovery import wire_bypass_suppression_memory
+
+        if wire_bypass_suppression_memory():
+            starvation_bypass_suppression = True
+    except Exception:
+        pass
     if is_suppression_active(runtime_dir, fingerprint) and not starvation_bypass_suppression:
         reasons.append("suppression_ttl_active")
         contributing.append("suppression_memory")

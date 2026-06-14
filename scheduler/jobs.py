@@ -969,7 +969,7 @@ async def _summarize_step_impl(ctx: PipelineContext) -> None:
         )
         ctx.tick_timings["cluster_sec"] = time.perf_counter() - t_cl
         return
-    if pipeline_decision.suppress and not bypass:
+    if pipeline_decision.suppress and not bypass and not _recovery_mode:
         append_decision(
             runtime_dir=settings.runtime_state_dir,
             decision_type="cluster_suppress",

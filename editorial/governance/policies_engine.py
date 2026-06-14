@@ -179,7 +179,14 @@ def evaluate_policies(
             hit = True
             detail = {"cluster_size": n}
         elif rtype == "suppression_memory_key" and fingerprint:
-            if is_suppression_active(runtime_dir, fingerprint):
+            _skip_suppression = False
+            try:
+                from app.editorial.wire_recovery import wire_bypass_suppression_memory
+
+                _skip_suppression = wire_bypass_suppression_memory()
+            except Exception:
+                pass
+            if not _skip_suppression and is_suppression_active(runtime_dir, fingerprint):
                 hit = True
                 detail = {"fingerprint": fingerprint}
 

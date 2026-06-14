@@ -71,6 +71,26 @@ def wire_bypass_diversity_cooldowns() -> bool:
     return wire_throughput_recovery_active()
 
 
+def wire_bypass_suppression_memory() -> bool:
+    """Bypass suppression_ttl / suppression_memory during wire silence recovery."""
+    if not wire_recovery_enabled():
+        return False
+    if not _env_bool("WIRE_BYPASS_SUPPRESSION_TTL", "true"):
+        return False
+    try:
+        from scheduler.runtime_context import get_pipeline_context
+
+        ctx = get_pipeline_context()
+        if ctx and getattr(ctx, "wire_recovery_active", False):
+            return True
+    except Exception:
+        pass
+    silence = minutes_since_last_publish()
+    if silence is not None and silence >= wire_silence_alert_minutes():
+        return True
+    return wire_throughput_recovery_active()
+
+
 def minutes_since_last_publish() -> float | None:
     try:
         from app.editorial.desk_starvation import hours_since_last_publish

@@ -94,6 +94,7 @@ def apply_news_channel_beat_defaults() -> None:
         "SOURCE_COOLDOWN_MINUTES": "2",
         "WIRE_RECOVERY_ENABLED": "true",
         "WIRE_BYPASS_SOURCE_COOLDOWN": "true",
+        "WIRE_BYPASS_SUPPRESSION_TTL": "true",
         "WIRE_BACKLOG_FRESH_FIRST": "true",
         "WIRE_STALE_SKIP_HOURS": "24",
         "WIRE_FRESH_WINDOW_HOURS": "8",
