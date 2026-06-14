@@ -25,6 +25,23 @@ from utils.structured_log import log_event
 
 logger = logging.getLogger(__name__)
 
+_REFUSAL_RE = re.compile(
+    r"(?:не\s+могу\s+обсуждать|давайте\s+поговорим|"
+    r"i\s+can(?:not|'t)\s+(?:discuss|help|assist|comply)|"
+    r"cannot\s+(?:discuss|help|assist)|policy\s+violation)",
+    re.I,
+)
+
+
+def _is_provider_refusal(text: str) -> bool:
+    return bool(_REFUSAL_RE.search((text or "").strip()))
+
+
+def _env_bool(name: str, default: str = "true") -> bool:
+    import os
+
+    return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
+
 
 @dataclass(slots=True)
 class SummarizeClusterResult:
@@ -152,6 +169,150 @@ async def summarize_cluster(
     response_format = _draft_response_format(include_headline=include_headline)
     prompt_ref = resolve_cluster_draft_prompt(settings)
 
+    def _parse_completion(
+        completion: Any,
+        *,
+        api_sec: float,
+        attempt: int,
+    ) -> SummarizeClusterResult | None:
+        choice = completion.choices[0].message.content
+        if not choice or not choice.strip():
+            log_event(logger, "openai.empty_content", attempt=attempt)
+            return None
+
+        unwrapped = _unwrap_json_text(choice)
+        if not unwrapped.startswith("{") or not unwrapped.endswith("}"):
+            log_event(logger, "openai.non_json_shape", attempt=attempt, sample=unwrapped[:200])
+            return None
+
+        try:
+            data = json.loads(unwrapped)
+        except json.JSONDecodeError as exc:
+            log_event(logger, "openai.json_decode_failed", attempt=attempt, error=str(exc), sample=unwrapped[:400])
+            return None
+
+        if not include_headline and isinstance(data, dict) and "headline" not in data:
+            data = {**data, "headline": ""}
+
+        try:
+            parsed = OpenAIClusterResponse.model_validate(data)
+        except ValidationError as exc:
+            log_event(logger, "openai.payload_invalid", attempt=attempt, error=str(exc)[:400])
+            return None
+
+        used_ids = _dedupe_used_ids(parsed.used_raw_post_ids, valid_ids)
+        from app.publisher.draft_builder import finalize_draft_content
+
+        post_text = finalize_draft_content(parsed.post, max_chars=settings.max_post_chars)
+        headline = (parsed.headline if include_headline else "").strip()
+        if headline:
+            from app.publisher.draft_builder import strip_source_attribution
+
+            headline = strip_source_attribution(headline)
+
+        if not used_ids:
+            if post_text and valid_ids:
+                used_ids = sorted(valid_ids)
+                log_event(logger, "openai.draft_ids_defaulted", attempt=attempt, used_ids=len(used_ids))
+            else:
+                log_event(logger, "openai.draft_no_valid_ids", attempt=attempt)
+                return None
+
+        if not post_text:
+            log_event(logger, "openai.empty_post_with_ids", attempt=attempt)
+            return None
+
+        log_event(
+            logger,
+            "openai.draft_parsed_ok",
+            attempt=attempt,
+            used_ids=len(used_ids),
+            post_len=len(post_text),
+            digest_mode=digest_on,
+            headline_mode=settings.headline_mode,
+        )
+        usage = getattr(completion, "usage", None)
+        pin = getattr(usage, "prompt_tokens", None) if usage else None
+        pout = getattr(usage, "completion_tokens", None) if usage else None
+        in_tok = int(pin) if pin is not None else None
+        out_tok = int(pout) if pout is not None else None
+        tot_tok = (in_tok + out_tok) if in_tok is not None and out_tok is not None else None
+        cost: float | None = None
+        if in_tok is not None and out_tok is not None:
+            cost = estimate_chat_cost_usd(model=model, input_tokens=in_tok, output_tokens=out_tok)
+        safety = tuple(scan_draft_output(post_text, headline=headline))
+        exec_meta = AIExecutionMetadata(
+            prompt_id=prompt_ref.prompt_id,
+            prompt_version=prompt_ref.prompt_version,
+            prompt_fingerprint=prompt_ref.fingerprint,
+            model=model,
+            latency_sec=float(api_sec),
+            retry_count=max(0, attempt - 1),
+            input_tokens=in_tok,
+            output_tokens=out_tok,
+            total_tokens=tot_tok,
+            estimated_cost_usd=cost,
+            completed_at_unix=time.time(),
+            safety_warnings=safety,
+        )
+        inc("ai_cluster_calls")
+        if in_tok is not None and in_tok > 0:
+            inc("ai_input_tokens", in_tok)
+        if out_tok is not None and out_tok > 0:
+            inc("ai_output_tokens", out_tok)
+        if cost is not None and cost > 0:
+            inc("ai_cost_micro_usd", int(cost * 1_000_000))
+        set_gauge("ai_last_cluster_latency_sec", float(api_sec))
+        try:
+            from ops.economics.budgets import record_ai_usage
+            from ops.economics.resource_accounting import record_resource
+
+            rd = getattr(settings, "runtime_state_dir", None) or __import__("os").getenv("RUNTIME_STATE_DIR", "var/runtime")
+            record_ai_usage(rd, tokens=tot_tok or 0, requests=1, cost_usd=float(cost or 0))
+            record_resource(
+                rd,
+                stage="summarize",
+                duration_sec=float(api_sec),
+                tokens=tot_tok or 0,
+                cost_usd=float(cost or 0),
+                count=1,
+            )
+        except Exception:
+            pass
+        circuit.record_success()
+        return SummarizeClusterResult(post_text=post_text, used_ids=used_ids, headline=headline, execution=exec_meta)
+
+    async def _recovery_after_refusal() -> SummarizeClusterResult | None:
+        if not _env_bool("OPENAI_REFUSAL_RECOVERY_ENABLED", "true"):
+            return None
+        from ai.editorial import build_refusal_recovery_system_prompt, build_refusal_recovery_user_prompt
+
+        recovery_system = build_refusal_recovery_system_prompt(settings)
+        recovery_user = build_refusal_recovery_user_prompt(
+            settings,
+            _serialize_items(posts),
+            source_language=lang_ctx["source_language"],
+            output_language=lang_ctx["output_language"],
+        )
+        log_event(logger, "openai.refusal_recovery_attempt", model=model)
+        try:
+            completion, api_sec = await _chat(
+                model=model,
+                temperature=0.0,
+                response_format={"type": "json_object"},
+                messages=[
+                    {"role": "system", "content": recovery_system},
+                    {"role": "user", "content": recovery_user},
+                ],
+            )
+        except Exception as exc:
+            log_event(logger, "openai.refusal_recovery_failed", error=repr(exc)[:200])
+            return None
+        parsed = _parse_completion(completion, api_sec=api_sec, attempt=0)
+        if parsed is not None:
+            log_event(logger, "openai.refusal_recovery_ok", post_len=len(parsed.post_text))
+        return parsed
+
     async def _chat(**kwargs: Any) -> tuple[Any, float]:
         t0 = time.perf_counter()
         try:
@@ -173,6 +334,7 @@ async def summarize_cluster(
             raise
 
     last_err: str | None = None
+    refusal_seen = False
     for attempt in range(1, max_json_retries + 1):
         try:
             completion, api_sec = await _chat(
@@ -241,125 +403,29 @@ async def summarize_cluster(
 
         choice = completion.choices[0].message.content
         if not choice or not choice.strip():
-            log_event(logger, "openai.empty_content", attempt=attempt)
             last_err = "empty_content"
             _maybe_count_retry(attempt, max_json_retries)
             continue
 
         unwrapped = _unwrap_json_text(choice)
         if not unwrapped.startswith("{") or not unwrapped.endswith("}"):
-            log_event(logger, "openai.non_json_shape", attempt=attempt, sample=unwrapped[:200])
+            if _is_provider_refusal(unwrapped):
+                refusal_seen = True
             last_err = "non_json_shape"
             _maybe_count_retry(attempt, max_json_retries)
             continue
 
-        try:
-            data = json.loads(unwrapped)
-        except json.JSONDecodeError as exc:
-            log_event(logger, "openai.json_decode_failed", attempt=attempt, error=str(exc), sample=unwrapped[:400])
-            last_err = f"json_decode:{exc}"
-            _maybe_count_retry(attempt, max_json_retries)
-            continue
+        parsed = _parse_completion(completion, api_sec=api_sec, attempt=attempt)
+        if parsed is not None:
+            return parsed
+        last_err = "parse_failed"
+        _maybe_count_retry(attempt, max_json_retries)
+        continue
 
-        if not include_headline and isinstance(data, dict) and "headline" not in data:
-            data = {**data, "headline": ""}
-
-        try:
-            parsed = OpenAIClusterResponse.model_validate(data)
-        except ValidationError as exc:
-            log_event(logger, "openai.payload_invalid", attempt=attempt, error=str(exc)[:400])
-            last_err = f"pydantic:{exc}"
-            _maybe_count_retry(attempt, max_json_retries)
-            continue
-
-        used_ids = _dedupe_used_ids(parsed.used_raw_post_ids, valid_ids)
-        from app.publisher.draft_builder import finalize_draft_content
-
-        post_text = finalize_draft_content(parsed.post, max_chars=settings.max_post_chars)
-        headline = (parsed.headline if include_headline else "").strip()
-        if headline:
-            from app.publisher.draft_builder import strip_source_attribution
-
-            headline = strip_source_attribution(headline)
-
-        if not used_ids:
-            # Some models (esp. via an OpenAI-compatible relay) omit or garble the
-            # source id echo. The summary is generated from THIS cluster, so attribute
-            # it to the cluster posts instead of discarding an otherwise-valid draft.
-            if post_text and valid_ids:
-                used_ids = sorted(valid_ids)
-                log_event(logger, "openai.draft_ids_defaulted", attempt=attempt, used_ids=len(used_ids))
-            else:
-                log_event(logger, "openai.draft_no_valid_ids", attempt=attempt)
-                last_err = "no_valid_ids"
-                _maybe_count_retry(attempt, max_json_retries)
-                continue
-
-        if not post_text:
-            log_event(logger, "openai.empty_post_with_ids", attempt=attempt)
-            last_err = "empty_post_with_ids"
-            _maybe_count_retry(attempt, max_json_retries)
-            continue
-
-        log_event(
-            logger,
-            "openai.draft_parsed_ok",
-            attempt=attempt,
-            used_ids=len(used_ids),
-            post_len=len(post_text),
-            digest_mode=digest_on,
-            headline_mode=settings.headline_mode,
-        )
-        usage = getattr(completion, "usage", None)
-        pin = getattr(usage, "prompt_tokens", None) if usage else None
-        pout = getattr(usage, "completion_tokens", None) if usage else None
-        in_tok = int(pin) if pin is not None else None
-        out_tok = int(pout) if pout is not None else None
-        tot_tok = (in_tok + out_tok) if in_tok is not None and out_tok is not None else None
-        cost: float | None = None
-        if in_tok is not None and out_tok is not None:
-            cost = estimate_chat_cost_usd(model=model, input_tokens=in_tok, output_tokens=out_tok)
-        safety = tuple(scan_draft_output(post_text, headline=headline))
-        exec_meta = AIExecutionMetadata(
-            prompt_id=prompt_ref.prompt_id,
-            prompt_version=prompt_ref.prompt_version,
-            prompt_fingerprint=prompt_ref.fingerprint,
-            model=model,
-            latency_sec=float(api_sec),
-            retry_count=max(0, attempt - 1),
-            input_tokens=in_tok,
-            output_tokens=out_tok,
-            total_tokens=tot_tok,
-            estimated_cost_usd=cost,
-            completed_at_unix=time.time(),
-            safety_warnings=safety,
-        )
-        inc("ai_cluster_calls")
-        if in_tok is not None and in_tok > 0:
-            inc("ai_input_tokens", in_tok)
-        if out_tok is not None and out_tok > 0:
-            inc("ai_output_tokens", out_tok)
-        if cost is not None and cost > 0:
-            inc("ai_cost_micro_usd", int(cost * 1_000_000))
-        set_gauge("ai_last_cluster_latency_sec", float(api_sec))
-        try:
-            from ops.economics.budgets import record_ai_usage
-            from ops.economics.resource_accounting import record_resource
-
-            rd = getattr(settings, "runtime_state_dir", None) or __import__("os").getenv("RUNTIME_STATE_DIR", "var/runtime")
-            record_ai_usage(rd, tokens=tot_tok or 0, requests=1, cost_usd=float(cost or 0))
-            record_resource(
-                rd,
-                stage="summarize",
-                duration_sec=float(api_sec),
-                tokens=tot_tok or 0,
-                cost_usd=float(cost or 0),
-                count=1,
-            )
-        except Exception:
-            pass
-        circuit.record_success()
-        return SummarizeClusterResult(post_text=post_text, used_ids=used_ids, headline=headline, execution=exec_meta)
+    if refusal_seen:
+        recovered = await _recovery_after_refusal()
+        if recovered is not None:
+            return recovered
 
     inc("openai_failures")
     inc("ai_cluster_failures")

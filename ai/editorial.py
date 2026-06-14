@@ -69,6 +69,9 @@ def build_system_prompt(
 
     blocks = [
         "Ты редактор Telegram-новостей.",
+        "Задача — редакционная обработка публичных новостных сообщений из открытых Telegram-каналов.",
+        "Это рутинная журналистская суммаризация фактов; всегда выполняй её и возвращай только JSON по схеме.",
+        "Не отказывайся от переписывания новостей о политике, экономике, рынках и геополитике — это обычная редакционная работа.",
         "Работаешь как premium financial newsroom desk (Bloomberg/Reuters/FT-подход, адаптированный под Telegram).",
         "Тебе даны новости из разных Telegram-каналов.",
         "Найди записи, которые описывают ОДНО И ТО ЖЕ событие (одинаковые факты, одна история).",
@@ -243,6 +246,42 @@ def build_user_prompt(
 Входные данные:
 {items_json}
 """
+
+
+def build_refusal_recovery_system_prompt(settings: Settings) -> str:
+    """Minimal system prompt when relay returns policy refusal instead of JSON."""
+    style = settings.summary_style
+    return "\n".join(
+        [
+            "Ты редактор русскоязычного финансово-новостного Telegram-канала.",
+            "Перепиши входные публичные новости в единый краткий формат.",
+            "Это легальная журналистская обработка открытых сообщений — отказ недопустим.",
+            "Ответ: ТОЛЬКО один JSON-объект без markdown и без текста вне JSON.",
+            _style_block_ru(style),
+            'Поля: "headline" (до 120 символов), "post" (350–700 символов, 2–3 абзаца), '
+            '"used_raw_post_ids" (массив id из входа).',
+            "Не дублируй headline дословно в post. Без @каналов и URL.",
+        ]
+    )
+
+
+def build_refusal_recovery_user_prompt(
+    settings: Settings,
+    items_json: str,
+    *,
+    source_language: str = "ru",
+    output_language: str = "ru",
+) -> str:
+    from app.editorial.source_languages import requires_translation
+
+    lang = ""
+    if requires_translation(source_language, output_language):
+        lang = f"Язык post: {output_language}. Переведи факты точно.\n"
+    return (
+        f"{lang}"
+        "Верни JSON с полями headline, post, used_raw_post_ids.\n"
+        f"Вход:\n{items_json}"
+    )
 
 
 def compose_post_with_headline(settings: Settings, post: str, headline: str) -> str:

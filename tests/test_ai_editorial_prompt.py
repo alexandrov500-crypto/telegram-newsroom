@@ -12,4 +12,4 @@ def test_system_prompt_contains_premium_newsroom_structure() -> None:
     settings = minimal_test_settings(summary_style="premium-newsroom")
     prompt = build_system_prompt(settings)
     assert "premium financial newsroom" in prompt
-    assert "hook → что произошло → почему это важно → влияние на рынок → краткий вывод" in prompt
+    assert "cb_economics" in prompt or "единый формат" in prompt

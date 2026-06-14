@@ -9,11 +9,33 @@ from ai.execution_metadata import AIExecutionMetadata
 from db.models import RawPost
 
 
+def _normalize_raw(text: str) -> str:
+    from app.editorial.wire_source_normalize import normalize_wire_source_text
+
+    return normalize_wire_source_text(text)
+
+
+def _shape_wire_fallback(body: str, *, headline: str = "", max_body_chars: int = 2800) -> str:
+    from app.editorial.cb_brief_format import apply_cb_brief_shape, compose_cb_brief_text
+    from app.publisher.draft_builder import finalize_draft_content
+
+    body = _normalize_raw(body)
+    if not body:
+        return ""
+    lines = [ln.strip() for ln in body.splitlines() if ln.strip()]
+    h = headline.strip()
+    rest = "\n\n".join(lines[1:]) if len(lines) > 1 else body
+    if not h and lines:
+        h = lines[0]
+    h, rest = apply_cb_brief_shape(h, rest)
+    shaped = f"{h}\n\n{rest}".strip() if h and rest else compose_cb_brief_text(body, max_chars=max_body_chars)
+    return finalize_draft_content(shaped, max_chars=max_body_chars)
+
+
 def fallback_summarize_cluster(posts: list[RawPost], *, max_body_chars: int = 2800) -> SummarizeClusterResult:
-    """Deterministic digest from raw post text — no network, plain text (no Telegram markdown)."""
+    """Deterministic digest from raw post text — wire-shaped, no Telegram markdown."""
     from app.publisher.draft_builder import (
         complete_story_text,
-        format_single_source_draft,
         polish_channel_post,
         strip_telegram_markdown,
     )
@@ -30,14 +52,10 @@ def fallback_summarize_cluster(posts: list[RawPost], *, max_body_chars: int = 28
 
     if len(posts) == 1:
         p = posts[0]
-        body = format_single_source_draft(
-            {
-                "text": p.text or "",
-                "source": p.channel_name or "",
-                "message_id": p.message_id,
-            },
-            max_chars=max_body_chars,
-        )
+        raw = strip_telegram_markdown(str(p.text or ""))
+        raw = _normalize_raw(raw)
+        chunk = complete_story_text(raw, max_chars=max_body_chars)
+        body = _shape_wire_fallback(chunk, max_body_chars=max_body_chars)
         headline = _headline_from_body(body)
         return SummarizeClusterResult(
             post_text=body,
@@ -49,6 +67,7 @@ def fallback_summarize_cluster(posts: list[RawPost], *, max_body_chars: int = 28
     paragraphs: list[str] = []
     for p in posts[:4]:
         raw = strip_telegram_markdown(str(p.text or ""))
+        raw = _normalize_raw(raw)
         if not raw:
             continue
         chunk = complete_story_text(raw, max_chars=max(400, max_body_chars // max(1, min(len(posts), 4))))
@@ -57,17 +76,11 @@ def fallback_summarize_cluster(posts: list[RawPost], *, max_body_chars: int = 28
     body = polish_channel_post("\n\n".join(paragraphs), max_chars=max_body_chars)
     if not body or body == "News update.":
         body = polish_channel_post(
-            strip_telegram_markdown(posts[0].text or ""),
+            _normalize_raw(strip_telegram_markdown(posts[0].text or "")),
             max_chars=max_body_chars,
         )
-    from app.editorial.cb_brief_format import apply_cb_brief_shape, cb_brief_format_enabled
-
+    body = _shape_wire_fallback(body, max_body_chars=max_body_chars)
     headline = _headline_from_body(body)
-    if cb_brief_format_enabled():
-        lines = [ln.strip() for ln in body.splitlines() if ln.strip()]
-        rest = "\n\n".join(lines[1:]) if len(lines) > 1 else body
-        headline, rest = apply_cb_brief_shape(headline, rest)
-        body = f"{headline}\n\n{rest}".strip() if headline and rest else (rest or headline or body)
     if not used:
         used = [int(p.id) for p in posts if p.id is not None][:8]
     return SummarizeClusterResult(post_text=body, used_ids=used, headline=headline, execution=_exec_meta())
@@ -86,8 +99,8 @@ def _headline_from_body(body: str) -> str:
 def _exec_meta() -> AIExecutionMetadata:
     return AIExecutionMetadata(
         prompt_id="rule_fallback",
-        prompt_version="2",
-        prompt_fingerprint="rule_fallback_v2_plain",
+        prompt_version="3",
+        prompt_fingerprint="rule_fallback_v3_wire",
         model="rule_fallback",
         latency_sec=0.0,
         retry_count=0,

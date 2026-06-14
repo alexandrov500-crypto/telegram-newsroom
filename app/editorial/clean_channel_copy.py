@@ -96,7 +96,14 @@ def scrub_editorial_pipeline_filler(text: str) -> str:
         block = re.sub(r"\s+", " ", block.replace("\n", " ")).strip()
         if block:
             paragraphs.append(block)
-    return "\n\n".join(paragraphs)
+    out = "\n\n".join(paragraphs)
+    try:
+        from app.editorial.wire_source_normalize import normalize_wire_source_text
+
+        out = normalize_wire_source_text(out)
+    except Exception:
+        pass
+    return out
 
 
 def prepare_clean_channel_post(text: str, *, max_chars: int = 2800) -> str:
