@@ -662,6 +662,17 @@ async def _execute_admin_publication_flow_impl(
                 )
                 if gate.permanent_block:
                     await mark_draft_failed(session, draft_id, reason=f"final_gate:{gate.reason}")
+                else:
+                    from app.editorial.wire_recovery import wire_should_fail_blocked_draft
+
+                    if wire_should_fail_blocked_draft(gate.reason):
+                        await mark_draft_failed(session, draft_id, reason=f"final_gate:{gate.reason}")
+                        return AdminPublishDraftResult(
+                            PublishFlowOutcome.APPROVE_DENIED,
+                            draft_content=d.content or "",
+                            draft_sources=d.sources or "",
+                            error=f"released:{gate.reason}",
+                        )
                 return AdminPublishDraftResult(
                     PublishFlowOutcome.APPROVE_DENIED,
                     draft_content=d.content or "",
@@ -1046,6 +1057,14 @@ async def _execute_admin_publication_flow_impl(
             except Exception:
                 pass
             tk = topic_dedupe_key(topic_bucket)
+            try:
+                from app.editorial.news_channel_beat import news_channel_beat_enabled
+                from editorial.governance.diversity_controls import release_source_cooldown
+
+                if news_channel_beat_enabled() and primary_source:
+                    release_source_cooldown(settings.runtime_state_dir, primary_source)
+            except Exception:
+                pass
             await enqueue_post_for_tracking(
                 draft_id=int(draft_id),
                 telegram_post_id=int(first_id),

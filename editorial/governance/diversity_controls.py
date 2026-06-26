@@ -108,6 +108,21 @@ def apply_cooldowns(
     return blocked, codes
 
 
+def release_source_cooldown(runtime_dir: str | None, channel: str) -> bool:
+    """Clear source cooldown after publish so wire can reuse the same feed soon."""
+    ck = str(channel or "").strip().lower()
+    if not ck:
+        return False
+    data = _state(runtime_dir)
+    su = dict(data.get("source_cooldown_until") or {})
+    if ck not in su:
+        return False
+    del su[ck]
+    data["source_cooldown_until"] = su
+    _save(runtime_dir, data)
+    return True
+
+
 def diversity_metrics(runtime_dir: str | None) -> dict[str, Any]:
     data = _state(runtime_dir)
     tc = dict(data.get("topic_counts") or {})

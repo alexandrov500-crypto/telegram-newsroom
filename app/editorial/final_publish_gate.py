@@ -316,13 +316,16 @@ def evaluate_final_publish_gate(
             return v
 
     if trust.rumor_risk >= 0.65 and len(set(chans)) < 2:
-        return FinalPublishGateVerdict(
-            allowed=False,
-            manual_review_required=True,
-            permanent_block=False,
-            reason="rumor_single_source",
-            trust_score=trust.trust_score,
-        )
+        from app.editorial.wire_recovery import wire_bypass_rumor_single_source
+
+        if not wire_bypass_rumor_single_source(sources=chans):
+            return FinalPublishGateVerdict(
+                allowed=False,
+                manual_review_required=True,
+                permanent_block=False,
+                reason="rumor_single_source",
+                trust_score=trust.trust_score,
+            )
 
     if trust.source_contradiction:
         return FinalPublishGateVerdict(

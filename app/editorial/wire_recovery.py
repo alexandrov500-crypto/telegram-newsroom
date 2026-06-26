@@ -47,12 +47,26 @@ def wire_silence_alert_minutes() -> float:
     return _env_float("WIRE_SILENCE_ALERT_MINUTES", 25.0, lo=10.0, hi=120.0)
 
 
+def wire_early_recovery_minutes() -> float:
+    """Silence after which wire bypasses source cooldowns and early governance relax kicks in."""
+    return _env_float("WIRE_EARLY_RECOVERY_MINUTES", 15.0, lo=5.0, hi=60.0)
+
+
 def wire_recovery_silence_minutes() -> float:
     return _env_float("WIRE_RECOVERY_SILENCE_MINUTES", 45.0, lo=15.0, hi=360.0)
 
 
 def wire_recovery_backlog_threshold() -> int:
     return _env_int("WIRE_RECOVERY_BACKLOG_THRESHOLD", 400, lo=50, hi=10000)
+
+
+def wire_early_recovery_active(*, silence_min: float | None = None) -> bool:
+    if not wire_recovery_enabled():
+        return False
+    sm = silence_min if silence_min is not None else minutes_since_last_publish()
+    if sm is not None and sm >= wire_early_recovery_minutes():
+        return True
+    return False
 
 
 def wire_bypass_diversity_cooldowns() -> bool:
@@ -68,6 +82,8 @@ def wire_bypass_diversity_cooldowns() -> bool:
             return True
     except Exception:
         pass
+    if wire_early_recovery_active():
+        return True
     return wire_throughput_recovery_active()
 
 
@@ -138,16 +154,67 @@ def wire_throughput_recovery_active(*, backlog: int | None = None, silence_min: 
     return False
 
 
+def wire_bypass_rumor_single_source(*, sources: list[str] | None = None) -> bool:
+    """Allow tier-1/fastlane single-source items through final gate during wire recovery."""
+    if not wire_recovery_enabled():
+        return False
+    if not _env_bool("WIRE_BYPASS_RUMOR_SINGLE_SOURCE", "true"):
+        return False
+    if wire_early_recovery_active() or wire_throughput_recovery_active():
+        return True
+    chans = [str(c or "").strip().lower() for c in (sources or []) if str(c or "").strip()]
+    if not chans:
+        return False
+    try:
+        from app.editorial.source_tiers import aggregate_source_tier
+        from app.ops.autonomous_publish import _auto_publish_fastlane_sources
+
+        tier_info = aggregate_source_tier(chans)
+        if tier_info.tier <= 2:
+            return True
+        fastlane = _auto_publish_fastlane_sources()
+        dom = max(set(chans), key=chans.count)
+        dom_key = dom.lstrip("@")
+        if dom in fastlane or dom_key in fastlane:
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def wire_should_fail_blocked_draft(reason: str) -> bool:
+    """Fail approved drafts blocked on recoverable gates so publish queue advances."""
+    if not wire_recovery_enabled():
+        return False
+    if reason not in {"rumor_single_source"}:
+        return False
+    try:
+        from app.editorial.news_channel_beat import news_channel_beat_enabled
+
+        if not news_channel_beat_enabled():
+            return False
+        if not _env_bool("EDITORIAL_ZERO_HUMAN_IN_LOOP", "false"):
+            return False
+    except Exception:
+        return False
+    return True
+
+
 async def wire_recovery_snapshot() -> dict[str, Any]:
     backlog = await count_unprocessed_raw_posts()
     silence = minutes_since_last_publish()
-    active = wire_throughput_recovery_active(backlog=backlog, silence_min=silence)
+    full = wire_throughput_recovery_active(backlog=backlog, silence_min=silence)
+    early = wire_early_recovery_active(silence_min=silence)
+    active = full or early
     return {
         "active": active,
+        "early_recovery": early,
+        "full_recovery": full,
         "backlog_unprocessed": backlog,
         "silence_minutes": round(silence, 1) if silence is not None else None,
         "backlog_threshold": wire_recovery_backlog_threshold(),
         "silence_threshold_min": wire_recovery_silence_minutes(),
+        "early_recovery_min": wire_early_recovery_minutes(),
     }
 
 

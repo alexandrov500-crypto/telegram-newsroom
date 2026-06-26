@@ -18,6 +18,38 @@ def _news_beat(monkeypatch):
     monkeypatch.setenv("WIRE_BACKLOG_FRESH_FIRST", "true")
 
 
+def test_wire_early_recovery_at_15min(monkeypatch):
+    from app.editorial import wire_recovery
+
+    monkeypatch.setenv("WIRE_EARLY_RECOVERY_MINUTES", "15")
+    monkeypatch.setattr(wire_recovery, "minutes_since_last_publish", lambda: 16.0)
+
+    class _Ap:
+        anti_pause_active = False
+        max_gap_exceeded = False
+
+    monkeypatch.setattr("app.editorial.stability.anti_pause.evaluate_anti_pause", lambda *a, **k: _Ap())
+    assert wire_recovery.wire_early_recovery_active(silence_min=16.0) is True
+    assert wire_recovery.wire_bypass_diversity_cooldowns() is True
+    assert wire_recovery.wire_throughput_recovery_active(silence_min=16.0, backlog=10) is False
+
+
+def test_wire_bypass_rumor_single_source_on_silence(monkeypatch):
+    from app.editorial import wire_recovery
+
+    monkeypatch.setenv("WIRE_BYPASS_RUMOR_SINGLE_SOURCE", "true")
+    monkeypatch.setattr(wire_recovery, "minutes_since_last_publish", lambda: 20.0)
+    assert wire_recovery.wire_bypass_rumor_single_source(sources=["@banksta"]) is True
+
+
+def test_wire_should_fail_blocked_rumor_draft(monkeypatch):
+    from app.editorial import wire_recovery
+
+    monkeypatch.setenv("EDITORIAL_ZERO_HUMAN_IN_LOOP", "true")
+    assert wire_recovery.wire_should_fail_blocked_draft("rumor_single_source") is True
+    assert wire_recovery.wire_should_fail_blocked_draft("low_trust_score") is False
+
+
 def test_wire_throughput_recovery_on_silence(monkeypatch):
     from app.editorial import wire_recovery
 

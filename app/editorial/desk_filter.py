@@ -77,6 +77,20 @@ _BREAKING_KW = re.compile(
     r"\b(breaking|urgent|just\s+in|экстренно|срочно|взрыв|attack|resignation|war\s+escalation)\b",
     re.I,
 )
+_SPORTS_OFFTOPIC = re.compile(
+    r"\b(футбол|хоккей|nba|nfl|mlb|фифа|fifa|чемпионат\s+мира|олимпиад|"
+    r"матч\s+\d|гол\s+\d|спортивн|sports?\s+news|uefa|champions\s+league)\b",
+    re.I,
+)
+_WEATHER_OFFTOPIC = re.compile(
+    r"(прогноз\s+погод|погод[аеуы]|weather\s+forecast|осадк[иа]|ураган|тайфун|шторм)",
+    re.I,
+)
+_LIFESTYLE_OFFTOPIC = re.compile(
+    r"(день\s+рождени|birthday\s+party|iphone|айфон.*рождаемост|беременност|"
+    r"знаменитост|celebrity|голливуд|hollywood\s+star|tabloid|модн(ый|ая)\s+тренд)",
+    re.I,
+)
 
 _BREAKING_OVERRIDE_SCORE = float(os.getenv("DESK_BREAKING_OVERRIDE_SCORE", "0.75"))
 _URGENCY_OVERRIDE = float(os.getenv("DESK_URGENCY_OVERRIDE", "0.8"))
@@ -119,6 +133,28 @@ def _novelty_score(text: str) -> float:
         return 0.25
     unique_ratio = len(set(words)) / len(words)
     return round(min(1.0, 0.3 + 0.7 * unique_ratio), 4)
+
+
+def _wire_beat_off_topic_reason(text: str, category: str) -> str | None:
+    try:
+        from app.editorial.news_channel_beat import news_channel_beat_enabled
+
+        if not news_channel_beat_enabled():
+            return None
+        if os.getenv("WIRE_BEAT_MACRO_MARKET_ONLY", "true").strip().lower() not in {"1", "true", "yes", "on"}:
+            return None
+    except Exception:
+        return None
+    t = text or ""
+    if _SPORTS_OFFTOPIC.search(t) and not _MACRO.search(t) and not _BREAKING_KW.search(t):
+        return "wire_beat_off_topic_sports"
+    if _WEATHER_OFFTOPIC.search(t) and not _MARKET.search(t) and not _MACRO.search(t):
+        return "wire_beat_off_topic_weather"
+    if _LIFESTYLE_OFFTOPIC.search(t) and not _MACRO.search(t) and not _MARKET.search(t):
+        return "wire_beat_off_topic_lifestyle"
+    if category not in {"macro", "market", "breaking"} and category != "noise":
+        return "wire_beat_off_topic_category"
+    return None
 
 
 def _detect_category(text: str, escore: EditorialScore) -> str:
@@ -265,6 +301,10 @@ def evaluate_desk_filter(
             return _finish(
                 _reject(ref_reject, "reject", q, ctx, breakdown, runtime_dir=runtime_dir)
             )
+
+    off_topic = _wire_beat_off_topic_reason(text or "", category)
+    if off_topic:
+        return _finish(_reject(off_topic, "reject", q, ctx, breakdown, runtime_dir=runtime_dir))
 
     if bypass:
         decision = DeskDecision(
@@ -463,6 +503,10 @@ def _desk_reason_code(reason: str, category: str) -> str:
         "incomplete_teaser_no_body": "desk.noise.incomplete_teaser",
         "bureaucratic_filler_low_signal": "desk.reject.bureaucratic_filler",
         "hidden_advertising_or_native_ad": "desk.reject.hidden_advertising",
+        "wire_beat_off_topic_sports": "desk.reject.wire_off_topic_sports",
+        "wire_beat_off_topic_weather": "desk.reject.wire_off_topic_weather",
+        "wire_beat_off_topic_lifestyle": "desk.reject.wire_off_topic_lifestyle",
+        "wire_beat_off_topic_category": "desk.reject.wire_off_topic_category",
     }
     return mapping.get(reason, f"{prefix}.{reason}")
 
