@@ -26,9 +26,37 @@ _QUESTION_HOOK = re.compile(r"^(?:что|как|почему|зачем|кто)\
 _LEAD_EMOJI = re.compile(r"^[\U0001F300-\U0001FAFF\u2600-\u27BF\uFE0F\u200d]+\s*", re.UNICODE)
 
 CB_BRIEF_HEADLINE_MAX = 120
-CB_BRIEF_BODY_MAX_CHARS = 720
+
+
+def _cb_body_max_chars() -> int:
+    try:
+        from app.editorial.wire_post_format import wire_post_limits
+
+        return wire_post_limits().body_max_chars
+    except Exception:
+        pass
+    try:
+        return max(720, int(os.getenv("WIRE_POST_BODY_MAX_CHARS", "1050")))
+    except ValueError:
+        return 1050
+
+
+def _cb_max_sentences() -> int:
+    try:
+        from app.editorial.wire_post_format import wire_post_limits
+
+        return wire_post_limits().max_sentences
+    except Exception:
+        pass
+    try:
+        return int(os.getenv("WIRE_POST_MAX_SENTENCES", "6"))
+    except ValueError:
+        return 6
+
+
+CB_BRIEF_BODY_MAX_CHARS = _cb_body_max_chars()
 CB_BRIEF_MAX_PARAGRAPHS = 3
-CB_BRIEF_MAX_SENTENCES = 5
+CB_BRIEF_MAX_SENTENCES = _cb_max_sentences()
 
 
 def cb_brief_format_enabled() -> bool:
@@ -70,7 +98,14 @@ def _finish_sentence(s: str) -> str:
     return t
 
 
-def normalize_cb_body(body: str, *, why_it_matters: str = "", max_chars: int = CB_BRIEF_BODY_MAX_CHARS) -> str:
+def normalize_cb_body(body: str, *, why_it_matters: str = "", max_chars: int | None = None) -> str:
+    limit = max_chars if max_chars is not None else _cb_body_max_chars()
+    try:
+        from app.editorial.wire_post_format import normalize_wire_body
+
+        return normalize_wire_body(body, why_it_matters=why_it_matters)
+    except Exception:
+        pass
     t = (body or "").strip()
     t = _INTRIGUE.sub("", t).strip()
     why = (why_it_matters or "").strip()

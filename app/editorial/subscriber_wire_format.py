@@ -23,12 +23,17 @@ from hashlib import md5
 from typing import Any
 
 from app.editorial.cb_brief_format import (
-    CB_BRIEF_BODY_MAX_CHARS,
     CB_BRIEF_HEADLINE_MAX,
     apply_cb_brief_shape,
     normalize_cb_body,
     normalize_cb_headline,
 )
+
+
+def _wire_body_max_chars() -> int:
+    from app.editorial.wire_post_format import wire_post_limits
+
+    return wire_post_limits().body_max_chars
 from utils.telegram_html import escape_telegram_html, sanitize_telegram_html_output
 
 _BREAKING = re.compile(r"(?:^|\b)(?:breaking|срочно|urgent|экстрен|молния)\b", re.I)
@@ -144,40 +149,49 @@ def build_subscriber_wire_parts(
     *,
     why_it_matters: str = "",
     growth_meta: dict[str, Any] | None = None,
-    max_body_chars: int = CB_BRIEF_BODY_MAX_CHARS,
+    max_body_chars: int | None = None,
 ) -> SubscriberWireParts:
+    body_limit = max_body_chars if max_body_chars is not None else _wire_body_max_chars()
     raw = (text or "").strip()
     breaking = is_breaking_story(raw, growth_meta=growth_meta)
     lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
     if len(lines) >= 2 and len(lines[0]) <= CB_BRIEF_HEADLINE_MAX + 20:
         headline, body = apply_cb_brief_shape(lines[0], "\n\n".join(lines[1:]), why_it_matters="")
     else:
-        headline, body = apply_cb_brief_shape("", raw, why_it_matters="")
+        headline, body = apply_cb_brief_shape("", raw, why_it_matters=why_it_matters)
 
-    body = normalize_cb_body(body, max_chars=max_body_chars)
+    body = normalize_cb_body(body, why_it_matters=why_it_matters, max_chars=body_limit)
     headline = normalize_cb_headline(headline, body_fallback=body)
 
-    ref_score = 0.0
-    if growth_meta:
-        try:
-            ref_score = float(growth_meta.get("virality_score") or 0)
-        except (TypeError, ValueError):
-            ref_score = 0.0
-        cp = growth_meta.get("channel_product")
-        if isinstance(cp, dict) and cp.get("reference_forward_score") is not None:
-            ref_score = max(ref_score, float(cp["reference_forward_score"]))
+    integrated = os.getenv("WIRE_POST_INTEGRATED_CLOSURE", "true").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    takeaway = ""
+    if not integrated:
+        ref_score = 0.0
+        if growth_meta:
+            try:
+                ref_score = float(growth_meta.get("virality_score") or 0)
+            except (TypeError, ValueError):
+                ref_score = 0.0
+            cp = growth_meta.get("channel_product")
+            if isinstance(cp, dict) and cp.get("reference_forward_score") is not None:
+                ref_score = max(ref_score, float(cp["reference_forward_score"]))
 
-    takeaway = extract_subscriber_takeaway(
-        body,
-        why_it_matters=why_it_matters,
-        reference_forward_score=ref_score,
-    )
-    if takeaway:
-        sents = [s.strip() for s in _SENTENCE_SPLIT.split(body) if s.strip()]
-        if sents and takeaway.rstrip(".!? ").lower() in sents[-1].lower():
-            body = " ".join(sents[:-1]).strip()
-            if body:
-                body = normalize_cb_body(body, max_chars=max_body_chars)
+        takeaway = extract_subscriber_takeaway(
+            body,
+            why_it_matters=why_it_matters,
+            reference_forward_score=ref_score,
+        )
+        if takeaway:
+            sents = [s.strip() for s in _SENTENCE_SPLIT.split(body) if s.strip()]
+            if sents and takeaway.rstrip(".!? ").lower() in sents[-1].lower():
+                body = " ".join(sents[:-1]).strip()
+                if body:
+                    body = normalize_cb_body(body, max_chars=body_limit)
 
     bucket = _story_bucket(f"{headline}\n{body}")
     return SubscriberWireParts(
@@ -192,15 +206,16 @@ def build_subscriber_wire_parts(
 def compose_subscriber_wire_text(
     text: str,
     *,
-    max_chars: int = CB_BRIEF_BODY_MAX_CHARS + CB_BRIEF_HEADLINE_MAX + 120,
+    max_chars: int | None = None,
     growth_meta: dict[str, Any] | None = None,
 ) -> str:
+    limit = max_chars if max_chars is not None else (_wire_body_max_chars() + CB_BRIEF_HEADLINE_MAX + 120)
     parts = build_subscriber_wire_parts(text, growth_meta=growth_meta)
     out = parts.to_plain_block()
-    if len(out) > max_chars:
+    if len(out) > limit:
         from app.publisher.draft_builder import complete_story_text
 
-        out = complete_story_text(out, max_chars=max_chars)
+        out = complete_story_text(out, max_chars=limit)
     return out.strip()
 
 
@@ -356,7 +371,9 @@ def render_subscriber_wire_html(
 
 
 def subscriber_wire_env_defaults() -> dict[str, str]:
-    return {
+    from app.editorial.wire_post_format import wire_post_env_defaults
+
+    defaults = {
         "NEWSROOM_PUBLISH_FORMAT": "subscriber_wire",
         "NEWSROOM_CB_BRIEF_FORMAT": "true",
         "NEWSROOM_CLEAN_CHANNEL_COPY": "true",
@@ -365,7 +382,10 @@ def subscriber_wire_env_defaults() -> dict[str, str]:
         "NEWSROOM_ENGAGEMENT_HOOK_ENABLED": "false",
         "NEWSROOM_OPEN_LOOP_ENABLED": "false",
         "NEWSROOM_BRAND_FOOTER_ENABLED": "false",
-        "CHANNEL_PRODUCT_SHARE_NUDGE": "true",
+        "CHANNEL_PRODUCT_SHARE_NUDGE": "false",
         "CHANNEL_PRODUCT_OPEN_LOOP": "false",
         "GROWTH_SIGNATURE_ENABLED": "false",
+        "WIRE_POST_INTEGRATED_CLOSURE": "true",
     }
+    defaults.update(wire_post_env_defaults())
+    return defaults
