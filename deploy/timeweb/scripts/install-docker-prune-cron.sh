@@ -10,7 +10,7 @@ MARKER="# newsroom-docker-prune"
 [[ -x "${SCRIPT}" ]] || chmod +x "${SCRIPT}"
 mkdir -p "$(dirname "${LOG_FILE}")"
 
-CRON_LINE="30 4 * * * ${MARKER} flock -n /tmp/newsroom-docker-prune.lock ${SCRIPT} >> ${LOG_FILE} 2>&1"
+CRON_LINE="30 4 * * * flock -n /tmp/newsroom-docker-prune.lock ${SCRIPT} >> ${LOG_FILE} 2>&1 ${MARKER}"
 
 tmp="$(mktemp)"
 crontab -l 2>/dev/null | grep -v "${MARKER}" > "${tmp}" || true
