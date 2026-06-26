@@ -119,7 +119,7 @@ make rebuild   # pick up new TELETHON_SESSION_* in running service
 
 1. **Structured events** — use existing `utils.structured_log.log_event` for operational JSON suffixes; keep `LOG_LEVEL=INFO` in production.
 2. **stdout/stderr** — `utils.logging_config.setup_logging` writes to stdout; Docker captures both streams.
-3. **Rotation** — compose `logging.options.max-size` / `max-file` (20m × 5). On host: systemd timer `newsroom-docker-prune.timer` (daily 04:30 UTC) runs `deploy/timeweb/scripts/docker-prune.sh` — build cache + unused images; volumes are never pruned. Install: `sudo bash deploy/timeweb/scripts/install-docker-prune-timer.sh`.
+3. **Rotation** — compose `logging.options.max-size` / `max-file` (20m × 5). On host: `newsroom-docker-prune.timer` (systemd, if root) or user crontab daily 04:30 UTC runs `deploy/timeweb/scripts/docker-prune.sh` — build cache + unused images; volumes are never pruned. Install: `bash deploy/timeweb/scripts/install-docker-prune-timer.sh` (falls back to cron without sudo).
 4. **Field caps** — `LOG_MAX_FIELD_LEN=480` limits Telethon/HTTP noise in structured fields.
 5. **File logs (optional)** — mount `/data/logs`; for bot-side `RotatingFileHandler`, point paths under `/data/logs` only if you enable that subsystem; default `app.main` stays stdout-first.
 

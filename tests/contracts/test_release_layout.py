@@ -25,6 +25,7 @@ DEPLOY_FILES = (
     "deploy/systemd/newsroom-docker-prune.timer",
     "deploy/timeweb/scripts/docker-prune.sh",
     "deploy/timeweb/scripts/install-docker-prune-timer.sh",
+    "deploy/timeweb/scripts/install-docker-prune-cron.sh",
 )
 
 RUNTIME_SAMPLES = (

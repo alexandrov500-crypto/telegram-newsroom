@@ -250,15 +250,17 @@ echo '{"mode":"production","updated_at":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","re
 
 recreate_newsroom_only
 
-if command -v systemctl >/dev/null; then
-  log "ensure docker prune systemd timer"
+if command -v systemctl >/dev/null || command -v crontab >/dev/null; then
+  log "ensure docker prune schedule"
   if [[ -w /etc/systemd/system ]]; then
-    bash "${REPO_ROOT}/deploy/timeweb/scripts/install-docker-prune-timer.sh" || log "docker prune timer install skipped"
+    bash "${REPO_ROOT}/deploy/timeweb/scripts/install-docker-prune-timer.sh" || log "docker prune schedule install skipped"
   elif sudo -n true 2>/dev/null; then
     sudo REPO_ROOT="${REPO_ROOT}" bash "${REPO_ROOT}/deploy/timeweb/scripts/install-docker-prune-timer.sh" \
-      || log "docker prune timer install skipped"
+      || log "docker prune schedule install skipped"
+  elif command -v crontab >/dev/null; then
+    bash "${REPO_ROOT}/deploy/timeweb/scripts/install-docker-prune-cron.sh" || log "docker prune cron install skipped"
   else
-    log "skip docker prune timer (no write access to /etc/systemd/system)"
+    log "skip docker prune schedule (no systemd/cron)"
   fi
 fi
 
