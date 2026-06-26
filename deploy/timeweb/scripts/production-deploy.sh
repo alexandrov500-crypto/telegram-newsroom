@@ -250,6 +250,18 @@ echo '{"mode":"production","updated_at":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","re
 
 recreate_newsroom_only
 
+if command -v systemctl >/dev/null; then
+  log "ensure docker prune systemd timer"
+  if [[ -w /etc/systemd/system ]]; then
+    bash "${REPO_ROOT}/deploy/timeweb/scripts/install-docker-prune-timer.sh" || log "docker prune timer install skipped"
+  elif sudo -n true 2>/dev/null; then
+    sudo REPO_ROOT="${REPO_ROOT}" bash "${REPO_ROOT}/deploy/timeweb/scripts/install-docker-prune-timer.sh" \
+      || log "docker prune timer install skipped"
+  else
+    log "skip docker prune timer (no write access to /etc/systemd/system)"
+  fi
+fi
+
 for i in $(seq 1 30); do
   st=$(docker inspect --format='{{.State.Health.Status}}' telegram-newsroom 2>/dev/null || echo "starting")
   log "health check ${i}/30: ${st}"

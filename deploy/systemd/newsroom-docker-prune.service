@@ -1,0 +1,27 @@
+# Docker build-cache and unused image cleanup (VPS disk hygiene).
+# Install:
+#   sudo bash /opt/newsroom/deploy/timeweb/scripts/install-docker-prune-timer.sh
+#
+# Manual run:
+#   sudo systemctl start newsroom-docker-prune.service
+#   journalctl -u newsroom-docker-prune.service -n 100 --no-pager
+
+[Unit]
+Description=Telegram Newsroom Docker cache prune
+Documentation=file:/opt/newsroom/deploy/timeweb/README.md
+After=docker.service network-online.target
+Wants=docker.service network-online.target
+
+[Service]
+Type=oneshot
+Environment=DOCKER_PRUNE_DISK_WARN_PCT=75
+Environment=DOCKER_PRUNE_DISK_CRIT_PCT=85
+Environment=DOCKER_PRUNE_BUILDER_KEEP_HOURS=48
+ExecStart=/bin/bash /opt/newsroom/deploy/timeweb/scripts/docker-prune.sh
+Restart=no
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=newsroom-docker-prune
+
+[Install]
+WantedBy=multi-user.target

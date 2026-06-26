@@ -21,6 +21,10 @@ DEPLOY_FILES = (
     "deploy/docker-compose.production-lite.yml",
     "deploy/systemd/newsroom-nightly.service",
     "deploy/systemd/newsroom-nightly.timer",
+    "deploy/systemd/newsroom-docker-prune.service",
+    "deploy/systemd/newsroom-docker-prune.timer",
+    "deploy/timeweb/scripts/docker-prune.sh",
+    "deploy/timeweb/scripts/install-docker-prune-timer.sh",
 )
 
 RUNTIME_SAMPLES = (

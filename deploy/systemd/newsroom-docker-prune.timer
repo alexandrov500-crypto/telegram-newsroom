@@ -1,0 +1,15 @@
+# Daily Docker cache cleanup — 04:30 UTC (after newsroom-nightly at 03:15 UTC).
+# Weekly extra run Sunday 05:00 UTC when build cache tends to accumulate after deploys.
+
+[Unit]
+Description=Run Telegram Newsroom Docker cache prune on schedule
+Documentation=file:/opt/newsroom/deploy/timeweb/README.md
+
+[Timer]
+OnCalendar=*-*-* 04:30:00 UTC
+OnCalendar=Sun *-*-* 05:00:00 UTC
+Persistent=true
+Unit=newsroom-docker-prune.service
+
+[Install]
+WantedBy=timers.target
