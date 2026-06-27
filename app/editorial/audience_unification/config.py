@@ -18,7 +18,16 @@ def _env_int(name: str, default: int, *, lo: int, hi: int) -> int:
 
 
 def auh_enabled() -> bool:
-    return _env_bool("EDITORIAL_AUDIENCE_UNIFICATION_LAYER", "true")
+    if not _env_bool("EDITORIAL_AUDIENCE_UNIFICATION_LAYER", "true"):
+        return False
+    try:
+        from app.editorial.news_channel_beat import news_channel_beat_enabled
+
+        if news_channel_beat_enabled():
+            return False
+    except Exception:
+        pass
+    return True
 
 
 def ues_publish_immediate_threshold() -> int:

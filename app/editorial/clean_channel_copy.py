@@ -18,9 +18,26 @@ _BOILERPLATE_NEXT = re.compile(
     re.I,
 )
 _AUH_CONTEXT = re.compile(
-    r"\n?\n?(?:Геополитический\s+контекст|Связь\s+с\s+геополитикой|"
+    r"\n?\n?(?:Геополитический\s+контекст|"
     r"Компании\s+пересматривают\s+стратегии|Рынки\s+уже\s+закладывают|"
     r"Технологический\s+сектор\s+реагирует)[^.!?]*[.!?]?\s*",
+    re.I,
+)
+_AUH_MACRO = re.compile(
+    r"\n?\n?(?:Связь\s+с\s+макроэкономикой|Связь\s+с\s+рынками|Связь\s+с\s+технологиями|"
+    r"Связь\s+с\s+геополитикой|Связь\s+с\s+бизнесом)[^.!?]*[.!?]?\s*",
+    re.I,
+)
+_AUH_WHAT = re.compile(
+    r"\n?\n?Что\s+происходит\s*:\s*ключевое\s+изменение\s+фиксируется[^.!?]*[.!?]?\s*",
+    re.I,
+)
+_AUH_WHY = re.compile(
+    r"\n?\n?Почему\s+важно\s*:\s*это\s+влияет\s+на\s+решения[^.!?]*[.!?]?\s*",
+    re.I,
+)
+_SHARE_NUDGE = re.compile(
+    r"\n?\n?Перешлите\s+тем,\s+кому\s+актуально[^.!?]*[.!?]?\s*",
     re.I,
 )
 _VIDEO_TEASER = re.compile(
@@ -81,6 +98,10 @@ def scrub_editorial_pipeline_filler(text: str) -> str:
         t = _BOILERPLATE_WHY.sub("\n", t)
         t = _BOILERPLATE_NEXT.sub("\n", t)
         t = _AUH_CONTEXT.sub("\n", t)
+        t = _AUH_MACRO.sub("\n", t)
+        t = _AUH_WHAT.sub("\n", t)
+        t = _AUH_WHY.sub("\n", t)
+        t = _SHARE_NUDGE.sub("\n", t)
         t = _VIDEO_TEASER.sub("\n", t)
         t = _LABEL_BLOCK.sub("", t)
         if t == prev:
@@ -97,6 +118,12 @@ def scrub_editorial_pipeline_filler(text: str) -> str:
         if block:
             paragraphs.append(block)
     out = "\n\n".join(paragraphs)
+    try:
+        from app.editorial.wire_post_format import strip_wire_pipeline_boilerplate
+
+        out = strip_wire_pipeline_boilerplate(out)
+    except Exception:
+        pass
     try:
         from app.editorial.wire_source_normalize import normalize_wire_source_text
 

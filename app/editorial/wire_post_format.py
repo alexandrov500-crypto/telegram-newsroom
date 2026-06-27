@@ -35,6 +35,58 @@ _CONCLUSION_MARKERS = re.compile(
     r"риск|ставк|инфляц|рынк|инвестор|регулятор|итог|в\s+итоге)",
     re.I,
 )
+_PIPELINE_BOILERPLATE = re.compile(
+    r"(?:"
+    r"что\s+происходит\s*:\s*ключевое\s+изменение\s+фиксируется[^.!?]*[.!?]?"
+    r"|почему\s+важно\s*:\s*это\s+влияет\s+на\s+решения[^.!?]*[.!?]?"
+    r"|связь\s+с\s+макроэкономикой\s*:[^.!?]*[.!?]?"
+    r"|связь\s+с\s+(?:рынками|технологиями|геополитикой|бизнесом)\s*:[^.!?]*[.!?]?"
+    r"|перешлите\s+тем,\s+кому\s+актуально[^.!?]*[.!?]?"
+    r")",
+    re.I,
+)
+_THESIS_BULLET = "▸"
+
+
+def wire_thesis_bullets_enabled() -> bool:
+    return os.getenv("WIRE_POST_THESIS_BULLETS", "true").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def strip_wire_pipeline_boilerplate(text: str) -> str:
+    t = (text or "").strip()
+    if not t:
+        return ""
+    for _ in range(6):
+        prev = t
+        t = _PIPELINE_BOILERPLATE.sub(" ", t)
+        t = re.sub(r"\s+", " ", t).strip()
+        t = re.sub(r"\n{3,}", "\n\n", t).strip()
+        if t == prev:
+            break
+    try:
+        from app.editorial.content_quality import strip_editorial_template_noise
+
+        t = strip_editorial_template_noise(t)
+    except Exception:
+        pass
+    return t.strip()
+
+
+def _sentences_to_thesis_block(sentences: list[str]) -> str:
+    lines: list[str] = []
+    for s in sentences:
+        line = finish_sentence(s)
+        if not line:
+            continue
+        if line.startswith(_THESIS_BULLET):
+            lines.append(line)
+        else:
+            lines.append(f"{_THESIS_BULLET} {line}")
+    return "\n".join(lines)
+
+
+def _body_already_thesis(text: str) -> bool:
+    return bool(re.search(r"(?:^|\n)\s*▸", text or ""))
 
 
 @dataclass(frozen=True)
@@ -126,7 +178,8 @@ def normalize_wire_body(
     from app.publisher.draft_builder import complete_story_text
 
     limits = wire_post_limits()
-    t = _INTRIGUE.sub("", (body or "").strip()).strip()
+    t = strip_wire_pipeline_boilerplate((body or "").strip())
+    t = _INTRIGUE.sub("", t).strip()
     why = (why_it_matters or "").strip()
     if why and why.lower() not in t.lower() and len(why) >= 24:
         why_s = finish_sentence(why)
@@ -146,6 +199,17 @@ def normalize_wire_body(
         pass  # keep what we have — AI/fallback may be short; don't pad
 
     sents = [finish_sentence(s) for s in sents]
+
+    if _body_already_thesis(t):
+        out = "\n".join(ln.strip() for ln in t.splitlines() if ln.strip())
+        return ensure_complete_ending(out)
+
+    if wire_thesis_bullets_enabled():
+        out = _sentences_to_thesis_block(sents)
+        out = ensure_complete_ending(out)
+        if len(out) > limits.body_max_chars:
+            out = complete_story_text(out, max_chars=limits.body_max_chars)
+        return out.strip()
 
     if len(sents) >= 3 and not _has_conclusion(sents):
         last = sents[-1]
@@ -196,4 +260,6 @@ def wire_post_env_defaults() -> dict[str, str]:
         "WIRE_POST_TARGET_CHARS_MIN": "520",
         "WIRE_POST_TARGET_CHARS_MAX": "980",
         "WIRE_POST_INTEGRATED_CLOSURE": "true",
+        "WIRE_POST_THESIS_BULLETS": "true",
+        "EDITORIAL_AUDIENCE_UNIFICATION_LAYER": "false",
     }

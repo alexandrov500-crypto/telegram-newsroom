@@ -35,7 +35,9 @@ def test_reader_profile_multi_interest() -> None:
     assert r.reader_unification_score >= 50
 
 
-def test_transform_adds_implication_layers() -> None:
+def test_transform_adds_implication_layers(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NEWSROOM_CLEAN_CHANNEL_COPY", "false")
+    monkeypatch.setenv("NEWSROOM_CB_BRIEF_FORMAT", "false")
     body = "Компания X объявила о слиянии."
     out, meta = transform_for_unified_audience(body, matched_interests=("business",))
     assert meta["transformed"] is True
@@ -43,7 +45,9 @@ def test_transform_adds_implication_layers() -> None:
     assert "Что дальше" in out
 
 
-def test_transform_explains_jargon() -> None:
+def test_transform_explains_jargon(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NEWSROOM_CLEAN_CHANNEL_COPY", "false")
+    monkeypatch.setenv("NEWSROOM_CB_BRIEF_FORMAT", "false")
     body = "Spread widened 15 b.p. after FOMC dot plot."
     out, meta = transform_for_unified_audience(body)
     assert "jargon_explained" in meta["rules_applied"] or "б.п." in out.lower()

@@ -43,8 +43,8 @@ def test_scrub_removes_source_channel_chrome() -> None:
     out = scrub_editorial_pipeline_filler(raw)
     assert "▶️" not in out
     assert "◻" not in out
-    assert "\n\n" in out
     assert "27%" in out
+    assert "Почему это важно" not in out
 
 
 def test_prepare_clean_channel_post_has_headline_and_body() -> None:

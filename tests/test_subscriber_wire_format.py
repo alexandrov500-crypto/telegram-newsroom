@@ -65,7 +65,8 @@ def test_breaking_prefix() -> None:
     assert parts.to_plain_block().startswith("⚡")
 
 
-def test_share_nudge_from_channel_product() -> None:
+def test_share_nudge_from_channel_product(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NEWSROOM_CHANNEL_BEAT", raising=False)
     raw = "Fed сохранила ставку.\n\nРынок оценивает траекторию инфляции."
     growth_meta = {
         "virality_score": 72,

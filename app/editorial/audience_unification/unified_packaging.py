@@ -26,6 +26,13 @@ def apply_unified_packaging(
     flagship: bool = False,
     existing_hashtags: list[str] | None = None,
 ) -> tuple[str, dict[str, Any]]:
+    try:
+        from app.editorial.news_channel_beat import news_channel_beat_enabled
+
+        if news_channel_beat_enabled():
+            return (body or "").strip(), {"structure_applied": False, "skipped": "wire_beat"}
+    except Exception:
+        pass
     text = (body or "").strip()
     meta: dict[str, Any] = {"structure_applied": False, "layers": {}}
     if not text:

@@ -156,11 +156,18 @@ def apply_cb_brief_shape(
     body = normalize_cb_body(summary, why_it_matters=why_it_matters)
     h = normalize_cb_headline(headline, body_fallback=body or summary)
     if h and body:
+        try:
+            from app.editorial.wire_source_normalize import strip_headline_leadin
+
+            body = strip_headline_leadin(body, h)
+            body = normalize_cb_body(body, why_it_matters=why_it_matters)
+        except Exception:
+            pass
         h_norm = h.lower().strip(" .")
         body_norm = body.lower()
         if body_norm.startswith(h_norm):
             body = body[len(h) :].lstrip(" .—-\n")
-            body = normalize_cb_body(body)
+            body = normalize_cb_body(body, why_it_matters=why_it_matters)
     return h, body
 
 

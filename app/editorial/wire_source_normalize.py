@@ -16,6 +16,18 @@ _INLINE_LABEL = re.compile(
     re.I,
 )
 _SLASH_INITIATIVE = re.compile(r"\s*/\s*Инициатив[а-яё]*[^.!?]*[.!?]?\s*", re.I)
+_RBC_TV_WRAP = re.compile(
+    r"главные\s+новости\s*[—–-]\s*в\s+утреннем\s+выпуске\s+на\s+телеканале\s+рбк\s*:?",
+    re.I,
+)
+_TIMESTAMP_BULLET = re.compile(
+    r"^\s*(?:▪\s*)?\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}\s*[—–-]\s*",
+    re.I,
+)
+_INLINE_TIMESTAMP = re.compile(
+    r"▪\s*\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}\s*[—–-]\s*",
+    re.I,
+)
 
 
 def _sentences(text: str) -> list[str]:
@@ -24,6 +36,74 @@ def _sentences(text: str) -> list[str]:
 
 def _norm_key(s: str) -> str:
     return re.sub(r"[^\w]+", " ", (s or "").lower()).strip()
+
+
+def _extract_tv_digest_stories(text: str) -> list[str]:
+    t = _RBC_TV_WRAP.sub("", text or "")
+    t = re.sub(r"главные\s+новости\s*[—–-].*?рбк\s*:?", "", t, flags=re.I)
+    chunks = re.split(r"\s*▪\s*", t)
+    stories: list[str] = []
+    for chunk in chunks:
+        s = _INLINE_TIMESTAMP.sub("", chunk.strip())
+        s = _TIMESTAMP_BULLET.sub("", s).strip()
+        s = re.sub(r"\s+", " ", s).strip(" .")
+        if len(s) < 12:
+            continue
+        if s.lower().startswith("главные новости"):
+            continue
+        if _norm_key(s) in {_norm_key(x) for x in stories}:
+            continue
+        stories.append(s)
+    return stories
+
+
+def normalize_rbc_tv_roundup(text: str) -> str | None:
+    """Turn RBC morning-TV timestamp digests into scannable thesis bullets."""
+    raw = (text or "").strip()
+    if not raw:
+        return None
+    if not (_RBC_TV_WRAP.search(raw) or raw.count("▪") >= 2 or _INLINE_TIMESTAMP.search(raw)):
+        return None
+    stories = _extract_tv_digest_stories(raw)
+    if len(stories) < 2:
+        return None
+    headline = stories[0]
+    if not headline.endswith((".", "!", "?")):
+        headline = f"{headline}."
+    bullets = []
+    for story in stories[1:]:
+        line = story.rstrip(".!? ")
+        if line:
+            bullets.append(f"▸ {line}.")
+    if not bullets:
+        bullets = [f"▸ {s.rstrip('.!? ')}." for s in stories[1:] if s.strip()]
+    if not bullets:
+        return None
+    return f"{headline}\n\n" + "\n".join(bullets)
+
+
+def strip_headline_leadin(body: str, headline: str) -> str:
+    """Remove body prefix that repeats the headline (common in @cb_economics / @rbc_news)."""
+    b = (body or "").strip()
+    h = (headline or "").strip()
+    if not b or not h:
+        return b
+    h_key = _norm_key(h)
+    b_key = _norm_key(b)
+    if b_key == h_key:
+        return ""
+    if b_key.startswith(h_key):
+        rest = b[len(h) :].lstrip(" .—-\n")
+        return rest.strip()
+    first_para = b.split("\n\n", 1)[0]
+    if _norm_key(first_para) == h_key or _norm_key(first_para).startswith(h_key):
+        return b.split("\n\n", 1)[1].strip() if "\n\n" in b else ""
+    words_h = h.split()
+    if len(words_h) >= 4:
+        prefix = " ".join(words_h[: min(8, len(words_h))])
+        if b.lower().startswith(prefix.lower()) and len(b) > len(prefix) + 20:
+            return b[len(prefix) :].lstrip(" .—-\n")
+    return b
 
 
 def dedupe_headline_in_paragraph(text: str) -> str:
@@ -115,6 +195,9 @@ def normalize_wire_source_text(text: str) -> str:
     t = (text or "").strip()
     if not t:
         return ""
+    tv = normalize_rbc_tv_roundup(t)
+    if tv:
+        t = tv
     t = _INLINE_EMOJI.sub(" ", t)
     while _LEAD_EMOJI.search(t):
         t = _LEAD_EMOJI.sub("", t, count=1).strip()

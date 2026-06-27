@@ -150,6 +150,8 @@ def apply_news_channel_beat_defaults() -> None:
         "EDITORIAL_PRODUCT_OS": "false",
         "EDITORIAL_EML_LAYER": "false",
         "EDITORIAL_CCD_LAYER": "false",
+        "EDITORIAL_AUDIENCE_UNIFICATION_LAYER": "false",
+        "WIRE_POST_THESIS_BULLETS": "true",
         "GROWTH_PEAK_HOUR_START": "10",
         "GROWTH_PEAK_HOUR_END": "18",
         "AUTONOMOUS_SOURCE_CURATION_ENABLED": "true",

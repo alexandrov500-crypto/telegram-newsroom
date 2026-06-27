@@ -28,13 +28,13 @@ from app.editorial.cb_brief_format import (
     normalize_cb_body,
     normalize_cb_headline,
 )
+from utils.telegram_html import escape_telegram_html, sanitize_telegram_html_output
 
 
 def _wire_body_max_chars() -> int:
     from app.editorial.wire_post_format import wire_post_limits
 
     return wire_post_limits().body_max_chars
-from utils.telegram_html import escape_telegram_html, sanitize_telegram_html_output
 
 _BREAKING = re.compile(r"(?:^|\b)(?:breaking|срочно|urgent|экстрен|молния)\b", re.I)
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
@@ -236,6 +236,13 @@ def resolve_share_nudge(
     story_text: str,
     growth_meta: dict[str, Any] | None = None,
 ) -> str:
+    try:
+        from app.editorial.news_channel_beat import news_channel_beat_enabled
+
+        if news_channel_beat_enabled():
+            return ""
+    except Exception:
+        pass
     cp = (growth_meta or {}).get("channel_product")
     if isinstance(cp, dict):
         if not cp.get("enable_share_nudge"):
@@ -334,8 +341,17 @@ def render_subscriber_wire_html(
             html_parts.append(f"<b>{head}</b>")
 
     if parts.body:
-        paras = [p.strip() for p in parts.body.split("\n\n") if p.strip()]
-        html_parts.append("\n\n".join(highlight_key_numbers_html(p) for p in paras))
+        if parts.body.lstrip().startswith("▸"):
+            html_parts.append(
+                "\n".join(
+                    highlight_key_numbers_html(ln.strip())
+                    for ln in parts.body.splitlines()
+                    if ln.strip()
+                )
+            )
+        else:
+            paras = [p.strip() for p in parts.body.split("\n\n") if p.strip()]
+            html_parts.append("\n\n".join(highlight_key_numbers_html(p) for p in paras))
 
     if parts.takeaway:
         html_parts.append(f"<i>→ {escape_telegram_html(parts.takeaway)}</i>")
