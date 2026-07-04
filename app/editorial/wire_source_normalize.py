@@ -83,26 +83,31 @@ def normalize_rbc_tv_roundup(text: str) -> str | None:
 
 
 def strip_headline_leadin(body: str, headline: str) -> str:
-    """Remove body prefix that repeats the headline (common in @cb_economics / @rbc_news)."""
+    """
+    Remove a body prefix that repeats the headline (common in @cb_economics / @rbc_news).
+
+    Only complete units (line / sentence / paragraph) equal to the headline are
+    dropped. A headline that is merely a truncated prefix of the first sentence
+    must NOT trigger stripping — slicing there chops the story mid-thought.
+    """
     b = (body or "").strip()
     h = (headline or "").strip()
     if not b or not h:
         return b
     h_key = _norm_key(h)
-    b_key = _norm_key(b)
-    if b_key == h_key:
+    if _norm_key(b) == h_key:
         return ""
-    if b_key.startswith(h_key):
-        rest = b[len(h) :].lstrip(" .—-\n")
-        return rest.strip()
+    first_line = b.split("\n", 1)[0].strip()
+    if _norm_key(first_line.lstrip("▸• ").rstrip(" .")) == h_key.rstrip(" ."):
+        return b.split("\n", 1)[1].strip() if "\n" in b else ""
     first_para = b.split("\n\n", 1)[0]
-    if _norm_key(first_para) == h_key or _norm_key(first_para).startswith(h_key):
+    if _norm_key(first_para) == h_key:
         return b.split("\n\n", 1)[1].strip() if "\n\n" in b else ""
-    words_h = h.split()
-    if len(words_h) >= 4:
-        prefix = " ".join(words_h[: min(8, len(words_h))])
-        if b.lower().startswith(prefix.lower()) and len(b) > len(prefix) + 20:
-            return b[len(prefix) :].lstrip(" .—-\n")
+    sents = [s.strip() for s in _SENTENCE_SPLIT.split(b) if s.strip()]
+    if len(sents) >= 2 and _norm_key(sents[0].lstrip("▸• ")) == h_key:
+        rest = b[b.find(sents[0]) + len(sents[0]) :].lstrip(" .—-\n")
+        if rest.strip():
+            return rest.strip()
     return b
 
 
@@ -189,6 +194,16 @@ def strip_source_editorial_labels(text: str) -> str:
 
 _INLINE_EMOJI = re.compile(r"[\U0001F300-\U0001FAFF\u2600-\u27BF\uFE0F\u200d☀⚡🔥📌]+")
 
+_INLINE_THESIS_BULLET = re.compile(r"[ \t]+▸[ \t]+")
+
+
+def resplit_inline_thesis_bullets(text: str) -> str:
+    """Undo whitespace-flattening of «headline ▸ bullet» — ▸ is ours, always line-start."""
+    t = text or ""
+    if "▸" not in t:
+        return t
+    return _INLINE_THESIS_BULLET.sub("\n▸ ", t)
+
 
 def normalize_wire_source_text(text: str) -> str:
     """Best-effort uniform wire input from heterogeneous Telegram sources."""
@@ -202,12 +217,20 @@ def normalize_wire_source_text(text: str) -> str:
     while _LEAD_EMOJI.search(t):
         t = _LEAD_EMOJI.sub("", t, count=1).strip()
     t = _SLASH_INITIATIVE.sub(" ", t)
+    t = resplit_inline_thesis_bullets(t)
     t = strip_source_editorial_labels(t)
     t = merge_soft_linebreaks(t)
     t = dedupe_headline_in_paragraph(t)
     t = _split_title_body_capital_boundary(t)
     t = re.sub(r"\n{3,}", "\n\n", t)
     return t.strip()
+
+
+_DANGLING_PREPOSITION = re.compile(
+    r"\b(?:и|или|а|но|на|в|во|с|со|о|об|обо|у|по|для|из|изо|к|ко|от|до|за|при|"
+    r"через|над|под|без|про|между)$",
+    re.I,
+)
 
 
 def _split_title_body_capital_boundary(text: str) -> str:
@@ -224,6 +247,12 @@ def _split_title_body_capital_boundary(text: str) -> str:
         if len(left) < 18 or len(right) < 24:
             continue
         if left.endswith((".", "!", "?")):
+            continue
+        # A real headline has no sentence punctuation and never ends mid-phrase
+        # on a preposition/conjunction («…ETF на | BitMine» is one sentence).
+        if re.search(r"[.!?]", left):
+            continue
+        if _DANGLING_PREPOSITION.search(left):
             continue
         return f"{left}\n\n{right}"
     return t

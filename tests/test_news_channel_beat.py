@@ -28,11 +28,23 @@ def test_topic_cooldown_shorter_in_beat(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 def test_apply_defaults_sets_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
+    import os
+
     monkeypatch.setenv("NEWSROOM_CHANNEL_BEAT", "true")
     for key in ("PIPELINE_INTERVAL_MINUTES", "AUTONOMOUS_EDITORIAL_MODE"):
         monkeypatch.delenv(key, raising=False)
-    apply_news_channel_beat_defaults()
-    import os
-
-    assert os.environ["PIPELINE_INTERVAL_MINUTES"] == "5"
-    assert os.environ["AUTONOMOUS_EDITORIAL_MODE"] == "true"
+    before = dict(os.environ)
+    try:
+        apply_news_channel_beat_defaults()
+        assert os.environ["PIPELINE_INTERVAL_MINUTES"] == "3"
+        assert os.environ["AUTONOMOUS_EDITORIAL_MODE"] == "true"
+        assert os.environ["PUBLIC_WHY_IT_MATTERS"] == "true"
+        assert os.environ["WIRE_POST_INTEGRATED_CLOSURE"] == "false"
+    finally:
+        # apply_news_channel_beat_defaults writes os.environ directly —
+        # roll back so ~100 defaults don't leak into unrelated tests.
+        for key in list(os.environ):
+            if key not in before:
+                os.environ.pop(key, None)
+            elif os.environ[key] != before[key]:
+                os.environ[key] = before[key]

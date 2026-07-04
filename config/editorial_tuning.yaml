@@ -9,7 +9,7 @@ structure:
   headline_max_chars: 120
   summary_max_lines: 3
   summary_max_chars: 720
-  include_why_it_matters: false
+  include_why_it_matters: true
   include_cta: false
   paragraph_spacing: double
 

@@ -147,7 +147,8 @@ _MID_ELLIPSIS_TEASER = re.compile(r"[а-яёa-z]\s*…", re.I)
 
 
 def public_why_it_matters_enabled() -> bool:
-    return os.getenv("PUBLIC_WHY_IT_MATTERS", "false").strip().lower() in ("1", "true", "yes", "on")
+    # Unified template: content-specific «Почему это важно» blocks stay in the post.
+    return os.getenv("PUBLIC_WHY_IT_MATTERS", "true").strip().lower() in ("1", "true", "yes", "on")
 
 
 def premium_channel_configured() -> bool:
@@ -185,7 +186,8 @@ def strip_editorial_template_noise(text: str) -> str:
         return ""
     t = _OPINION_PREFIX.sub("", t).strip()
     t = _SOURCE_CHANNEL_CHROME.sub("", t).strip()
-    t = _PREMIUM_FUNNEL.sub("", t).strip()
+    # NB: premium-funnel ads are NOT scrubbed here — has_hidden_advertising must
+    # see them so the publish gate rejects the whole post (no ad laundering).
     t = strip_generic_why_it_matters(t)
     return re.sub(r"\n{3,}", "\n\n", t).strip()
 

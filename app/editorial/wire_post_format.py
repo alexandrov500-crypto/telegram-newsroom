@@ -59,7 +59,10 @@ def strip_wire_pipeline_boilerplate(text: str) -> str:
     for _ in range(6):
         prev = t
         t = _PIPELINE_BOILERPLATE.sub(" ", t)
-        t = re.sub(r"\s+", " ", t).strip()
+        # Collapse runs of spaces/tabs only — newlines carry structure
+        # (thesis bullets, paragraph breaks) and must survive.
+        t = re.sub(r"[ \t]+", " ", t)
+        t = re.sub(r" ?\n ?", "\n", t)
         t = re.sub(r"\n{3,}", "\n\n", t).strip()
         if t == prev:
             break
@@ -200,8 +203,14 @@ def normalize_wire_body(
 
     sents = [finish_sentence(s) for s in sents]
 
-    if _body_already_thesis(t):
-        out = "\n".join(ln.strip() for ln in t.splitlines() if ln.strip())
+    if _body_already_thesis(t) or "▸" in t:
+        from app.editorial.wire_source_normalize import resplit_inline_thesis_bullets
+
+        out = "\n".join(
+            ln.strip()
+            for ln in resplit_inline_thesis_bullets(t).splitlines()
+            if ln.strip()
+        )
         return ensure_complete_ending(out)
 
     if wire_thesis_bullets_enabled():
@@ -259,7 +268,8 @@ def wire_post_env_defaults() -> dict[str, str]:
         "WIRE_POST_MIN_SENTENCES": "4",
         "WIRE_POST_TARGET_CHARS_MIN": "520",
         "WIRE_POST_TARGET_CHARS_MAX": "980",
-        "WIRE_POST_INTEGRATED_CLOSURE": "true",
+        "WIRE_POST_INTEGRATED_CLOSURE": "false",
+        "WIRE_POST_WHY_BLOCK": "true",
         "WIRE_POST_THESIS_BULLETS": "true",
         "EDITORIAL_AUDIENCE_UNIFICATION_LAYER": "false",
     }

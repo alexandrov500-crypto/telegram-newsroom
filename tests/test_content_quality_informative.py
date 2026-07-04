@@ -136,7 +136,9 @@ def test_generic_insight_boilerplate_detected_and_stripped():
     assert "$15 тысяч" in cleaned
 
 
-def test_specific_insight_not_stripped():
+def test_specific_insight_not_stripped(monkeypatch):
+    # Unified template keeps content-specific why-blocks (prod: PUBLIC_WHY_IT_MATTERS=true).
+    monkeypatch.setenv("PUBLIC_WHY_IT_MATTERS", "true")
     why = "Изменение ставки перестраивает стоимость капитала и волатильность активов."
     text = f"ФРС сигнализирует о снижении ключевой ставки.\n\nПочему это важно: {why}"
     assert not is_generic_insight(why)

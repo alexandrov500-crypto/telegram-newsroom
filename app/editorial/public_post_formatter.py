@@ -129,7 +129,11 @@ def _strip_embedded_source_lines(text: str) -> str:
         if _STRIP_SOURCE_LINE.match(ln.strip()):
             continue
         lines.append(ln)
-    return re.sub(r"\s{2,}", " ", "\n".join(lines)).strip()
+    out = "\n".join(lines)
+    # Collapse doubled spaces left by the substitutions, but keep newlines —
+    # they separate headline / thesis bullets / why-block.
+    out = re.sub(r"[ \t]{2,}", " ", out)
+    return re.sub(r"\n{3,}", "\n\n", out).strip()
 
 
 def _dedupe_source_lines(text: str) -> str:
@@ -545,6 +549,20 @@ def format_source_footer_plain(handle: str | None) -> str:
     return f"Источник: {h}"
 
 
+def _truncate_html_safely(html: str, max_chars: int) -> str:
+    """Cut rendered HTML at a block boundary — never mid-tag (Telegram would reject)."""
+    if len(html) <= max_chars:
+        return html
+    cut = html[:max_chars]
+    boundary = cut.rfind("\n\n")
+    if boundary > max_chars // 3:
+        return cut[:boundary].rstrip()
+    from utils.telegram_html import escape_telegram_html, strip_html_tags
+
+    plain = strip_html_tags(html)[: max_chars - 1].rstrip()
+    return escape_telegram_html(plain)
+
+
 def format_public_post_html(
     content: str,
     sources: str | list[dict[str, Any]] | None = None,
@@ -588,7 +606,7 @@ def format_public_post_html(
             bucket=_story_bucket(polished),
         )
         if len(out) > max_total_chars:
-            out = out[:max_total_chars].rstrip()
+            out = _truncate_html_safely(out, max_total_chars)
         return out
 
     tuning = get_editorial_tuning()
@@ -645,5 +663,5 @@ def format_public_post_html(
         engagement_score=score,
     )
     if len(out) > max_total_chars:
-        out = out[:max_total_chars].rstrip()
+        out = _truncate_html_safely(out, max_total_chars)
     return out

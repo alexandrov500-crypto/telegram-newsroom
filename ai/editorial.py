@@ -227,6 +227,8 @@ def build_user_prompt(
     if settings.headline_mode == "json":
         fmt_required = '"post", "used_raw_post_ids", "headline"'
 
+    _, post_hi = _wire_post_char_range()
+
     return f"""Ниже список новостей в формате JSON. Каждый элемент содержит id, канал, id сообщения и текст.
 
 Задача:
@@ -244,7 +246,7 @@ def build_user_prompt(
 Ограничения:
 - used_raw_post_ids должен быть либо пустым массивом, либо содержать минимум 1 id;
 - если post пустой, used_raw_post_ids должен быть пустым;
-- post не длиннее 700 символов;
+- post не длиннее {post_hi} символов;
 - used_raw_post_ids должны быть подмножеством id из входных данных;
 - не добавляй чисел, цитат и деталей, которых нет во входных текстовых полях;
 - required JSON keys: {fmt_required}.

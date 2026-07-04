@@ -69,11 +69,12 @@ def normalize_cb_headline(headline: str, *, body_fallback: str = "") -> str:
     while _LEAD_EMOJI.search(h):
         h = _LEAD_EMOJI.sub("", h, count=1).strip()
     h = re.sub(r"^(BREAKING|СРОЧНО)\s*[:—-]\s*", "", h, flags=re.I).strip()
-    h = re.sub(r"^[⚡🔥📌]+\s*", "", h).strip()
+    h = re.sub(r"^[⚡🔥📌▸•]+\s*", "", h).strip()
     h = _INTRIGUE.sub("", h).strip()
     if not h and body_fallback:
         sents = [s.strip() for s in _SENTENCE_SPLIT.split(body_fallback.strip()) if s.strip()]
         h = sents[0] if sents else body_fallback.strip()[:CB_BRIEF_HEADLINE_MAX]
+        h = re.sub(r"^[▸•]+\s*", "", h).strip()
     h = clean_headline(h, max_len=CB_BRIEF_HEADLINE_MAX)
     if h.endswith(":"):
         h = h[:-1].rstrip()
@@ -168,6 +169,13 @@ def apply_cb_brief_shape(
         if body_norm.startswith(h_norm):
             body = body[len(h) :].lstrip(" .—-\n")
             body = normalize_cb_body(body, why_it_matters=why_it_matters)
+        else:
+            # thesis-bullet body: drop the first bullet when the headline came from it
+            body_lines = [ln for ln in body.splitlines() if ln.strip()]
+            if len(body_lines) >= 2:
+                first = body_lines[0].lstrip("▸• ").strip().lower().strip(" .")
+                if first.startswith(h_norm[:80]) or h_norm.startswith(first[:80]):
+                    body = "\n".join(body_lines[1:]).strip()
     return h, body
 
 

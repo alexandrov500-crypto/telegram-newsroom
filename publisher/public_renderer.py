@@ -54,7 +54,16 @@ def _why_it_matters_enabled() -> bool:
 
 def extract_why_it_matters(text: str) -> tuple[str, str]:
     """Split optional 'why it matters' block from body (plain text)."""
-    lines = (text or "").splitlines()
+    # Whitespace-flattening upstream can glue the label mid-line
+    # («…кривой. Почему это важно: …») — restore it to its own line first.
+    t = re.sub(
+        r"(?<=[.!?…])\s+(?=(?:▸\s*)?почему\s+это\s+важно\s*:)",
+        "\n",
+        text or "",
+        flags=re.I,
+    )
+    t = re.sub(r"(?:^|\n)\s*▸\s*(?=почему\s+это\s+важно\s*:)", "\n", t, flags=re.I)
+    lines = t.splitlines()
     body_lines: list[str] = []
     why_lines: list[str] = []
     in_why = False

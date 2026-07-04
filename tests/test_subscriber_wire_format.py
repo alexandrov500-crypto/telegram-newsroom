@@ -35,7 +35,10 @@ def test_wire_parts_headline_and_body() -> None:
     parts = build_subscriber_wire_parts(raw)
     assert parts.headline.startswith("ЦБ")
     assert "16" in parts.headline
-    assert "Почему это важно" not in parts.to_plain_block()
+    # Unified template: concluding implication is promoted to the why-block.
+    if parts.takeaway:
+        assert "Почему это важно:" in parts.to_plain_block()
+        assert parts.takeaway.rstrip(".") not in parts.body
 
 
 def test_number_highlight_html() -> None:

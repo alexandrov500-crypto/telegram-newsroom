@@ -67,7 +67,7 @@ def _defaults() -> EditorialTuning:
             headline_max_chars=120,
             summary_max_lines=3,
             summary_max_chars=720,
-            include_why_it_matters=False,
+            include_why_it_matters=True,
             include_cta=False,
             paragraph_spacing="double",
         ),

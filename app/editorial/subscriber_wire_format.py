@@ -108,8 +108,13 @@ class SubscriberWireParts:
             parts.append(self.body)
         if self.takeaway:
             parts.append("")
-            parts.append(f"→ {self.takeaway}")
+            parts.append(f"Почему это важно: {self.takeaway}")
         return "\n".join(parts).strip()
+
+
+def wire_why_block_enabled() -> bool:
+    """Public template includes a «Почему это важно» block when content-specific."""
+    return os.getenv("WIRE_POST_WHY_BLOCK", "true").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def extract_subscriber_takeaway(
@@ -125,19 +130,21 @@ def extract_subscriber_takeaway(
     if why and len(why) >= 24 and not is_generic_insight(why):
         return why.rstrip(".!? ") + "."
 
-    if reference_forward_score < min_score:
+    if reference_forward_score < min_score and not wire_why_block_enabled():
         return ""
 
     sents = [s.strip() for s in _SENTENCE_SPLIT.split((body or "").strip()) if len(s.strip()) > 20]
     if len(sents) < 2:
         return ""
 
-    candidate = sents[-1]
+    candidate = sents[-1].lstrip("▸ ").strip()
+    if len(candidate) < 40:
+        return ""
     if not _TAKEAWAY_MARKERS.search(candidate):
         return ""
     if is_generic_insight(candidate):
         return ""
-    if candidate.lower() == sents[0].lower():
+    if candidate.lower() == sents[0].lstrip("▸ ").strip().lower():
         return ""
     if candidate[-1] not in ".!?":
         candidate = f"{candidate}."
@@ -152,23 +159,41 @@ def build_subscriber_wire_parts(
     max_body_chars: int | None = None,
 ) -> SubscriberWireParts:
     body_limit = max_body_chars if max_body_chars is not None else _wire_body_max_chars()
-    raw = (text or "").strip()
+    from app.editorial.wire_source_normalize import resplit_inline_thesis_bullets
+
+    raw = resplit_inline_thesis_bullets((text or "").strip())
+    if not (why_it_matters or "").strip():
+        try:
+            from publisher.public_renderer import extract_why_it_matters
+
+            stripped_raw, embedded_why = extract_why_it_matters(raw)
+            if embedded_why.strip():
+                raw = stripped_raw.strip() or raw
+                why_it_matters = embedded_why.strip()
+        except Exception:
+            pass
     breaking = is_breaking_story(raw, growth_meta=growth_meta)
-    lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
-    if len(lines) >= 2 and len(lines[0]) <= CB_BRIEF_HEADLINE_MAX + 20:
-        headline, body = apply_cb_brief_shape(lines[0], "\n\n".join(lines[1:]), why_it_matters="")
-    else:
-        headline, body = apply_cb_brief_shape("", raw, why_it_matters=why_it_matters)
-
-    body = normalize_cb_body(body, why_it_matters=why_it_matters, max_chars=body_limit)
-    headline = normalize_cb_headline(headline, body_fallback=body)
-
-    integrated = os.getenv("WIRE_POST_INTEGRATED_CLOSURE", "true").strip().lower() in {
+    integrated = os.getenv("WIRE_POST_INTEGRATED_CLOSURE", "false").strip().lower() in {
         "1",
         "true",
         "yes",
         "on",
     }
+    # Separate why-block: the body must not absorb why_it_matters — it renders
+    # as its own «Почему это важно» line below the body.
+    body_why = why_it_matters if integrated else ""
+    lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+    if (
+        len(lines) >= 2
+        and len(lines[0]) <= CB_BRIEF_HEADLINE_MAX + 20
+        and not lines[0].startswith(("▸", "•"))
+    ):
+        headline, body = apply_cb_brief_shape(lines[0], "\n\n".join(lines[1:]), why_it_matters="")
+    else:
+        headline, body = apply_cb_brief_shape("", raw, why_it_matters=body_why)
+
+    body = normalize_cb_body(body, why_it_matters=body_why, max_chars=body_limit)
+    headline = normalize_cb_headline(headline, body_fallback=body)
     takeaway = ""
     if not integrated:
         ref_score = 0.0
@@ -187,11 +212,17 @@ def build_subscriber_wire_parts(
             reference_forward_score=ref_score,
         )
         if takeaway:
-            sents = [s.strip() for s in _SENTENCE_SPLIT.split(body) if s.strip()]
-            if sents and takeaway.rstrip(".!? ").lower() in sents[-1].lower():
-                body = " ".join(sents[:-1]).strip()
-                if body:
-                    body = normalize_cb_body(body, max_chars=body_limit)
+            key = takeaway.rstrip(".!? ").lower()
+            body_lines = [ln.strip() for ln in body.splitlines() if ln.strip()]
+            if len(body_lines) >= 2 and key in body_lines[-1].lower():
+                # thesis-bullet body: drop the bullet promoted to the why-block
+                body = "\n".join(body_lines[:-1]).strip()
+            else:
+                sents = [s.strip() for s in _SENTENCE_SPLIT.split(body) if s.strip()]
+                if len(sents) >= 2 and key in sents[-1].lower():
+                    body = " ".join(sents[:-1]).strip()
+                    if body:
+                        body = normalize_cb_body(body, max_chars=body_limit)
 
     bucket = _story_bucket(f"{headline}\n{body}")
     return SubscriberWireParts(
@@ -354,7 +385,9 @@ def render_subscriber_wire_html(
             html_parts.append("\n\n".join(highlight_key_numbers_html(p) for p in paras))
 
     if parts.takeaway:
-        html_parts.append(f"<i>→ {escape_telegram_html(parts.takeaway)}</i>")
+        html_parts.append(
+            f"<i>Почему это важно: {escape_telegram_html(parts.takeaway)}</i>"
+        )
 
     chans: list[str] = []
     if isinstance(sources, list):
@@ -394,14 +427,15 @@ def subscriber_wire_env_defaults() -> dict[str, str]:
         "NEWSROOM_CB_BRIEF_FORMAT": "true",
         "NEWSROOM_CLEAN_CHANNEL_COPY": "true",
         "NEWSROOM_HASHTAGS_ENABLED": "false",
-        "PUBLIC_WHY_IT_MATTERS": "false",
+        "PUBLIC_WHY_IT_MATTERS": "true",
         "NEWSROOM_ENGAGEMENT_HOOK_ENABLED": "false",
         "NEWSROOM_OPEN_LOOP_ENABLED": "false",
         "NEWSROOM_BRAND_FOOTER_ENABLED": "false",
         "CHANNEL_PRODUCT_SHARE_NUDGE": "false",
         "CHANNEL_PRODUCT_OPEN_LOOP": "false",
         "GROWTH_SIGNATURE_ENABLED": "false",
-        "WIRE_POST_INTEGRATED_CLOSURE": "true",
+        "WIRE_POST_INTEGRATED_CLOSURE": "false",
+        "WIRE_POST_WHY_BLOCK": "true",
     }
     defaults.update(wire_post_env_defaults())
     return defaults

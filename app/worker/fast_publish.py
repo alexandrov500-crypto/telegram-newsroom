@@ -12,14 +12,12 @@ from typing import Any
 from aiogram.enums import ParseMode
 
 from app.config import Settings
-from publisher.publish_formatting import format_body_as_html, format_sources_footer_html
 from publisher.rate_limit import get_publish_rate_limiter
 from publisher.retry import async_retry
 from publisher.routing import route_draft_to_channel
 from utils.metrics import inc
 from utils.structured_log import log_event
 from utils.telegram_chunks import split_telegram_text
-from utils.telegram_html import escape_telegram_html, sanitize_telegram_html_output
 
 logger = logging.getLogger(__name__)
 
@@ -34,12 +32,15 @@ def quick_sanitize(text: str, *, max_chars: int = 2400) -> str:
 
 
 def build_breaking_html(content: str, sources: list[dict[str, Any]], *, article_id: str) -> str:
-    headline = content.split(".", 1)[0].strip()[:200] or content[:200]
-    body = format_body_as_html(content)
-    prefix = f"<b>⚡ BREAKING</b>\n<b>{escape_telegram_html(headline)}</b>\n\n"
-    foot = format_sources_footer_html(sources)
-    tail = f"\n\n<i>Fast lane · {escape_telegram_html(article_id[:16])}</i>"
-    return sanitize_telegram_html_output(f"{prefix}{body}\n\n{foot}{tail}")
+    """Fast-lane HTML via the same public renderer as the main lane (SSOT, no debug tail)."""
+    _ = article_id  # correlation id stays in logs only — never in the public post
+    from app.editorial.public_post_formatter import format_public_post_html
+
+    return format_public_post_html(
+        content,
+        sources,
+        growth_meta={"is_breaking": True},
+    )
 
 
 async def publish_breaking_item(
@@ -75,6 +76,9 @@ async def publish_breaking_item(
     await limiter.acquire_before_publish(int(chat_id))
 
     html = build_breaking_html(content, sources, article_id=article_id)
+    from app.editorial.publish_pipeline_guards import enforce_publish_html_guards
+
+    enforce_publish_html_guards(html, draft_id=None, settings=settings)
     chunks = split_telegram_text(html, respect_html=True)
     sent_id = 0
     for idx, chunk in enumerate(chunks):

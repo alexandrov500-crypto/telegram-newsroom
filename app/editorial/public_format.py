@@ -142,8 +142,15 @@ def format_public_story(
         s = compose_growth_brief_body(blocks)
         why = ""
     elif use_cb_brief_at_render(format_profile):
-        h, s = apply_cb_brief_shape(h, s, why)
-        why = ""
+        from app.editorial.subscriber_wire_format import wire_why_block_enabled
+
+        if wire_why_block_enabled():
+            # Unified template: why renders as its own «Почему это важно» block.
+            h, s = apply_cb_brief_shape(h, s, "")
+            why = compress_summary(why, max_lines=2, max_chars=280)
+        else:
+            h, s = apply_cb_brief_shape(h, s, why)
+            why = ""
     return PublicFormatResult(
         headline=h,
         summary=s,

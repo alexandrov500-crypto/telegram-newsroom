@@ -229,6 +229,19 @@ async def _try_wire_routine_publish(ctx: Any, *, state: dict[str, Any], now: flo
 
     summary = _lightweight_summarize(str(candidate.get("text") or ""))
     sources = json.dumps([{"channel": candidate["channel"], "message_id": candidate["message_id"]}])
+
+    from app.ops.floor_eligibility import evaluate_floor_eligibility
+
+    elig = evaluate_floor_eligibility(summary, sources_json=sources)
+    if not elig.eligible:
+        log_event(
+            logger,
+            "wire_routine.candidate_rejected",
+            reason=elig.reason,
+            channel=candidate.get("channel"),
+        )
+        return None
+
     article_id = f"wire:{candidate['_hash']}"
     try:
         from app.worker.fast_publish import publish_breaking_item
